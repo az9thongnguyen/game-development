@@ -84,7 +84,10 @@ public:
         }
         data_.pop_back();
         dense_.pop_back();
-        at_.erase(it);                         // erase AFTER using `i` (it now dangles)
+        // Erase e's entry LAST: the `at_[dense_[i]] = i` above re-points the
+        // SWAPPED entity to slot i; doing it before erase keeps that update and
+        // the erase independent (e != the swapped entity, since i != last).
+        at_.erase(it);
     }
 
     std::size_t                size()     const { return data_.size(); }

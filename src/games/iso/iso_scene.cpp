@@ -3,6 +3,7 @@
 // =============================================================================
 #include "games/iso/iso_scene.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "engine/assets.hpp"
@@ -81,8 +82,10 @@ void IsoScene::update(double dt, const platform::InputState& in) {
     if (in.pressed(Key::Num8)) brush_ = Brush::Fence;
     if (in.pressed(Key::Num9)) brush_ = Brush::Wheat;
     if (in.pressed(Key::Num0)) brush_ = Brush::Bulldoze;
-    if (in.pressed(Key::Tab))
-        brush_ = static_cast<Brush>((static_cast<int>(brush_) + 1) % 10);
+    if (in.pressed(Key::Tab)) {
+        constexpr int kBrushCount = static_cast<int>(Brush::Bulldoze) + 1;
+        brush_ = static_cast<Brush>((static_cast<int>(brush_) + 1) % kBrushCount);
+    }
 
     // ---- paint with the left button held; drag paints, but re-apply only when
     //      the cursor enters a NEW tile so we don't churn entities every frame ----
@@ -106,6 +109,10 @@ void IsoScene::update(double dt, const platform::InputState& in) {
     if (in.down(Key::Right) || in.down(Key::D)) cam_.ox -= pan;
     if (in.down(Key::Up)    || in.down(Key::W)) cam_.oy += pan;
     if (in.down(Key::Down)  || in.down(Key::S)) cam_.oy -= pan;
+    // Clamp the pan so screen_to_grid's float→int floor can never leave int range
+    // (UB), no matter how long a pan key is held. Far beyond any usable offset.
+    cam_.ox = std::clamp(cam_.ox, -50000.0f, 50000.0f);
+    cam_.oy = std::clamp(cam_.oy, -50000.0f, 50000.0f);
 
     // ---- save / load / reset ----
     if (in.pressed(Key::F5)) {
