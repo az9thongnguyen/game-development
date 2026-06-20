@@ -61,6 +61,12 @@ void run(const std::function<void(double dt)>& frame);
 // Normalized keyboard/mouse snapshot, refreshed once per frame before frame().
 const InputState& input();
 
+// ---- Audio (seam) ----
+// Brings up the audio device. Real sound playback is implemented at M2 (FPS);
+// for now this is a stub so the interface exists and the architecture stays
+// web-ready. Returns true on success.
+bool init_audio();
+
 // ---- Quit control ----
 bool should_quit();
 void request_quit();

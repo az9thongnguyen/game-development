@@ -1,18 +1,20 @@
 // =============================================================================
 //  main.cpp  —  engine entry point
 // =============================================================================
-//  Step 6: respond to the player. The scene moves a sprite with the keyboard
-//  (arrows / WASD) in fixed-timestep update(), and draws a crosshair at the
-//  mouse in render(). All input comes through the engine (platform::input via
-//  Context), never SDL. Step 8 replaces this with the full M0 demo.
+//  Step 7: same input demo, now also exercising the two new seams:
+//    * assets::load_file reads assets/hello.txt and shows its first line,
+//    * platform::init_audio brings up the (stub) audio device.
+//  Step 8 replaces this scene with the full M0 acceptance demo.
 // =============================================================================
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "engine/app.hpp"
+#include "engine/assets.hpp"
 #include "engine/color.hpp"
 #include "engine/renderer2d.hpp"
 #include "platform/platform.hpp"
@@ -32,6 +34,15 @@ public:
             }
         }
         sprite_ = gfx::Sprite{ sprite_pixels_.data(), 16, 16 };
+
+        // Exercise the asset seam (best-effort: never breaks the demo).
+        if (auto data = assets::load_file("hello.txt")) {
+            std::string s(data->begin(), data->end());
+            const auto nl = s.find('\n');
+            asset_line_ = (nl == std::string::npos) ? s : s.substr(0, nl);
+        } else {
+            asset_line_ = "(assets/hello.txt not found - run from project root)";
+        }
     }
 
     void update(double dt, const platform::InputState& in) override {
@@ -42,25 +53,22 @@ public:
         if (in.down(K::Up)    || in.down(K::W)) dy -= 1.0f;
         if (in.down(K::Down)  || in.down(K::S)) dy += 1.0f;
 
-        const float speed = 120.0f;  // pixels per second
+        const float speed = 120.0f;
         px_ += dx * speed * static_cast<float>(dt);
         py_ += dy * speed * static_cast<float>(dt);
-
-        // Keep the sprite on screen.
         px_ = px_ < 0 ? 0 : (px_ > 480 ? 480 : px_);
         py_ = py_ < 0 ? 0 : (py_ > 270 ? 270 : py_);
     }
 
     void render(const engine::Context& ctx) override {
-        gfx::Renderer2D& g            = ctx.gfx;
+        gfx::Renderer2D& g             = ctx.gfx;
         const platform::InputState& in = ctx.input;
 
         g.clear(gfx::rgb(20, 24, 40));
         g.draw_rect(0, 0, g.width(), g.height(), gfx::rgb(40, 48, 72));
 
-        g.blit(sprite_, int(px_) - 8, int(py_) - 8);  // player
+        g.blit(sprite_, int(px_) - 8, int(py_) - 8);
 
-        // Mouse crosshair (and a marker while the left button is held).
         g.draw_line(in.mouse_x - 5, in.mouse_y, in.mouse_x + 5, in.mouse_y, gfx::colors::white);
         g.draw_line(in.mouse_x, in.mouse_y - 5, in.mouse_x, in.mouse_y + 5, gfx::colors::white);
         if (in.down(platform::MouseButton::Left)) {
@@ -72,11 +80,13 @@ public:
                       in.mouse_x, in.mouse_y, int(px_), int(py_));
         g.draw_text(8, 8,  "ARROWS/WASD: MOVE   MOUSE: AIM   ESC: QUIT", gfx::colors::white, 1);
         g.draw_text(8, 18, hud, gfx::rgb(160, 170, 190), 1);
+        g.draw_text(8, g.height() - 12, asset_line_.c_str(), gfx::rgb(120, 200, 120), 1);
     }
 
 private:
     std::vector<gfx::Color> sprite_pixels_;
     gfx::Sprite             sprite_{};
+    std::string             asset_line_;
     float                   px_ = 240.0f, py_ = 135.0f;
 };
 
@@ -92,6 +102,8 @@ int main(int /*argc*/, char** /*argv*/) {
     if (!platform::init(cfg)) {
         return 1;
     }
+    platform::init_audio();             // seam (stub until M2)
+    assets::set_base_path("assets");    // resolve asset paths under ./assets
 
     engine::App app(std::make_unique<InputDemoScene>());
     platform::run([&app](double dt) { app.frame(dt); });
