@@ -1,0 +1,78 @@
+# =============================================================================
+#  Hand-written C++ game engine — root build script
+# =============================================================================
+#  One CMake project builds the desktop (native + SDL2) target today, and is
+#  structured so the web (Emscripten) target can be added at M5 WITHOUT touching
+#  engine or game code (see cmake/emscripten.toolchain.cmake).
+#
+#  The source list grows step-by-step as we add engine modules. Keeping the list
+#  EXPLICIT (instead of file globbing) is deliberate: it is clearer for learning,
+#  and CMake re-globbing pitfalls are avoided.
+# =============================================================================
+cmake_minimum_required(VERSION 3.20)
+project(hand_engine LANGUAGES CXX)
+
+# ---- Language standard -------------------------------------------------------
+set(CMAKE_CXX_STANDARD 20)            # modern C++; operator overloading for math
+set(CMAKE_CXX_STANDARD_REQUIRED ON)   # fail rather than silently downgrade
+set(CMAKE_CXX_EXTENSIONS OFF)         # plain C++20, no compiler-specific dialect
+
+# Default to a Debug build (with symbols + assertions) when the user did not pick.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+endif()
+
+# Export compile_commands.json so editors/clangd give good completion + diagnostics.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ---- Options -----------------------------------------------------------------
+option(ENGINE_SANITIZE "Enable Address + UndefinedBehavior sanitizers (dev)" OFF)
+
+# ---- Find SDL2 (desktop platform backend) ------------------------------------
+# Strategy: prefer SDL2's own CMake config package; fall back to pkg-config.
+# On macOS, Homebrew installs into a keg (e.g. .../opt/sdl2*), so we point CMake
+# at the brew prefix first. None of this leaks above the platform layer.
+if(APPLE)
+  find_program(BREW_EXECUTABLE brew)
+  if(BREW_EXECUTABLE)
+    execute_process(
+      COMMAND ${BREW_EXECUTABLE} --prefix sdl2
+      OUTPUT_VARIABLE SDL2_BREW_PREFIX
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET)
+    if(SDL2_BREW_PREFIX)
+      list(PREPEND CMAKE_PREFIX_PATH "${SDL2_BREW_PREFIX}")
+    endif()
+  endif()
+endif()
+
+find_package(SDL2 CONFIG QUIET)
+if(SDL2_FOUND)
+  set(SDL2_LINK SDL2::SDL2)
+  message(STATUS "SDL2: found via CMake config (${SDL2_DIR})")
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+  set(SDL2_LINK PkgConfig::SDL2)
+  message(STATUS "SDL2: found via pkg-config (version ${SDL2_VERSION})")
+endif()
+
+# ---- Shared compile flags ----------------------------------------------------
+# An INTERFACE target carries warnings (and optional sanitizers) to anything that
+# links it, so every module is built with the same strict settings.
+add_library(engine_flags INTERFACE)
+target_compile_options(engine_flags INTERFACE -Wall -Wextra -Wpedantic)
+if(ENGINE_SANITIZE)
+  target_compile_options(engine_flags INTERFACE
+    -fsanitize=address,undefined -fno-omit-frame-pointer)
+  target_link_options(engine_flags INTERFACE -fsanitize=address,undefined)
+endif()
+
+# ---- Executable (sources added as the engine grows) --------------------------
+add_executable(demo
+  src/main.cpp
+  src/platform/backend_sdl.cpp
+  src/engine/app.cpp
+)
+target_include_directories(demo PRIVATE src)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags)
