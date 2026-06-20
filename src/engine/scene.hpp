@@ -15,17 +15,17 @@
 // =============================================================================
 #pragma once
 
-#include "platform/platform.hpp"
+#include "engine/renderer2d.hpp"
 
 namespace engine {
 
 // Everything a scene needs to draw one frame. Passed by const ref to render().
 struct Context {
-    platform::Framebuffer fb;     // the pixel buffer to draw into
-    double                dt;     // real seconds since the last rendered frame
-    double                time;   // total simulated seconds (sum of fixed steps)
-    double                alpha;  // [0,1): fraction into the next fixed step
-                                  // (for interpolating smooth motion later)
+    gfx::Renderer2D& gfx;   // draw API over this frame's framebuffer
+    double           dt;    // real seconds since the last rendered frame
+    double           time;  // total simulated seconds (sum of fixed steps)
+    double           alpha; // [0,1): fraction into the next fixed step
+                            // (for interpolating smooth motion later)
     // Input is added to the Context in Step 6.
 };
 
