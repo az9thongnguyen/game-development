@@ -7,11 +7,15 @@
 // =============================================================================
 #pragma once
 
+#include <vector>
+
 #include "engine/scene.hpp"
 #include "games/fps/map.hpp"
 #include "games/fps/textures.hpp"
 
 namespace fps {
+
+struct SpriteInst { double x, y; };  // a billboard's world position
 
 class RaycastScene : public engine::Scene {
 public:
@@ -23,8 +27,11 @@ public:
 private:
     void try_move(double nx, double ny);  // move with axis-separated collision
 
-    Map          map_;
-    WallTextures textures_;
+    Map                     map_;
+    WallTextures            textures_;
+    gfx::Image              barrel_;
+    std::vector<SpriteInst> sprites_;
+    std::vector<double>     zbuf_;   // per-column wall depth (for sprite occlusion)
     // Lodev-style camera: position + direction + camera plane (perpendicular).
     double posX_, posY_;
     double dirX_, dirY_;

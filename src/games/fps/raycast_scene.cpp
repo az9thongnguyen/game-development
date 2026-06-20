@@ -3,7 +3,9 @@
 // =============================================================================
 #include "games/fps/raycast_scene.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 #include "engine/color.hpp"
 #include "games/fps/raycast.hpp"
@@ -13,6 +15,8 @@ namespace fps {
 RaycastScene::RaycastScene()
     : map_(default_map()),
       textures_(make_wall_textures()),
+      barrel_(make_barrel()),
+      sprites_{ {4.5, 8.5}, {3.5, 3.5}, {12.5, 3.5}, {3.5, 12.5}, {12.5, 12.5} },
       posX_(3.5), posY_(8.5),
       dirX_(1.0), dirY_(0.0),
       planeX_(0.0), planeY_(0.66)
@@ -49,15 +53,18 @@ void RaycastScene::update(double dt, const platform::InputState& in) {
 void RaycastScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     const int W = g.width(), H = g.height();
+    if (static_cast<int>(zbuf_.size()) != W) zbuf_.assign(W, 0.0);
 
     g.fill_rect(0, 0,     W, H / 2,     gfx::rgb(48, 52, 66));  // ceiling
     g.fill_rect(0, H / 2, W, H - H / 2, gfx::rgb(26, 26, 28));  // floor
 
+    // ---- walls (also records per-column depth for sprite occlusion) ----
     for (int x = 0; x < W; ++x) {
         const double cameraX = 2.0 * x / W - 1.0;
         const double rayDirX = dirX_ + planeX_ * cameraX;
         const double rayDirY = dirY_ + planeY_ * cameraX;
         const Hit h = cast_ray(map_, posX_, posY_, rayDirX, rayDirY);
+        zbuf_[x] = h.perp_dist;
 
         const int lineH    = static_cast<int>(H / h.perp_dist);
         const int rawStart = -lineH / 2 + H / 2;
@@ -66,13 +73,11 @@ void RaycastScene::render(const engine::Context& ctx) {
 
         const gfx::Image& tex = textures_.for_id(h.wall);
         const int texW = tex.w, texH = tex.h;
-
         int texX = static_cast<int>(h.wall_x * texW);
-        if (h.side == 0 && rayDirX > 0) texX = texW - 1 - texX;  // keep texture orientation
+        if (h.side == 0 && rayDirX > 0) texX = texW - 1 - texX;
         if (h.side == 1 && rayDirY < 0) texX = texW - 1 - texX;
         if (texX < 0) texX = 0; if (texX >= texW) texX = texW - 1;
 
-        // Distance fog + side shading, applied per column (cheap).
         double shade = 1.0 - h.perp_dist / 14.0;
         if (shade < 0.35) shade = 0.35; if (shade > 1.0) shade = 1.0;
         if (h.side == 1) shade *= 0.78;
@@ -89,6 +94,54 @@ void RaycastScene::render(const engine::Context& ctx) {
             g.set_pixel(x, y, gfx::rgb(static_cast<uint8_t>(gfx::r_of(c) * shade),
                                        static_cast<uint8_t>(gfx::g_of(c) * shade),
                                        static_cast<uint8_t>(gfx::b_of(c) * shade)));
+        }
+    }
+
+    // ---- sprites (billboards), drawn far-to-near, clipped by the depth buffer ----
+    const int n = static_cast<int>(sprites_.size());
+    std::vector<int> order(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) order[static_cast<size_t>(i)] = i;
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        const double da = (sprites_[a].x - posX_) * (sprites_[a].x - posX_) +
+                          (sprites_[a].y - posY_) * (sprites_[a].y - posY_);
+        const double db = (sprites_[b].x - posX_) * (sprites_[b].x - posX_) +
+                          (sprites_[b].y - posY_) * (sprites_[b].y - posY_);
+        return da > db;  // farthest first
+    });
+
+    const gfx::Image& im = barrel_;
+    for (int oi = 0; oi < n; ++oi) {
+        const SpriteInst& s = sprites_[static_cast<size_t>(order[static_cast<size_t>(oi)])];
+        const Cam2 c = project_sprite(dirX_, dirY_, planeX_, planeY_, s.x - posX_, s.y - posY_);
+        if (c.ty <= 0.01) continue;  // behind the camera
+
+        const int screenX  = static_cast<int>((W / 2.0) * (1.0 + c.tx / c.ty));
+        const int spriteH  = std::abs(static_cast<int>(H / c.ty));
+        const int spriteW  = spriteH;  // square sprite
+        const int rawStartY = -spriteH / 2 + H / 2;
+        const int rawStartX = -spriteW / 2 + screenX;
+        int sy0 = rawStartY < 0 ? 0 : rawStartY;
+        int sy1 = spriteH / 2 + H / 2; if (sy1 >= H) sy1 = H - 1;
+        int sx0 = rawStartX < 0 ? 0 : rawStartX;
+        int sx1 = spriteW / 2 + screenX; if (sx1 > W) sx1 = W;
+        if (spriteW <= 0) continue;
+
+        double shade = 1.0 - c.ty / 14.0;
+        if (shade < 0.35) shade = 0.35; if (shade > 1.0) shade = 1.0;
+
+        for (int stripe = sx0; stripe < sx1; ++stripe) {
+            if (!(c.ty < zbuf_[static_cast<size_t>(stripe)])) continue;  // occluded by a wall
+            const int texX = (stripe - rawStartX) * im.w / spriteW;
+            if (texX < 0 || texX >= im.w) continue;
+            for (int y = sy0; y <= sy1; ++y) {
+                const int texY = (y - rawStartY) * im.h / spriteH;
+                if (texY < 0 || texY >= im.h) continue;
+                const gfx::Color col = im.pixels[static_cast<size_t>(texY) * im.w + texX];
+                if (gfx::a_of(col) == 0) continue;  // transparent texel
+                g.set_pixel(stripe, y, gfx::rgb(static_cast<uint8_t>(gfx::r_of(col) * shade),
+                                                static_cast<uint8_t>(gfx::g_of(col) * shade),
+                                                static_cast<uint8_t>(gfx::b_of(col) * shade)));
+            }
         }
     }
 

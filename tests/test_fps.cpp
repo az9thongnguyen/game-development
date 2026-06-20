@@ -71,11 +71,27 @@ static void test_no_fisheye() {
     CHECK(approx(a.perp_dist, b.perp_dist, 1e-9));
 }
 
+static void test_project_sprite() {
+    // dir (1,0), plane (0,0.66). A sprite 2 units straight ahead is centred
+    // (tx == 0) at depth 2.
+    const Cam2 a = project_sprite(1, 0, 0, 0.66, 2.0, 0.0);
+    CHECK(approx(a.tx, 0.0));
+    CHECK(approx(a.ty, 2.0));
+    // Off to the right -> tx > 0, same depth.
+    const Cam2 b = project_sprite(1, 0, 0, 0.66, 2.0, 1.0);
+    CHECK(b.tx > 0.0);
+    CHECK(approx(b.ty, 2.0));
+    // Behind the camera -> depth < 0.
+    const Cam2 c = project_sprite(1, 0, 0, 0.66, -2.0, 0.0);
+    CHECK(c.ty < 0.0);
+}
+
 int main() {
     test_map();
     test_cast_east();
     test_cast_south();
     test_no_fisheye();
+    test_project_sprite();
 
     if (g_failures == 0) std::printf("fps: all tests passed\n");
     else                 std::printf("fps: %d FAILURE(S)\n", g_failures);
