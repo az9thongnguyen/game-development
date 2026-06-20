@@ -1,0 +1,3 @@
+Chess piece images: the 'Cburnett' set by Colin M.L. Burnett,
+from Wikimedia Commons. Licensed CC-BY-SA 3.0 / GFDL / BSD.
+Downloaded + converted to .hrt by scripts/fetch_pieces.py.

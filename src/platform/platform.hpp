@@ -39,6 +39,8 @@ struct Config {
     int         fb_width  = 480;
     int         fb_height = 270;
     int         scale     = 2;
+    bool        smooth    = false;  // present scaling: false=nearest (retro), true=linear (smooth)
+    bool        highdpi   = true;   // use the display's full resolution for a crisp present
 };
 
 // ---- Lifetime ----
