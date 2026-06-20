@@ -55,7 +55,10 @@ int main(int argc, char** argv) {
                                               "{\"error\":\"expected {\\\"name\\\":..,\\\"score\\\":..}\"}\n",
                                               "application/json");
                 board.add(name, value);
-                board.save(scores_path);
+                if (!board.save(scores_path))
+                    return web::make_response(500, "Internal Server Error",
+                                              "{\"error\":\"could not persist score\"}\n",
+                                              "application/json");
                 return web::make_response(200, "OK", board.to_json(), "application/json");
             }
             return web::make_response(405, "Method Not Allowed", "method not allowed\n");
@@ -73,6 +76,7 @@ int main(int argc, char** argv) {
         web::Response r;
         r.content_type = web::mime_for(*file);
         r.body         = std::move(*bytes);
+        if (req.method == "HEAD") r.body.clear();   // headers only, no body (RFC 7231)
         return r;
     };
 

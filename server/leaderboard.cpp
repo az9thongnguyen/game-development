@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -42,8 +43,10 @@ bool next_record(const std::string& s, std::size_t& pos, std::string& name, long
     while (j < s.size() && std::isspace(static_cast<unsigned char>(s[j]))) ++j;
     const char* start = s.c_str() + j;
     char*       end   = nullptr;
+    errno = 0;
     const long  v     = std::strtol(start, &end, 10);
-    if (end == start) return false;                  // no digits
+    if (end == start || errno == ERANGE) return false;          // no digits / overflow
+    if (v < -1000000000L || v > 1000000000L) return false;      // reject absurd scores
 
     value = v;
     pos   = static_cast<std::size_t>(end - s.c_str());
@@ -57,8 +60,8 @@ std::string sanitize_name(const std::string& raw) {
     for (char c : raw) {
         if (out.size() >= 24) break;                                  // cap length
         const unsigned char u = static_cast<unsigned char>(c);
-        if (u < 0x20 || u == 0x7F) continue;                          // drop control chars
-        if (c == '"' || c == '\\') continue;                          // drop JSON-breakers
+        if (u < 0x20 || u > 0x7E) continue;        // printable ASCII only (valid UTF-8 JSON)
+        if (c == '"' || c == '\\') continue;       // drop JSON-breakers
         out.push_back(c);
     }
     if (out.empty()) out = "anon";
