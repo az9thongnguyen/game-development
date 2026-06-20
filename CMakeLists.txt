@@ -76,3 +76,13 @@ add_executable(demo
 )
 target_include_directories(demo PRIVATE src)
 target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags)
+
+# ---- Tests (CTest) -----------------------------------------------------------
+# Dependency-free unit tests for the engine core (no SDL needed). Run with:
+#   ctest --test-dir build --output-on-failure
+enable_testing()
+
+add_executable(test_math tests/test_math.cpp)
+target_include_directories(test_math PRIVATE src)
+target_link_libraries(test_math PRIVATE engine_flags)
+add_test(NAME math COMMAND test_math)
