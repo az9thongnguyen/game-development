@@ -201,6 +201,12 @@ void present() {
 
 const InputState& input() { return g_input; }
 
+bool init_audio() {
+    // M0 seam: no-op. Real device open + sound mixing arrives at M2 (gun /
+    // footstep audio for the FPS). Kept here so audio lives in the platform layer.
+    return true;
+}
+
 bool should_quit()  { return g_quit; }
 void request_quit() { g_quit = true; }
 
