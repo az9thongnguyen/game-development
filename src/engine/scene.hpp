@@ -21,20 +21,22 @@ namespace engine {
 
 // Everything a scene needs to draw one frame. Passed by const ref to render().
 struct Context {
-    gfx::Renderer2D& gfx;   // draw API over this frame's framebuffer
-    double           dt;    // real seconds since the last rendered frame
-    double           time;  // total simulated seconds (sum of fixed steps)
-    double           alpha; // [0,1): fraction into the next fixed step
-                            // (for interpolating smooth motion later)
-    // Input is added to the Context in Step 6.
+    gfx::Renderer2D&            gfx;    // draw API over this frame's framebuffer
+    const platform::InputState& input;  // normalized keyboard/mouse this frame
+    double                      dt;     // real seconds since the last rendered frame
+    double                      time;   // total simulated seconds (sum of fixed steps)
+    double                      alpha;  // [0,1): fraction into the next fixed step
 };
 
 class Scene {
 public:
     virtual ~Scene() = default;
 
-    // Fixed-timestep logic. Default: do nothing (handy for static scenes).
-    virtual void update(double dt) { (void)dt; }
+    // Fixed-timestep logic with the current input. Default: do nothing.
+    virtual void update(double dt, const platform::InputState& input) {
+        (void)dt;
+        (void)input;
+    }
 
     // Draw one frame. Required.
     virtual void render(const Context& ctx) = 0;
