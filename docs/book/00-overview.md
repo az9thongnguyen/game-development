@@ -94,7 +94,10 @@ checks).
 | 20 | **Geometry**: meshes & primitive generators (cube/plane/sphere/grid/axes) |
 | 21 | **Cameras**: orbit & free/fly |
 | 22 | **Shading, culling & clipping** (Lambert, flat/Gouraud, backface, near-clip) |
-| 23 | **M3 acceptance**: the `viz3d` scene in action |
+| 23 | **M3 acceptance**: the 3D core scene in action |
+| **M3.5 — interactive 3D sandbox** | |
+| 24 | **Mouse picking & rays** (screen→ray, ray/sphere, ray/plane) |
+| 25 | The **viz3d sandbox** — spawn/select/transform objects (M3.5 acceptance) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -107,7 +110,7 @@ observe → pitfalls → exercises.**
 | **M1 ✅** | Chess — Human↔Human & Human↔AI (minimax/alpha-beta), GUI + TUI |
 | **M2 ✅** | FPS raycaster (Wolfenstein-style) — adds real audio |
 | **M3 ✅** | Real 3D core: software rasterizer, z-buffer, perspective, cameras |
-| M3.5 | 3D visualization sandbox (next) |
+| **M3.5 ✅** | Interactive 3D sandbox: spawn/select/transform objects, mouse picking |
 | M4 | Isometric sim (depth sort, A*, save/load) |
 | M5 | Web port via Emscripten (no engine rewrite) |
 
