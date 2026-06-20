@@ -14,6 +14,11 @@ constexpr const char* kIndex = "demo.html";
 
 // Percent-decode (%XX). Done BEFORE the traversal check so encoded "%2e%2e"
 // can't sneak a ".." past us.
+int hex_val(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    return (std::tolower(static_cast<unsigned char>(c)) - 'a') + 10;
+}
+
 std::string percent_decode(const std::string& s) {
     std::string out;
     out.reserve(s.size());
@@ -21,8 +26,9 @@ std::string percent_decode(const std::string& s) {
         if (s[i] == '%' && i + 2 < s.size() &&
             std::isxdigit(static_cast<unsigned char>(s[i + 1])) &&
             std::isxdigit(static_cast<unsigned char>(s[i + 2]))) {
-            const std::string hex = s.substr(i + 1, 2);
-            out.push_back(static_cast<char>(std::stoi(hex, nullptr, 16)));
+            // Manual decode — no allocation, and cannot throw (guards above ensure
+            // both nibbles are hex digits).
+            out.push_back(static_cast<char>((hex_val(s[i + 1]) << 4) | hex_val(s[i + 2])));
             i += 2;
         } else {
             out.push_back(s[i]);

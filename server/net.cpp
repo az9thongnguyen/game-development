@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <cctype>
@@ -70,7 +71,8 @@ std::string read_request(int fd, bool& ok) {
             return buf;
         }
     }
-    ok = have_headers;     // GETs (no body) complete as soon as headers arrive
+    // Reached only on peer-close / size-cap: complete iff we got the full request.
+    ok = have_headers && buf.size() >= need;
     return buf;
 }
 
@@ -116,21 +118,37 @@ int serve(const std::string& host, int port, const Handler& handler) {
 
     for (;;) {
         const int c = ::accept(s, nullptr, nullptr);
-        if (c < 0) { if (errno == EINTR) continue; break; }
-
-        bool              ok  = false;
-        const std::string raw = read_request(c, ok);
-        Response          resp;
-        if (!ok) {
-            resp = make_response(400, "Bad Request", "bad request\n");
-        } else if (auto req = parse_request(raw)) {
-            resp = handler(*req);
-        } else {
-            resp = make_response(400, "Bad Request", "bad request\n");
+        if (c < 0) {
+            // Transient errors (client RST mid-handshake, fd table momentarily
+            // full) are recoverable — keep serving instead of exiting.
+            if (errno == EINTR || errno == ECONNABORTED ||
+                errno == EMFILE || errno == ENFILE) continue;
+            std::perror("accept");
+            break;
         }
-        const std::vector<uint8_t> bytes = serialize(resp);
-        write_all(c, bytes.data(), bytes.size());
-        ::close(c);
+
+        // Cap how long one slow/stalled client can hold the single accept loop.
+        timeval tv{};
+        tv.tv_sec = 5;
+        ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        try {
+            bool              ok  = false;
+            const std::string raw = read_request(c, ok);
+            Response          resp;
+            if (!ok) {
+                resp = make_response(400, "Bad Request", "bad request\n");
+            } else if (auto req = parse_request(raw)) {
+                resp = handler(*req);
+            } else {
+                resp = make_response(400, "Bad Request", "bad request\n");
+            }
+            const std::vector<uint8_t> bytes = serialize(resp);
+            write_all(c, bytes.data(), bytes.size());
+        } catch (...) {
+            // A bad_alloc on one request must not take the whole server down.
+        }
+        ::close(c);   // always closed (outside the try) — no fd leak on throw
     }
     ::close(s);
     return 0;
