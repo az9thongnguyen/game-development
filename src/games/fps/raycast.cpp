@@ -35,7 +35,10 @@ Hit cast_ray(const Map& m, double px, double py, double rx, double ry) {
     h.map_y = mapY;
     h.wall  = wall;
     h.perp_dist = (side == 0) ? (sX - dX) : (sY - dY);
-    if (h.perp_dist < 1e-9) h.perp_dist = 1e-9;
+    // Floor at 1mm (map units): avoids divide-by-zero AND keeps H/perp_dist far
+    // below INT_MAX, so the later cast to int can't overflow (UB) if the player
+    // is ever essentially inside a wall.
+    if (h.perp_dist < 0.001) h.perp_dist = 0.001;
 
     double wx = (side == 0) ? (py + h.perp_dist * ry) : (px + h.perp_dist * rx);
     wx -= std::floor(wx);

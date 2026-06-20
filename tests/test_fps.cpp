@@ -86,12 +86,22 @@ static void test_project_sprite() {
     CHECK(c.ty < 0.0);
 }
 
+static void test_perp_floor() {
+    // Standing a hair from the wall at x=5: perp distance must be floored (never
+    // tiny), so H/perp_dist can't overflow int when rendered.
+    const Map m = default_map();
+    const Hit h = cast_ray(m, 4.9995, 8.5, 1.0, 0.0);
+    CHECK(h.perp_dist >= 0.001 - 1e-12);
+    CHECK(h.wall == 2);
+}
+
 int main() {
     test_map();
     test_cast_east();
     test_cast_south();
     test_no_fisheye();
     test_project_sprite();
+    test_perp_floor();
 
     if (g_failures == 0) std::printf("fps: all tests passed\n");
     else                 std::printf("fps: %d FAILURE(S)\n", g_failures);
