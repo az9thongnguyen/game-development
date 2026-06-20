@@ -125,6 +125,7 @@ add_test(NAME chess COMMAND test_chess)
 add_library(fps_core STATIC
   src/games/fps/map.cpp
   src/games/fps/raycast.cpp
+  src/games/fps/textures.cpp
 )
 target_include_directories(fps_core PUBLIC src)
 target_link_libraries(fps_core PRIVATE engine_flags)

@@ -9,6 +9,7 @@
 
 #include "engine/scene.hpp"
 #include "games/fps/map.hpp"
+#include "games/fps/textures.hpp"
 
 namespace fps {
 
@@ -22,7 +23,8 @@ public:
 private:
     void try_move(double nx, double ny);  // move with axis-separated collision
 
-    Map    map_;
+    Map          map_;
+    WallTextures textures_;
     // Lodev-style camera: position + direction + camera plane (perpendicular).
     double posX_, posY_;
     double dirX_, dirY_;
