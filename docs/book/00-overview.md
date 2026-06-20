@@ -98,6 +98,13 @@ checks).
 | **M3.5 — interactive 3D sandbox** | |
 | 24 | **Mouse picking & rays** (screen→ray, ray/sphere, ray/plane) |
 | 25 | The **viz3d sandbox** — spawn/select/transform objects (M3.5 acceptance) |
+| **M4 — isometric simulation** | |
+| 26 | **Isometric projection** (the 2:1 diamond grid, grid↔screen, picking) |
+| 27 | **Tile map & depth sorting** (dense floor, painter's algorithm, the iso key) |
+| 28 | **A small ECS** (entities/components/systems, sparse sets, swap-and-pop) |
+| 29 | **A\* pathfinding** (g/h/f, octile heuristic, no corner cutting, smooth follow) |
+| 30 | **Save / load & serialization** (versioned text, transactional load, write seam) |
+| 31 | **M4 acceptance**: the isometric farm sim in action |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -111,7 +118,7 @@ observe → pitfalls → exercises.**
 | **M2 ✅** | FPS raycaster (Wolfenstein-style) — adds real audio |
 | **M3 ✅** | Real 3D core: software rasterizer, z-buffer, perspective, cameras |
 | **M3.5 ✅** | Interactive 3D sandbox: spawn/select/transform objects, mouse picking |
-| M4 | Isometric sim (depth sort, A*, save/load) |
+| **M4 ✅** | Isometric farm sim: tile map, depth sort, ECS, A* pathfinding, save/load |
 | M5 | Web port via Emscripten (no engine rewrite) |
 
 See `requirements.md` for the full specification, and `README.md` for the git

@@ -59,6 +59,10 @@ void pump_events() {
         {Key::Minus, SDL_SCANCODE_MINUS}, {Key::Equals, SDL_SCANCODE_EQUALS},
         {Key::Tab, SDL_SCANCODE_TAB}, {Key::Delete, SDL_SCANCODE_DELETE},
         {Key::Backspace, SDL_SCANCODE_BACKSPACE},
+        {Key::Num5, SDL_SCANCODE_5}, {Key::Num6, SDL_SCANCODE_6},
+        {Key::Num7, SDL_SCANCODE_7}, {Key::Num8, SDL_SCANCODE_8},
+        {Key::Num9, SDL_SCANCODE_9}, {Key::Num0, SDL_SCANCODE_0},
+        {Key::F5, SDL_SCANCODE_F5}, {Key::F9, SDL_SCANCODE_F9},
     };
     for (const KeyMap& m : kmap) {
         const bool now = ks[m.sc] != 0;
