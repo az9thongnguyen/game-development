@@ -2,13 +2,9 @@
 //  main.cpp  —  engine entry point + mode dispatch
 // =============================================================================
 //  Usage:
-//    demo                 -> M0 engine demo (window)
-//    demo --gui [hvh|hvai] [easy|medium|hard]  -> chess in the window
+//    demo                 -> M0 engine demo (retro 480x270 window)
+//    demo --gui [hvh|hvai] [easy|medium|hard]  -> chess (large, crisp window)
 //    demo --tui [hvh|hvai] [easy|medium|hard]  -> chess in the terminal
-//
-//  main only wires things together; the GUI paths talk to the platform/engine,
-//  the TUI path is pure stdin/stdout (no window), and all chess modes drive the
-//  shared chess core.
 // =============================================================================
 #include <memory>
 #include <string>
@@ -23,7 +19,6 @@
 
 namespace {
 
-// Parse optional "[hvh|hvai] [easy|medium|hard]" args starting at index `from`.
 void parse_chess_opts(int argc, char** argv, int from, bool& vs_ai, int& depth) {
     for (int i = from; i < argc; ++i) {
         const std::string a = argv[i];
@@ -35,16 +30,9 @@ void parse_chess_opts(int argc, char** argv, int from, bool& vs_ai, int& depth) 
     }
 }
 
-int run_window(const char* title, std::unique_ptr<engine::Scene> scene) {
-    platform::Config cfg;
-    cfg.title     = title;
-    cfg.fb_width  = 480;
-    cfg.fb_height = 270;
-    cfg.scale     = 2;
-
+int run_window(const platform::Config& cfg, std::unique_ptr<engine::Scene> scene) {
     if (!platform::init(cfg)) return 1;
     platform::init_audio();
-    assets::set_base_path("assets");
 
     engine::App app(std::move(scene));
     platform::run([&app](double dt) { app.frame(dt); });
@@ -56,6 +44,10 @@ int run_window(const char* title, std::unique_ptr<engine::Scene> scene) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // Resolve asset paths under ./assets BEFORE any scene is constructed (scenes
+    // load images/files in their constructors).
+    assets::set_base_path("assets");
+
     const std::string mode = (argc > 1) ? argv[1] : "";
 
     if (mode == "--tui") {
@@ -67,10 +59,21 @@ int main(int argc, char** argv) {
     if (mode == "--gui") {
         bool vs_ai = true; int depth = 4;
         parse_chess_opts(argc, argv, 2, vs_ai, depth);
-        return run_window("hand-engine — chess",
-                          std::make_unique<chess::ChessScene>(vs_ai, depth));
+        platform::Config cfg;
+        cfg.title     = "hand-engine — chess";
+        cfg.fb_width  = 980;   // large + crisp (1:1, smooth scaling, HiDPI)
+        cfg.fb_height = 720;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<chess::ChessScene>(vs_ai, depth));
     }
 
-    // No args: the M0 engine demo.
-    return run_window("hand-engine — M0", std::make_unique<demo::DemoScene>());
+    // No args: the M0 engine demo (retro 480x270, nearest scaling).
+    platform::Config cfg;
+    cfg.title     = "hand-engine — M0";
+    cfg.fb_width  = 480;
+    cfg.fb_height = 270;
+    cfg.scale     = 2;
+    return run_window(cfg, std::make_unique<demo::DemoScene>());
 }
