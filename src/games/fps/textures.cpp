@@ -3,6 +3,8 @@
 // =============================================================================
 #include "games/fps/textures.hpp"
 
+#include <cmath>
+
 #include "engine/color.hpp"
 
 namespace fps {
@@ -71,6 +73,26 @@ WallTextures make_wall_textures() {
     w.tex[2] = make_brick();  // room walls
     w.tex[3] = make_wood();   // pillars
     return w;
+}
+
+gfx::Image make_barrel() {
+    gfx::Image im; im.w = T; im.h = T;
+    im.pixels.assign(static_cast<size_t>(T) * T, 0u);  // fully transparent
+    const int cx = T / 2;
+    for (int y = 6; y < T - 3; ++y) {
+        const double yn = (y - 6) / static_cast<double>(T - 10);  // 0..1 down the body
+        if (yn < 0.0 || yn > 1.0) continue;
+        const double bulge = std::sin(yn * 3.14159265);            // fat in the middle
+        const int halfw = static_cast<int>((T * 0.30) * (0.72 + 0.28 * bulge));
+        const bool hoop = (y % 14) < 2;                            // metal bands
+        for (int x = cx - halfw; x <= cx + halfw; ++x) {
+            const int n = static_cast<int>(hash2(x, y) % 20) - 10;
+            im.pixels[static_cast<size_t>(y) * T + x] =
+                hoop ? gfx::rgb(60, 55, 50)
+                     : gfx::rgb(cl(124 + n), cl(74 + n), cl(40 + n));  // wood brown
+        }
+    }
+    return im;
 }
 
 } // namespace fps

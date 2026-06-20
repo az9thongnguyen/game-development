@@ -24,4 +24,6 @@ struct WallTextures {
 
 WallTextures make_wall_textures();  // 64x64 each: stone / brick / wood
 
+gfx::Image make_barrel();  // 64x64 billboard sprite (transparent background)
+
 } // namespace fps

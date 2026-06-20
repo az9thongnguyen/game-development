@@ -43,4 +43,14 @@ Hit cast_ray(const Map& m, double px, double py, double rx, double ry) {
     return h;
 }
 
+Cam2 project_sprite(double dirX, double dirY, double planeX, double planeY,
+                    double relX, double relY) {
+    // Inverse of the [plane dir] camera matrix applied to the relative position.
+    const double invDet = 1.0 / (planeX * dirY - dirX * planeY);
+    Cam2 c;
+    c.tx = invDet * (dirY * relX - dirX * relY);
+    c.ty = invDet * (-planeY * relX + planeX * relY);  // depth along the view dir
+    return c;
+}
+
 } // namespace fps

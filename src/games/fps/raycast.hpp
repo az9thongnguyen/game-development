@@ -24,4 +24,10 @@ struct Hit {
 // Cast a ray from (px,py) in direction (rx,ry) through the grid until a wall.
 Hit cast_ray(const Map& m, double px, double py, double rx, double ry);
 
+// Project a sprite (given relative to the player: relX/relY) into camera space.
+// tx = horizontal offset (screen x = W/2 * (1 + tx/ty)); ty = depth (>0 = ahead).
+struct Cam2 { double tx, ty; };
+Cam2 project_sprite(double dirX, double dirY, double planeX, double planeY,
+                    double relX, double relY);
+
 } // namespace fps
