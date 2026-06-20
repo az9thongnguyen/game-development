@@ -29,21 +29,92 @@ std::vector<uint32_t> g_pixels;              // <-- THE framebuffer (ARGB8888)
 int                   g_fb_w = 0;
 int                   g_fb_h = 0;
 bool                  g_quit  = false;
+InputState            g_input;             // normalized input snapshot (Step 6)
 
 // Testing aid: if HAND_ENGINE_FRAMES=N is set in the environment, the loop quits
 // after N frames. Lets us run head-less (CI, leak checks) without a human closing
 // the window. -1 means "run until quit".
 long g_max_frames = -1;
 
+Key map_key(SDL_Keycode k) {
+    switch (k) {
+        case SDLK_UP:     return Key::Up;
+        case SDLK_DOWN:   return Key::Down;
+        case SDLK_LEFT:   return Key::Left;
+        case SDLK_RIGHT:  return Key::Right;
+        case SDLK_w:      return Key::W;
+        case SDLK_a:      return Key::A;
+        case SDLK_s:      return Key::S;
+        case SDLK_d:      return Key::D;
+        case SDLK_SPACE:  return Key::Space;
+        case SDLK_RETURN: return Key::Enter;
+        case SDLK_ESCAPE: return Key::Escape;
+        default:          return Key::Unknown;
+    }
+}
+
 void pump_events() {
+    // A new frame: clear the per-frame EDGES (pressed/released) but keep the LEVEL
+    // (down) state, which persists until a key-up arrives.
+    for (int i = 0; i < int(Key::Count); ++i) {
+        g_input.key_pressed[i]  = false;
+        g_input.key_released[i] = false;
+    }
+    for (int i = 0; i < int(MouseButton::Count); ++i) {
+        g_input.mouse_pressed[i]  = false;
+        g_input.mouse_released[i] = false;
+    }
+
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) {
-            g_quit = true;   // window close button / Cmd-Q
-        } else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
-            g_quit = true;   // convenience kill-switch; full input arrives in Step 6
+        switch (e.type) {
+            case SDL_QUIT:
+                g_quit = true;  // window close button / Cmd-Q
+                break;
+
+            case SDL_KEYDOWN: {
+                if (e.key.keysym.sym == SDLK_ESCAPE) g_quit = true;  // kill switch
+                if (e.key.repeat) break;          // ignore auto-repeat for edges
+                const Key k = map_key(e.key.keysym.sym);
+                if (k != Key::Unknown) {
+                    g_input.key_down[int(k)]    = true;
+                    g_input.key_pressed[int(k)] = true;
+                }
+                break;
+            }
+            case SDL_KEYUP: {
+                const Key k = map_key(e.key.keysym.sym);
+                if (k != Key::Unknown) {
+                    g_input.key_down[int(k)]     = false;
+                    g_input.key_released[int(k)] = true;
+                }
+                break;
+            }
+
+            case SDL_MOUSEMOTION: {
+                // Convert window pixels -> framebuffer (logical) coordinates, so
+                // mouse position matches what the renderer draws.
+                float lx = 0.0f, ly = 0.0f;
+                SDL_RenderWindowToLogical(g_renderer, e.motion.x, e.motion.y, &lx, &ly);
+                g_input.mouse_x = int(lx);
+                g_input.mouse_y = int(ly);
+                break;
+            }
+            case SDL_MOUSEBUTTONDOWN:
+            case SDL_MOUSEBUTTONUP: {
+                int b = -1;
+                if      (e.button.button == SDL_BUTTON_LEFT)   b = int(MouseButton::Left);
+                else if (e.button.button == SDL_BUTTON_RIGHT)  b = int(MouseButton::Right);
+                else if (e.button.button == SDL_BUTTON_MIDDLE) b = int(MouseButton::Middle);
+                if (b >= 0) {
+                    const bool now_down = (e.type == SDL_MOUSEBUTTONDOWN);
+                    g_input.mouse_down[b] = now_down;
+                    if (now_down) g_input.mouse_pressed[b]  = true;
+                    else          g_input.mouse_released[b] = true;
+                }
+                break;
+            }
         }
-        // Other keyboard/mouse handling arrives in the input chapter (Step 6).
     }
 }
 
@@ -126,6 +197,14 @@ void present() {
     SDL_RenderClear(g_renderer);
     SDL_RenderCopy(g_renderer, g_texture, nullptr, nullptr);
     SDL_RenderPresent(g_renderer);
+}
+
+const InputState& input() { return g_input; }
+
+bool init_audio() {
+    // M0 seam: no-op. Real device open + sound mixing arrives at M2 (gun /
+    // footstep audio for the FPS). Kept here so audio lives in the platform layer.
+    return true;
 }
 
 bool should_quit()  { return g_quit; }

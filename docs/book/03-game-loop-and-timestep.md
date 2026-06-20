@@ -1,115 +1,190 @@
 # Chapter 03 — The Game Loop & Fixed Timestep
 
-> **What you'll learn:** what a game loop really is, why naively using "time since
-> last frame" makes games behave differently on different machines, how a
-> **fixed-timestep accumulator** fixes that, and the `Scene`/`App` structure that
-> every game in this project plugs into. You'll also see *why* the loop lives in
-> the platform layer — it's the key to the web port.
+> **Goal of this chapter.** Understand the heartbeat of every real-time game: the
+> loop. We'll see why the obvious "move by time-since-last-frame" approach is
+> subtly broken, fix it with a **fixed-timestep accumulator** (tracing the numbers
+> by hand), and meet the `Scene`/`App` structure every game in this project plugs
+> into. We'll also explain *why the loop lives in the platform layer* — the single
+> trick that makes the web port a drop-in.
 
 ---
 
-## 1. The idea
+## 1. What a game loop is
 
-### What a game loop is
-
-Every real-time game is the same loop, forever:
+Strip any real-time game to its skeleton and you get one loop, run forever:
 
 ```
-  read input  →  advance the world a little  →  draw the world  →  repeat
+   ┌────────────────────────────────────────────┐
+   │  read input → advance the world → draw it   │  ← one "frame"
+   └───────────────▲────────────────────────────┘
+                   └──────────── repeat ─────────┘
 ```
 
-Each trip around is one **frame**. The question is: *how much* should the world
-advance each frame?
+One trip around is a **frame**. On a 60 Hz monitor that's ~60 times a second, so
+each frame has ~16.7 ms to do everything. The central question of this chapter is
+deceptively simple: **how much should the world advance each frame?**
 
-### The naive answer, and why it's a trap
+---
 
-The obvious idea: measure the real time since the last frame (`dt`) and move
-everything by `velocity * dt`. This is called a **variable timestep**. It seems
-fine, but it has real problems:
+## 2. The obvious answer, and why it's a trap
 
-- **Non-determinism.** Floating-point results depend on the exact `dt` values, so
-  the same inputs produce *different* outcomes on a 60 Hz vs 144 Hz display, or
-  when the frame rate dips. For chess that's harmless; for physics, collisions,
-  and replays it's a nightmare.
-- **Big hitches break things.** If one frame takes 0.5 s (you dragged the window),
-  a fast object can *teleport through* a wall because it moved half a second in
-  one step.
+The intuitive approach — a **variable timestep** — measures real elapsed seconds
+`dt` and scales motion by it: `position += velocity * dt`. It looks correct, and
+for slow-moving UI it's fine. But it has two real failure modes.
 
-### The fix: a fixed timestep with an accumulator
+**Failure 1 — non-determinism.** Floating-point arithmetic isn't associative:
+adding `velocity * 0.016` sixty times does **not** give exactly the same result as
+adding `velocity * 0.0166…` a different number of times. So the *same inputs*
+produce *different* outcomes at 60 Hz vs 144 Hz, or whenever the frame rate
+wobbles. For chess that's harmless; for physics, collision, replays, and
+networked play it's a debugging nightmare — "it only desyncs on his machine".
 
-We separate two clocks:
+**Failure 2 — tunnelling on a hitch.** Say a bullet moves 1000 px/s and a wall is
+20 px thick. Normally `dt ≈ 0.016`, so the bullet steps ~16 px/frame and hits the
+wall. Now you drag the window and one frame takes `dt = 0.5 s`: the bullet jumps
+`1000 * 0.5 = 500 px` in a single step and **passes straight through the wall** —
+no collision ever tested at the in-between positions.
 
-- **Logic** advances in fixed, equal chunks — always `1/60` of a second.
+Both failures share a root cause: *logic is being driven by an unpredictable,
+variable `dt`.*
+
+---
+
+## 3. The fix: a fixed timestep with an accumulator
+
+Decouple two clocks:
+
+- **Logic** advances only in fixed, equal chunks — always `FIXED_DT = 1/60 s`.
 - **Rendering** happens once per frame, as often as the display allows.
 
-We keep an **accumulator** of unspent real time. Each frame we add the real `dt`
-to it, then spend it in fixed `1/60 s` chunks:
+Keep an **accumulator** of real time that hasn't been simulated yet. Each frame,
+add the real `dt`, then spend it in whole `FIXED_DT` chunks:
 
 ```
 accumulator += dt
-while accumulator >= FIXED_DT:        # may run 0, 1, or several times
-    update(FIXED_DT)                  # logic always sees the SAME dt
+while accumulator >= FIXED_DT:      # runs 0, 1, or several times
+    update(FIXED_DT)                # logic ALWAYS sees the same dt
     accumulator -= FIXED_DT
-render()                              # draw once
+render()                            # draw once, using leftover for smoothing
 ```
 
-Now logic is deterministic (every `update` sees exactly `1/60`), and rendering
-still floats with the display. This is the classic pattern from Glenn Fiedler's
-"Fix Your Timestep!", and it's the heartbeat of the whole engine.
+### Trace it by hand
 
-Two refinements in our code:
+`FIXED_DT = 1/60 ≈ 0.01667 s`. Suppose frames arrive with uneven real `dt`:
 
-- **Clamp huge frames.** If `dt > 0.25 s`, we clamp it. Otherwise after a long
-  pause the `while` loop would try to simulate hundreds of steps to "catch up",
-  making things *worse* — the so-called **spiral of death**.
-- **`alpha` for smoothness (later).** The leftover `accumulator / FIXED_DT` is a
-  fraction in `[0,1)` telling us how far we are *between* logic steps. Renderers
-  can interpolate with it for buttery motion. We pass it in the `Context`; M0
-  doesn't need it yet, but it's there for M3.
+| Frame | real `dt` | accumulator before | updates run | accumulator after | `alpha` (acc/FIXED_DT) |
+|------:|----------:|-------------------:|:-----------:|------------------:|----------------------:|
+| 1 | 0.020 | 0.0200 | **1** | 0.0033 | 0.20 |
+| 2 | 0.010 | 0.0133 | **0** | 0.0133 | 0.80 |
+| 3 | 0.030 | 0.0433 | **2** | 0.0100 | 0.60 |
 
-### Why the loop lives in the *platform* layer
+After 3 frames, real time elapsed = `0.060 s`; updates ran `1+0+2 = 3` times =
+`3 × 0.01667 = 0.050 s` of simulated time, with `0.010 s` still waiting in the
+accumulator for next frame. Logic *always* saw exactly `0.01667` — deterministic —
+while rendering kept pace with the display. This is the classic pattern from Glenn
+Fiedler's "Fix Your Timestep!", and it's the engine's heartbeat.
 
-Here's the subtle, important part. A normal desktop loop is a blocking
-`while (!quit) { ... }`. **The browser forbids that.** Under Emscripten you must
-hand the browser *one frame function* and let *it* call you (`emscripten_set_main
-_loop`) — if you block in a `while(true)`, the page freezes.
+### Refinement 1 — clamp the spiral of death
 
-So we put the loop *mechanism* in the platform backend (`platform::run`) and have
-it call a `frame(dt)` callback. Desktop implements `run` as a `while` loop; the
-web backend (M5) will implement the same `run` using `emscripten_set_main_loop` —
-and the engine/game code that just provides a `frame` callback **doesn't change at
-all**. The fixed-timestep *logic*, meanwhile, lives in the engine (`App::frame`),
-because that's game behavior, not platform plumbing.
+If one frame is huge (you dragged the window for 2 s), the accumulator becomes
+`2.0`, and the `while` loop tries to run `2.0 / 0.01667 ≈ 120` updates in one
+frame. That makes the frame *even slower*, which makes the next accumulator *even
+bigger* — a runaway called the **spiral of death**. We cap the incoming `dt`:
 
-> This is why you'll never see a `while(true)` in engine or game code in this
-> project. That rule isn't style — it's what keeps the web port a drop-in.
+```cpp
+if (dt > 0.25) dt = 0.25;   // simulate at most ~15 steps to catch up, then move on
+```
+
+The game appears to "pause and resume" after a stall instead of freezing forever.
+
+### Refinement 2 — `alpha` for smooth rendering (used later)
+
+After the loop, `accumulator / FIXED_DT` is a fraction in `[0, 1)`: how far we are
+*between* the last simulated step and the next. A renderer can interpolate a
+moving object as `pos = lerp(prev_pos, curr_pos, alpha)` so motion looks buttery
+even though logic ticks at a fixed rate. M0 doesn't need it, but we pass `alpha`
+in the `Context` so M3 can use it for free.
 
 ---
 
-## 2. The code
+## 4. Why the loop lives in the *platform* layer
+
+Here's the non-obvious payoff. A normal desktop loop blocks:
+
+```cpp
+while (!quit) { ...one frame... }   // never returns until you quit
+```
+
+**The browser forbids this.** A web page runs on a single cooperative thread that
+also handles rendering, events, and layout. If your code never returns, the page
+*freezes* — no repaint, no clicks, the dreaded "page unresponsive". Emscripten's
+answer is inversion of control: you hand the browser *one frame function* and it
+calls you back each animation frame via `emscripten_set_main_loop`.
+
+So we put the loop **mechanism** in the platform backend and have it call a
+`frame(dt)` callback:
+
+```
+   platform::run(frame)          engine/game just provides `frame`
+      │
+      ├─ desktop backend:  while(!quit){ pump; dt=...; frame(dt); present; }
+      └─ web backend (M5): emscripten_set_main_loop( call frame once per rAF )
+```
+
+Same `run` signature, two mechanisms. The engine and games only ever supply a
+`frame` callback, so swapping desktop ↔ web changes **nothing** above the platform
+layer. Meanwhile the fixed-timestep *logic* lives in the engine (`App::frame`),
+because that's game behavior, not platform plumbing.
+
+> This is why you will **never** see a `while(true)` in engine or game code in this
+> project. It isn't a style preference — a high-level blocking loop would make the
+> web port impossible without a rewrite. (At M5 there's one small wrinkle:
+> `emscripten_set_main_loop` wants a C function pointer, so the web backend stashes
+> the `std::function` in a static and calls it from a tiny trampoline. That detail
+> stays entirely inside the backend.)
+
+---
+
+## 5. The code
 
 ### `scene.hpp` — Scene + Context
 
-A `Scene` is one screen (the demo, chess, a menu). It has two methods:
+A **Scene** is one screen: the M0 demo, the chess board, a menu. It exposes two
+methods:
 
 ```cpp
-virtual void update(double dt);            // fixed-step logic (default: nothing)
-virtual void render(const Context& ctx) = 0;  // draw one frame
+virtual void update(double dt);              // fixed-step logic (default: nothing)
+virtual void render(const Context& ctx) = 0; // draw one frame (required)
 ```
 
-`Context` is everything needed to draw a frame: the `Framebuffer`, the render
-`dt`, total `time`, and `alpha`. Passing a small bundle (instead of globals) keeps
-scenes self-contained and easy to test.
+Splitting `update` (advance the simulation) from `render` (draw it) is exactly the
+two-clocks idea in code: `update` is what the accumulator calls in fixed chunks;
+`render` is what runs once per frame.
+
+**Context** bundles everything a scene needs to draw, passed by const-ref instead
+of reaching for globals:
+
+```cpp
+struct Context {
+    platform::Framebuffer fb;    // where to draw
+    double dt;                   // real seconds since last render (for effects)
+    double time;                 // total simulated seconds
+    double alpha;                // [0,1) interpolation factor
+};
+```
+
+Passing a small bundle keeps scenes self-contained and testable — you could call
+`render` with a hand-made `Context` in a test.
 
 ### `app.hpp` / `app.cpp` — the App
 
-`App` owns the current scene plus the accumulator and total time. Its one job is
-`App::frame(dt)`, which is exactly the accumulator pattern above:
+`App` owns the current scene plus the accumulator and total time. Its whole job is
+`App::frame(dt)`, which is the accumulator pattern verbatim:
 
 ```cpp
-if (dt > 0.25) dt = 0.25;                 // clamp the spiral of death
+if (dt > 0.25) dt = 0.25;                  // clamp (spiral of death)
 accumulator_ += dt;
-while (accumulator_ >= kFixedDt) {        // kFixedDt = 1/60
+while (accumulator_ >= kFixedDt) {         // kFixedDt = 1.0/60.0
     scene_->update(kFixedDt);
     accumulator_ -= kFixedDt;
     time_        += kFixedDt;
@@ -118,8 +193,10 @@ Context ctx{ platform::framebuffer(), dt, time_, accumulator_ / kFixedDt };
 scene_->render(ctx);
 ```
 
-`App` reaches the framebuffer through `platform::framebuffer()` — again, the only
-dependency is the platform interface.
+It reaches the framebuffer through `platform::framebuffer()` — once again, the only
+dependency is the platform interface. The active scene is held in a
+`std::unique_ptr<Scene>`, so when `App` is destroyed the scene is cleaned up
+automatically (RAII — no manual `delete`).
 
 ### `main.cpp` — wiring it together
 
@@ -129,54 +206,82 @@ platform::run([&app](double dt) { app.frame(dt); });
 ```
 
 `platform::run` drives the loop and calls our lambda each frame; the lambda
-forwards to `App::frame`, which runs the scene. `ColorScene` is a throwaway that
-animates the background through a rainbow using `ctx.time` — its only purpose is
-to prove the loop drives a scene. Step 8 replaces it with the real demo.
+forwards to `App::frame`, which advances + renders the scene. `ColorScene` is a
+throwaway that cycles the background through a rainbow using `ctx.time`; its only
+job is to prove the loop drives a scene. Step 8 swaps in the real demo.
 
 ### One small platform edit
 
-We also taught `pump_events()` to quit on **ESC** (a convenience kill-switch).
-Real, normalized keyboard input arrives in Chapter 06; this is just so you can
-close the window from the keyboard now.
+We also taught `pump_events()` to quit on **ESC**, a convenience kill-switch. Real,
+normalized keyboard input (with pressed/released/held distinctions) arrives in
+Chapter 06; this is just so you can close the window from the keyboard today.
 
 ---
 
-## 3. Run & observe
+## 6. Run & observe
 
 ```sh
 cmake --build build
 ./build/demo
 ```
 
-The window now **smoothly cycles through colors** instead of sitting on one. ESC
-or the close button exits. The motion is driven by simulated time accumulated in
-fixed `1/60 s` steps — even though the display might refresh at 60, 120, or an
-uneven rate, the color progression advances at a consistent pace.
-
-Head-less check:
+The window now **cycles colors smoothly** instead of sitting on one. ESC or the
+close button exits. Even if your display refreshes at 60, 120, or an uneven rate,
+the color advances at a consistent pace — because it's driven by simulated time
+accumulated in fixed `1/60 s` steps, not by raw frame timing.
 
 ```sh
-HAND_ENGINE_FRAMES=120 ./build/demo   # ~2 seconds of animation, exits 0
+HAND_ENGINE_FRAMES=120 ./build/demo   # ~2 s of animation, exits 0
 ```
 
 ---
 
-## 4. Exercises
+## 7. Common pitfalls
 
-1. **Slow it down.** In `ColorScene::render`, change `ctx.time * 0.7` to
-   `ctx.time * 0.2`. The cycle should slow. Why does using `ctx.time` (not the
-   per-frame `dt`) make the speed independent of frame rate?
-2. **Count updates.** Add a `static int n = 0; n++;` inside `App`'s `while` loop
-   and print `n` once a second. Confirm it climbs at ~60/second regardless of how
-   fast rendering happens.
-3. **Provoke the clamp.** Reason about what happens to `accumulator_` if a single
-   frame takes 2 seconds, with the `0.25` clamp and without it. How many update
-   steps would run in each case?
+- **Using `dt` inside `update`.** Logic should use the fixed step (`kFixedDt`), not
+  the variable render `dt` — mixing them brings back non-determinism.
+- **Drawing inside `update`.** `update` advances state; only `render` touches the
+  framebuffer. Drawing in `update` would draw 0–N times per frame.
+- **No clamp.** Without the `0.25` cap, a single long stall can freeze the game in
+  a catch-up spiral.
+- **Tying animation speed to frame rate.** Animate from `ctx.time` (or per-step in
+  `update`), never "per frame", or it runs faster on faster machines.
 
 ---
 
-## 5. What's next
+## 8. Glossary
 
-We have a window and a beating heart. Before we draw anything interesting we need
-**math** — vectors and matrices — which underpins both 2D drawing and the 3D core
-later. **Chapter 04** builds the math library and tests it.
+- **Frame** — one trip through read→update→render.
+- **Variable timestep** — advancing by real `dt`; simple but non-deterministic.
+- **Fixed timestep** — advancing logic in equal `1/60 s` chunks.
+- **Accumulator** — stored unspent real time, drained in fixed chunks.
+- **Spiral of death** — runaway catch-up after a long frame; prevented by clamping.
+- **Interpolation / `alpha`** — blending between fixed steps for smooth visuals.
+- **Inversion of control** — the browser calls your frame function, not vice-versa.
+- **RAII** — resources freed automatically when their owner is destroyed.
+
+---
+
+## 9. Exercises
+
+1. **Slow the cycle.** Change `ctx.time * 0.7` to `ctx.time * 0.2` in
+   `ColorScene::render`. Why does using `ctx.time` (not per-frame `dt`) make speed
+   independent of frame rate? *(Hint: `time` is the same total regardless of how
+   many frames it took to get there.)*
+2. **Count updates.** Put `static int n = 0; ++n;` inside `App`'s `while` loop and
+   print `n` once per simulated second. Confirm it climbs ~60/s no matter how fast
+   rendering runs. *(Hint: print when `time_` crosses each integer.)*
+3. **Trace on paper.** With `FIXED_DT = 1/60`, continue the §3 table for two more
+   frames with `dt = 0.005` then `dt = 0.040`. How many updates run each frame, and
+   what's the accumulator afterward?
+4. **Reason about the clamp.** A frame takes 2.0 s. How many `update` calls happen
+   *with* the `0.25` clamp vs *without* it? *(Hint: updates ≈ dt / FIXED_DT.)*
+
+---
+
+## 10. What's next
+
+We have a window and a beating heart, but we can only fill the screen with flat
+color. Before we draw anything structured we need **math** — vectors and matrices —
+which underpins both 2D drawing now and the real 3D core at M3. **Chapter 04**
+builds the math library from scratch and tests it with `ctest`.

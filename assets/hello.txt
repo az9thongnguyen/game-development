@@ -1,0 +1,3 @@
+Hello from assets/ - loaded through the asset seam!
+This file proves engine/assets.cpp can read data without SDL,
+the same way it will on the web (Emscripten virtual filesystem) at M5.
