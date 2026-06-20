@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- =========================================================================
+     web/shell.html  —  the page Emscripten wraps the WASM build in (M5)
+     ----------------------------------------------------------------------- -->
+<!-- emcc substitutes {{{ SCRIPT }}} with the loader for demo.js/demo.wasm. The
+     ONLY app-specific thing here is `Module.arguments`, which become argv[1..]
+     in our unchanged main.cpp — that is how the web build picks which scene to
+     run WITHOUT a recompile or any engine/game change. Edit the array to switch
+     scenes:  --gui (chess) | --iso (farm sim) | --3d | --viz3d | --fps | (none = M0 demo)
+     ========================================================================= -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>hand-engine — WebAssembly</title>
+  <style>
+    html, body { margin: 0; background: #15171e; color: #c8d0dc;
+                 font-family: ui-monospace, Menlo, monospace; }
+    .wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; }
+    h1 { font-size: 15px; font-weight: 600; color: #9fb4d6; margin: 4px 0; }
+    canvas { background: #000; border: 1px solid #2a2f3a; image-rendering: auto;
+             max-width: 100%; }
+    #status { font-size: 12px; color: #7f8aa0; min-height: 1em; }
+    #log { white-space: pre-wrap; font-size: 11px; color: #66708a;
+           width: min(960px, 92vw); max-height: 110px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>hand-written C++ game engine → WebAssembly</h1>
+    <div id="status">loading WASM…</div>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <div id="log"></div>
+  </div>
+  <script>
+    var statusEl = document.getElementById('status');
+    var logEl    = document.getElementById('log');
+    var Module = {
+      // argv[1..] for main.cpp — chess is the M5 acceptance scene.
+      arguments: ['--gui', 'hvai', 'medium'],
+      canvas: document.getElementById('canvas'),
+      setStatus: function (t) { statusEl.textContent = t; },
+      print:    function (t) { logEl.textContent += t + "\n"; logEl.scrollTop = logEl.scrollHeight; },
+      printErr: function (t) { logEl.textContent += t + "\n"; },
+      onRuntimeInitialized: function () { statusEl.textContent = 'running'; }
+    };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>
