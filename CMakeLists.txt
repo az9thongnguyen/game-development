@@ -104,6 +104,13 @@ target_include_directories(test_math PRIVATE src)
 target_link_libraries(test_math PRIVATE engine_flags)
 add_test(NAME math COMMAND test_math)
 
+# ---- 3D pipeline tests (M3): pure math, no SDL -------------------------------
+# Sources grow with the milestone; step 2 covers the header-only pipeline.
+add_executable(test_render3d tests/test_render3d.cpp)
+target_include_directories(test_render3d PRIVATE src)
+target_link_libraries(test_render3d PRIVATE engine_flags)
+add_test(NAME render3d COMMAND test_render3d)
+
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
 add_library(chess_core STATIC
