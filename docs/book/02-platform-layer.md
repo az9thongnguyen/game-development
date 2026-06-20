@@ -108,7 +108,12 @@ Read it as a contract:
 
 ```cpp
 struct Framebuffer { uint32_t* pixels; int width, height, pitch; };
-struct Config      { const char* title; int fb_width, fb_height, scale; };
+struct Config {
+    const char* title;
+    int  fb_width, fb_height, scale;
+    bool smooth   = false;  // present scaling: false = nearest (retro), true = linear
+    bool highdpi  = true;   // render at the display's full pixel density
+};
 
 bool init(const Config&);   void shutdown();
 Framebuffer framebuffer();  void present();
@@ -120,6 +125,19 @@ Notice what's *absent*: any `SDL_` type. `Framebuffer` is plain pointers and int
 `run` takes a plain callback. That absence is the seam doing its job. `fb_width`/
 `fb_height` are the **logical** render resolution; `scale` is the integer factor
 the window is blown up by (480×270 ×2 → a 960×540 window).
+
+The last two fields choose *how the buffer is scaled to the window* — added once the
+project grew past the retro M0 demo:
+
+- **`smooth`** — `false` gives crisp, blocky **nearest-neighbor** upscaling (perfect
+  for the 480×270 pixel-art demo); `true` gives **linear** filtering, which looks
+  right when the framebuffer is already large and we just want it to fill the window
+  without hard pixel edges (chess, fps, the 3D core, the iso sim all set `smooth = true`).
+- **`highdpi`** — on a Retina display, render into the panel's *real* pixels instead
+  of a 1× scaled-up blur, so text and edges stay sharp.
+
+The M0 demo leaves both at the retro defaults; the later large-window scenes opt in
+to `smooth = true, highdpi = true`. Same interface, two looks.
 
 ---
 
@@ -165,19 +183,37 @@ vsync enabled, the flip waits for the monitor's refresh, which also paces us to
 > rectangle to the window. Every pixel inside was computed by us. On the web this
 > exact step becomes "copy the buffer into a `<canvas>`".
 
-### Crisp upscaling
+### Scaling the framebuffer to the window
 
-Three settings make the small framebuffer fill the window with sharp, blocky
-pixels instead of a blurry stretch:
+The same three SDL settings control upscaling, but their values come from the
+`Config` flags so one backend serves both the retro demo and the large, smooth
+scenes:
 
 ```cpp
-SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest"); // no interpolation between pixels
-SDL_RenderSetLogicalSize(g_renderer, g_fb_w, g_fb_h);  // pretend the window IS 480×270
-SDL_RenderSetIntegerScale(g_renderer, SDL_TRUE);        // only whole-number multiples
+SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, cfg.smooth ? "linear" : "nearest");
+SDL_RenderSetLogicalSize(g_renderer, g_fb_w, g_fb_h);            // window "is" fb_w×fb_h
+SDL_RenderSetIntegerScale(g_renderer, cfg.smooth ? SDL_FALSE : SDL_TRUE);
 ```
-"nearest" picks the closest source pixel (crisp); "linear" would blend neighbours
-(blurry — wrong for pixel art). Logical size + integer scale guarantee an exact
-2×, 3×, … multiple with no fractional smearing.
+
+- **`"nearest"` + integer scale** (the demo, `smooth = false`): each source pixel
+  becomes an exact N×N block — crisp, no smearing. The right choice for 480×270 pixel
+  art shown at 2×/3×.
+- **`"linear"`, no integer constraint** (`smooth = true`): neighbours are blended and
+  the framebuffer may scale by a fractional factor to fill the window. The right
+  choice when the framebuffer is *already* large (chess at 980×720, the 3D core at
+  960×600) and we just want it to fit the window cleanly.
+
+HiDPI ties in at window creation: the `SDL_WINDOW_ALLOW_HIGHDPI` flag is set when
+`cfg.highdpi` is true, so on a Retina panel SDL gives us the full backing-store
+resolution to present into instead of a 1× upscale.
+
+```cpp
+const Uint32 flags = SDL_WINDOW_SHOWN | (cfg.highdpi ? SDL_WINDOW_ALLOW_HIGHDPI : 0u);
+```
+
+(The buffer upload itself is format-agnostic about all this — `SDL_UpdateTexture`
+takes the row pitch in *bytes*, `g_fb_w * sizeof(uint32_t)`; the renderer does the
+scaling on the way to the window.)
 
 ### Keeping `main()` ours: `SDL_MAIN_HANDLED`
 

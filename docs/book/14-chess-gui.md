@@ -1,10 +1,12 @@
-# Chapter 14 — The Windowed Frontend (GUI)
+# Chapter 14 — The Windowed Frontend (GUI) & the Image Pipeline
 
-> **Goal of this chapter.** Give chess a real face in the window: draw the board
-> and pieces with our 2D software renderer, select and move with the mouse,
-> highlight legal moves, show game status, and let the AI reply. Crucially, it
-> drives the **same `Game` controller** as the TUI — the GUI adds only
-> presentation and input, no rules.
+> **Goal of this chapter.** Give chess a real face in a large, crisp window: draw
+> the board, blit **real piece artwork** (hand-loaded from our own `.hrt` image
+> format — no SDL_image), select and move with the mouse, highlight legal moves,
+> show game status, and let the AI reply. Crucially, it drives the **same `Game`
+> controller** as the TUI — the GUI adds only presentation and input, no rules.
+> Along the way we build a reusable **image pipeline**: an offline asset script,
+> a tiny raster format, and a from-scratch loader.
 
 ---
 
@@ -26,19 +28,92 @@ ChessScene  (engine::Scene)  -- update/render -->  draws with renderer2d, reads 
 
 ## 2. Drawing the board
 
-The framebuffer is 480×270; the board is 8×8 squares of 28px (224×224) at an
-origin, leaving the right side for a status panel.
+Chess runs in a **large, crisp window** (980×720, `smooth = true`, `highdpi = true`
+— see Chapter 2), not the 480×270 retro demo. The board is 8×8 squares of **80px**
+(`kSquare`), so 640×640, at origin `(24, 24)`, leaving the right side (`kStatusX`)
+for a status panel.
 
 - **Squares:** a double loop fills each square light or dark. `(file + rank) % 2`
   picks the color (a1 is dark). Screen-y grows *down*, so rank 8 is drawn at the
-  top: `y = origin + (7 - rank) * square`.
-- **Pieces:** for v1 we draw each piece as its **letter** (P N B R Q K) via the
-  bitmap font at scale 2, white pieces in near-white, black pieces in near-black —
-  instantly readable, and a clean upgrade path to hand-drawn sprites later (just
-  swap the `draw_text` for a `blit`).
+  top: `y = kOY + (7 - rank) * kSquare`.
+- **Pieces:** each piece is a **blitted sprite** — real artwork loaded from our own
+  `.hrt` files (next section). If a sprite is missing, we fall back to drawing the
+  piece's **letter** (P N B R Q K) via the bitmap font at scale 6, so the GUI is
+  always usable even before the art is fetched:
 
-> Drawing pieces as letters is a deliberate v1 choice: zero asset work, perfectly
-> legible, and it isolates "how pieces look" to one line. Sprites are cosmetic.
+```cpp
+const gfx::Image& im = images_[ci][int(p.type)];
+if (!im.pixels.empty())
+    g.blit(gfx::Sprite{ im.pixels.data(), im.w, im.h }, x, y);   // real art
+else
+    g.draw_text(x + 16, y + 16, letter, color, 6);               // graceful fallback
+```
+
+> The letter path used to be the whole story (an honest v1 that needed zero assets).
+> It now survives only as a fallback — proof that "how a piece looks" stays isolated
+> to these few lines, exactly as a clean presentation layer should.
+
+---
+
+## 2b. The image pipeline: `.hrt`, the loader, and the offline script
+
+Loading a PNG normally means a library (SDL_image, stb_image, …). The project's
+thin-shim rule forbids that — so we built a tiny **image pipeline** of our own, in
+three pieces. It's reusable: any scene (FPS textures, future tools) can load art the
+same way.
+
+### 1) A dead-simple raster format: `.hrt`
+
+We don't parse PNG at runtime. Instead, art is pre-converted to a trivial format we
+*can* parse in a dozen lines:
+
+```
+  magic "HRT1" | uint32 BE width | uint32 BE height | RGBA8 rows (w*h*4 bytes)
+```
+
+No compression, no chunks, no color tables — just a header and raw RGBA pixels. The
+point is pedagogy and honesty: every byte is something we wrote the code to read.
+
+### 2) The offline asset script: `scripts/fetch_pieces.py`
+
+A **build-time** Python script (not part of the engine, not shipped) prepares the
+art once:
+
+- downloads the public-domain *Cburnett* chess SVGs→PNG thumbnails from Wikimedia,
+- decodes the PNGs using only Python's stdlib `zlib` (no Pillow — same no-library
+  spirit as the C++ side),
+- area-scales them to the 80px board square,
+- writes `assets/pieces/{w,b}{K,Q,R,B,N,P}.hrt` (+ a `CREDITS.txt` for the licence).
+
+It's resumable (skips pieces already produced). Keeping decoding/scaling *offline*
+means the engine ships only the trivial `.hrt` loader, never a PNG decoder.
+
+### 3) The from-scratch loader: `engine/image.cpp`
+
+`gfx::load_image(path)` reads the bytes through the **asset seam** (Chapter 7 — so
+it works on the web too), validates the magic + size, then converts each RGBA
+texel to our ARGB8888 `Color`:
+
+```cpp
+if (!(b[0]=='H'&&b[1]=='R'&&b[2]=='T'&&b[3]=='1')) return std::nullopt;
+const uint32_t w = read_be32(&b[4]), h = read_be32(&b[8]);
+if (b.size() < 12 + size_t(w)*h*4) return std::nullopt;     // bounds check
+for (each texel i)
+    img.pixels[i] = rgba(px[i*4+0], px[i*4+1], px[i*4+2], px[i*4+3]);  // RGBA→ARGB
+```
+
+Note the big-endian read (`read_be32`) — the format stores dimensions
+network-order, so the loader is explicit about byte order rather than `memcpy`-ing a
+`uint32_t` and hoping the host matches. The returned `Image` is just `{w, h,
+vector<Color>}` — exactly what `Renderer2D::blit` consumes.
+
+### Putting it together
+
+`ChessScene`'s constructor loads all twelve sprites once into `images_[2][7]`
+(`[color][PieceType]`); if any fail, `images_ok_` flips and the letter fallback
+kicks in. The pieces have **transparent backgrounds** (alpha in the `.hrt`), so
+`blit` — which alpha-blends (Chapter 5) — composites them cleanly over the board
+squares. Real art, zero third-party image code.
 
 ---
 
@@ -47,7 +122,8 @@ origin, leaving the right side for a status panel.
 `square_at(mouse_x, mouse_y)` inverts the layout: subtract the origin, divide by
 square size, and flip the rank (`7 - fy`) because of screen-y direction. Out-of-
 board clicks return `-1`. Because input is in *framebuffer* coordinates (Chapter
-6), this lines up exactly with what's drawn, regardless of the window's 2× scale.
+6 — the backend maps window pixels to the framebuffer by ratio), this lines up
+exactly with what's drawn, regardless of the window's scaling or HiDPI.
 
 **Click as a state machine** (`on_click`):
 
@@ -154,8 +230,10 @@ humans, and **Space** to restart. (Head-less `HAND_ENGINE_FRAMES=120 ./build/dem
    chooser instead of auto-queen. *(The core already generates all four.)*
 2. **Last-move highlight.** Tint the from/to squares of the most recent move.
 3. **Flip board.** Add a key to view from Black's side (mirror the layout math).
-4. **Sprites.** Replace the letter glyphs with 16×16 hand-drawn piece sprites via
-   `blit` — pure presentation, no core changes.
+4. **Your own art.** Point `fetch_pieces.py` at a different piece set (or draw your
+   own `.hrt` by hand) and drop the files in `assets/pieces/` — the GUI picks them
+   up with no code change. Then delete one file and watch the letter fallback for
+   that piece kick in.
 
 ---
 

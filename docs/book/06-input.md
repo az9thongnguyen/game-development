@@ -42,33 +42,70 @@ single pixel per tap. Pick the right one for the job.
 
 The snapshot lives in `platform/input.hpp` (`Key`, `MouseButton`, `InputState`).
 The SDL backend fills it in `pump_events()`, which `run()` calls once per frame
-*before* the frame callback. The pattern that makes the edges correct:
+*before* the frame callback.
+
+### We POLL state, not drain events
+
+You might expect the backend to read the SDL *event queue* (KEYDOWN/KEYUP) and
+build the snapshot from it. It doesn't. We instead **poll the current state** each
+frame and derive the edges ourselves by comparing against last frame. The event
+queue is still pumped — but only to keep the OS happy and to catch the window-close
+(`SDL_QUIT`) event:
 
 ```cpp
-// 1. New frame: clear the EDGES, keep the LEVELS.
-for each key:  pressed = false;  released = false;   // down is left as-is
-
-// 2. Drain events, updating both:
-on KEYDOWN (not auto-repeat):  down = true;  pressed = true;
-on KEYUP:                      down = false; released = true;
+SDL_Event e;
+while (SDL_PollEvent(&e)) { if (e.type == SDL_QUIT) g_quit = true; }
 ```
 
-Clearing `pressed`/`released` each frame but **not** `down` is the whole trick:
-`down` persists across frames until a key-up arrives, while the edges are true for
-exactly the one frame the transition happened.
+Why poll instead of consuming key events? Under HiDPI and the `sdl2-compat` shim
+(SDL2 API on top of SDL3), key *event* delivery can be flaky, but the *state* query
+`SDL_GetKeyboardState` is rock-solid. Polling sidesteps a whole class of
+"sometimes a keypress is missed" bugs, and the edge logic is just as simple.
 
-Two backend details worth noting:
+### Deriving edges by comparing to last frame
 
-- **Auto-repeat.** Holding a key makes SDL send repeated `KEYDOWN`s. We ignore
-  those (`if (e.key.repeat) break;`) so `pressed` is a true edge, not a stutter.
-- **Mouse in logical coordinates.** SDL reports the mouse in *window* pixels, but
-  we draw in the 480×270 *framebuffer*. `SDL_RenderWindowToLogical` converts, so
-  `mouse_x/mouse_y` line up with what you draw — essential later for clicking a
-  chess square.
+For the keyboard we loop over a small table mapping our `Key` enum to SDL
+scancodes, read each key's *level* now, and compute the edges against the value we
+stored last frame:
 
-The game reaches it through `platform::input()` (and, more conveniently, through
-the `Context`). `Key`/`InputState` deliberately live in the platform layer so this
-all respects the one-way dependency rule.
+```cpp
+const Uint8* ks = SDL_GetKeyboardState(nullptr);
+for (const KeyMap& m : kmap) {
+    const bool now = ks[m.sc] != 0;
+    const bool was = g_input.key_down[int(m.k)];     // last frame's level
+    g_input.key_pressed[int(m.k)]  = now && !was;    // up→down edge
+    g_input.key_released[int(m.k)] = !now && was;    // down→up edge
+    g_input.key_down[int(m.k)]     = now;            // store for next frame
+}
+```
+
+The level `down` *is* the freshly polled value; `pressed`/`released` are pure
+functions of (now, was). Because `was` is "what `down` held a frame ago", a held
+key reports `down == true` every frame but `pressed == true` only on the frame it
+first went down — no auto-repeat handling needed (there are no key *events* to
+repeat). Adding a new key is one row in the table; the loop handles the rest.
+
+### Mouse: poll position, map window → framebuffer
+
+SDL reports the mouse in *window* pixels, but we draw in the (e.g.) 480×270
+*framebuffer*. We convert with a simple ratio against the current window size:
+
+```cpp
+int mx, my;
+const Uint32 mask = SDL_GetMouseState(&mx, &my);
+int ww, wh; SDL_GetWindowSize(g_window, &ww, &wh);
+g_input.mouse_x = (ww > 0) ? mx * g_fb_w / ww : mx;     // window px → framebuffer px
+g_input.mouse_y = (wh > 0) ? my * g_fb_h / wh : my;
+```
+
+Buttons use the same level-vs-last-frame edge logic as keys, reading the bitmask
+SDL returns (`mask & SDL_BUTTON_LMASK`, …). Mapping to framebuffer coordinates is
+what makes a click line up with the chess square you drew, at any window scale.
+
+The game reaches all of it through `platform::input()` (and, more conveniently,
+through the `Context`). `Key`/`InputState` deliberately live in the platform layer
+so this respects the one-way dependency rule — no `SDL_` symbol leaks above the
+backend.
 
 ---
 
@@ -130,10 +167,13 @@ to press keys.)
 
 - **`down` vs `pressed`.** Continuous → `down`; one-shot → `pressed`. The #1 input
   bug.
-- **Forgetting to clear edges** each frame → `pressed` stays true forever.
-- **Counting auto-repeat as presses** → one held key reads as many presses.
-- **Mouse in window vs logical coords** → crosshair drifts from the cursor at
-  non-1× scale. Convert once, store logical.
+- **Edges from events instead of polled state.** Event delivery can drop frames
+  under sdl2-compat/HiDPI; polling the level and diffing against last frame is more
+  robust (and needs no auto-repeat filtering, since there are no key events).
+- **Forgetting to store `down` for next frame** → the `was` comparison breaks and
+  edges fire every frame. The level write *is* the bookkeeping.
+- **Mouse in window vs framebuffer coords** → crosshair drifts from the cursor at
+  non-1× scale. Map by the window/framebuffer ratio once, store framebuffer coords.
 - **Reading SDL directly in a scene** → breaks the seam (and the web port). Always
   go through `Context.input` / `platform::input()`.
 
@@ -141,10 +181,12 @@ to press keys.)
 
 ## 7. Glossary
 
-- **Event vs state** — the raw stream vs the per-frame snapshot.
+- **Event vs state** — the raw event stream vs polling the current state each frame.
+- **Polling + diffing** — read the level now (`SDL_GetKeyboardState`/`GetMouseState`),
+  derive edges by comparing to the value stored last frame.
 - **Level vs edge** — `down` (held) vs `pressed`/`released` (transition this frame).
-- **Auto-repeat** — the OS re-sending key-down while a key is held.
-- **Logical coordinates** — framebuffer space (post window→logical conversion).
+- **Framebuffer coordinates** — the mouse mapped from window pixels by the
+  window/framebuffer size ratio, so hits match what we draw.
 
 ---
 
@@ -159,8 +201,9 @@ to press keys.)
 3. **Click to teleport.** On `in.pressed(MouseButton::Left)`, set the sprite
    position to the mouse position. *(Hint: read the edge in `render`, or store the
    click and apply in `update`.)*
-4. **Add a key.** Wire `Key::Enter` through `map_key` (already there) to reset the
-   sprite to center. Which file did you touch, and which didn't you?
+4. **Add a key.** Add a row to the scancode table (`kmap`) in `backend_sdl.cpp`
+   wiring some `Key` to its `SDL_SCANCODE_*`, and use its `pressed` edge to reset
+   the sprite to center. Which file did you touch, and which didn't you?
 
 ---
 
