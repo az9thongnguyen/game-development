@@ -89,11 +89,10 @@ add_executable(demo
   src/demo/demo_scene.cpp
   src/games/chess/chess_tui.cpp
   src/games/chess/chess_gui.cpp
-  src/games/fps/map.cpp
   src/games/fps/raycast_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core)
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:
@@ -121,3 +120,15 @@ target_link_libraries(chess_core PRIVATE engine_flags)
 add_executable(test_chess tests/test_chess.cpp)
 target_link_libraries(test_chess PRIVATE chess_core engine_flags)
 add_test(NAME chess COMMAND test_chess)
+
+# ---- FPS core (M2): pure raycast/grid logic, testable without SDL --------------
+add_library(fps_core STATIC
+  src/games/fps/map.cpp
+  src/games/fps/raycast.cpp
+)
+target_include_directories(fps_core PUBLIC src)
+target_link_libraries(fps_core PRIVATE engine_flags)
+
+add_executable(test_fps tests/test_fps.cpp)
+target_link_libraries(test_fps PRIVATE fps_core engine_flags)
+add_test(NAME fps COMMAND test_fps)

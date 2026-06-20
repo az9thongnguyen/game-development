@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "engine/color.hpp"
+#include "games/fps/raycast.hpp"
 
 namespace fps {
 
@@ -26,16 +27,16 @@ void RaycastScene::try_move(double nx, double ny) {
 
 void RaycastScene::update(double dt, const platform::InputState& in) {
     using K = platform::Key;
-    const double move = 3.0 * dt;   // units/sec
-    const double rot  = 2.0 * dt;   // rad/sec
+    const double move = 3.0 * dt;
+    const double rot  = 2.0 * dt;
 
     if (in.down(K::W) || in.down(K::Up))
         try_move(posX_ + dirX_ * move, posY_ + dirY_ * move);
     if (in.down(K::S) || in.down(K::Down))
         try_move(posX_ - dirX_ * move, posY_ - dirY_ * move);
-    if (in.down(K::D))   // strafe right (+plane)
+    if (in.down(K::D))
         try_move(posX_ + planeX_ * move, posY_ + planeY_ * move);
-    if (in.down(K::A))   // strafe left (-plane)
+    if (in.down(K::A))
         try_move(posX_ - planeX_ * move, posY_ - planeY_ * move);
 
     auto rotate = [&](double a) {
@@ -44,61 +45,34 @@ void RaycastScene::update(double dt, const platform::InputState& in) {
         dirX_   = dx * c - dirY_ * s;   dirY_   = dx * s + dirY_ * c;
         planeX_ = px * c - planeY_ * s; planeY_ = px * s + planeY_ * c;
     };
-    if (in.down(K::Right)) rotate(-rot);  // turn clockwise
-    if (in.down(K::Left))  rotate(+rot);  // turn counter-clockwise
+    if (in.down(K::Right)) rotate(-rot);
+    if (in.down(K::Left))  rotate(+rot);
 }
 
 void RaycastScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     const int W = g.width(), H = g.height();
 
-    // Flat ceiling (top half) and floor (bottom half).
-    g.fill_rect(0, 0,     W, H / 2,     gfx::rgb(40, 44, 56));
-    g.fill_rect(0, H / 2, W, H - H / 2, gfx::rgb(28, 28, 30));
+    g.fill_rect(0, 0,     W, H / 2,     gfx::rgb(40, 44, 56));  // ceiling
+    g.fill_rect(0, H / 2, W, H - H / 2, gfx::rgb(28, 28, 30));  // floor
 
     for (int x = 0; x < W; ++x) {
-        // Ray direction for this column: dir + plane * cameraX, cameraX in [-1,1].
         const double cameraX = 2.0 * x / W - 1.0;
-        const double rayDirX = dirX_ + planeX_ * cameraX;
-        const double rayDirY = dirY_ + planeY_ * cameraX;
+        const Hit h = cast_ray(map_, posX_, posY_,
+                               dirX_ + planeX_ * cameraX,
+                               dirY_ + planeY_ * cameraX);
 
-        int mapX = static_cast<int>(posX_);
-        int mapY = static_cast<int>(posY_);
-
-        const double deltaX = (rayDirX == 0.0) ? 1e30 : std::fabs(1.0 / rayDirX);
-        const double deltaY = (rayDirY == 0.0) ? 1e30 : std::fabs(1.0 / rayDirY);
-
-        int stepX, stepY;
-        double sideX, sideY;  // distance to the next x / y grid line
-        if (rayDirX < 0) { stepX = -1; sideX = (posX_ - mapX) * deltaX; }
-        else             { stepX = +1; sideX = (mapX + 1.0 - posX_) * deltaX; }
-        if (rayDirY < 0) { stepY = -1; sideY = (posY_ - mapY) * deltaY; }
-        else             { stepY = +1; sideY = (mapY + 1.0 - posY_) * deltaY; }
-
-        // DDA: step through grid cells until we hit a wall.
-        int side = 0;
-        uint8_t hit = 0;
-        for (int guard = 0; guard < 512 && hit == 0; ++guard) {
-            if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
-            else               { sideY += deltaY; mapY += stepY; side = 1; }
-            hit = map_.at(mapX, mapY);
-        }
-
-        // Perpendicular distance (avoids the fisheye a raw ray length would give).
-        double perp = (side == 0) ? (sideX - deltaX) : (sideY - deltaY);
-        if (perp < 1e-6) perp = 1e-6;
-
-        const int lineH = static_cast<int>(H / perp);
+        const int lineH = static_cast<int>(H / h.perp_dist);
         int start = -lineH / 2 + H / 2; if (start < 0) start = 0;
         int end   =  lineH / 2 + H / 2; if (end >= H) end = H - 1;
 
         gfx::Color base;
-        switch (hit) {
+        switch (h.wall) {
             case 2:  base = gfx::rgb(176, 96, 72);  break;  // room walls (reddish)
             case 3:  base = gfx::rgb(96, 156, 96);  break;  // pillars (greenish)
             default: base = gfx::rgb(150, 150, 162);        // border (grey)
         }
-        if (side == 1)  // shade y-side walls darker for a sense of depth
+        if (h.side == 1)  // shade y-side walls darker for depth
             base = gfx::rgb(gfx::r_of(base) * 3 / 4, gfx::g_of(base) * 3 / 4, gfx::b_of(base) * 3 / 4);
 
         g.fill_rect(x, start, 1, end - start + 1, base);
