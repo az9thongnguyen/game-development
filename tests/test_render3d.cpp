@@ -8,9 +8,13 @@
 #include "engine/geometry.hpp"
 #include "engine/math.hpp"
 #include "engine/pipeline.hpp"
+#include "engine/renderer2d.hpp"
+#include "engine/renderer3d.hpp"
+#include "platform/platform.hpp"
 
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 using namespace r3d;
 using math::vec2;
@@ -156,6 +160,48 @@ static void test_geometry() {
     CHECK(axes.indices.size() == 6);
 }
 
+// ---- rasterizer: drives a real framebuffer through Renderer3D (no SDL) ----
+static geo::Mesh single_tri(float z, gfx::Color col) {
+    geo::Mesh m;
+    m.vertices = {
+        {{-0.6f, -0.6f, z}, {0, 0, 1}, col},
+        {{ 0.6f, -0.6f, z}, {0, 0, 1}, col},
+        {{ 0.0f,  0.6f, z}, {0, 0, 1}, col},
+    };
+    m.indices = {0, 1, 2};
+    return m;
+}
+
+static void test_rasterizer_depth() {
+    const int W = 64, H = 64;
+    std::vector<uint32_t> buf(static_cast<size_t>(W * H));
+    platform::Framebuffer fb{buf.data(), W, H, W};
+    gfx::Renderer2D r2(fb);
+    r3d::Renderer3D r3(r2);
+    r3.set_cull(false);  // identity projection: don't reason about winding here
+    r3.set_camera(math::mat4_identity(), math::mat4_identity());
+    const r3d::Light light;
+    const math::mat4 I = math::mat4_identity();
+    auto center = [&]() { return buf[static_cast<size_t>(H / 2) * W + W / 2]; };
+
+    // Coverage: a centered triangle paints the center pixel.
+    r3.begin(gfx::colors::black);
+    r3.draw_mesh(single_tri(0.0f, gfx::colors::white), I, r3d::Mode::SolidFlat, light);
+    CHECK(center() != gfx::colors::black);
+
+    // Depth: near green (z=-0.5) beats far red (z=+0.5) — far drawn FIRST.
+    r3.begin(gfx::colors::black);
+    r3.draw_mesh(single_tri( 0.5f, gfx::colors::red),   I, r3d::Mode::SolidFlat, light);
+    r3.draw_mesh(single_tri(-0.5f, gfx::colors::green), I, r3d::Mode::SolidFlat, light);
+    CHECK(gfx::g_of(center()) > gfx::r_of(center()));
+
+    // ...and near drawn FIRST: the far red fragment must be depth-rejected.
+    r3.begin(gfx::colors::black);
+    r3.draw_mesh(single_tri(-0.5f, gfx::colors::green), I, r3d::Mode::SolidFlat, light);
+    r3.draw_mesh(single_tri( 0.5f, gfx::colors::red),   I, r3d::Mode::SolidFlat, light);
+    CHECK(gfx::g_of(center()) > gfx::r_of(center()));
+}
+
 int main() {
     test_to_screen();
     test_mvp_projection();
@@ -164,6 +210,7 @@ int main() {
     test_clip_near();
     test_lerp_color();
     test_geometry();
+    test_rasterizer_depth();
 
     if (g_failures == 0) std::printf("render3d: all tests passed\n");
     else                 std::printf("render3d: %d FAILURE(S)\n", g_failures);
