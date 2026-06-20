@@ -90,9 +90,10 @@ add_executable(demo
   src/games/chess/chess_tui.cpp
   src/games/chess/chess_gui.cpp
   src/games/fps/raycast_scene.cpp
+  src/games/viz3d/scene3d.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core)
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:
@@ -103,6 +104,25 @@ add_executable(test_math tests/test_math.cpp)
 target_include_directories(test_math PRIVATE src)
 target_link_libraries(test_math PRIVATE engine_flags)
 add_test(NAME math COMMAND test_math)
+
+# ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
+# Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
+# by whichever final target links it (the demo exe, or the test below).
+add_library(render3d_core STATIC
+  src/engine/geometry.cpp
+  src/engine/renderer3d.cpp
+  src/engine/camera.cpp
+)
+target_include_directories(render3d_core PUBLIC src)
+target_link_libraries(render3d_core PRIVATE engine_flags)
+
+# ---- 3D pipeline + geometry + rasterizer tests (M3): no SDL ------------------
+# The rasterizer test drives a real (heap-allocated) framebuffer through
+# Renderer2D, so it compiles renderer2d.cpp directly — no window needed.
+add_executable(test_render3d tests/test_render3d.cpp src/engine/renderer2d.cpp)
+target_include_directories(test_render3d PRIVATE src)
+target_link_libraries(test_render3d PRIVATE render3d_core engine_flags)
+add_test(NAME render3d COMMAND test_render3d)
 
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
