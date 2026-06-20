@@ -98,6 +98,8 @@ void EditorScene::update(double dt, const platform::InputState& in) {
         } else {                                   // orbit with empty-space left-drag
             cam_.orbit(-dx * 0.01f, dy * 0.01f);
         }
+    } else {
+        left_drag_object_ = false;                 // released: clear the drag flag
     }
     if (in.down(MouseButton::Right))  cam_.orbit(-dx * 0.01f, dy * 0.01f);
     if (in.down(MouseButton::Middle)) cam_.pan(dx, dy);

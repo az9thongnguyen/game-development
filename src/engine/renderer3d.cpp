@@ -32,6 +32,15 @@ float lambert(math::vec3 n, const Light& light) {
 uint8_t to_u8(float v) {
     return static_cast<uint8_t>(v < 0.0f ? 0.0f : (v > 255.0f ? 255.0f : v));
 }
+
+// Draw a screen-space line, first clipped to the framebuffer rect so the int cast
+// is in range and the Bresenham loop is bounded (see pipeline.hpp::clip_segment).
+void draw_clipped(gfx::Renderer2D& fb, float x0, float y0, float x1, float y1,
+                  int w, int h, gfx::Color c) {
+    if (clip_segment(x0, y0, x1, y1, static_cast<float>(w), static_cast<float>(h)))
+        fb.draw_line(static_cast<int>(x0), static_cast<int>(y0),
+                     static_cast<int>(x1), static_cast<int>(y1), c);
+}
 } // namespace
 
 void Renderer3D::begin(gfx::Renderer2D& fb, gfx::Color clear) {
@@ -163,9 +172,9 @@ void Renderer3D::draw_mesh(const geo::Mesh& mesh, const math::mat4& model, Mode 
                     if (ar >= 0.0f) continue;  // skip back faces (and degenerate)
                 }
                 const gfx::Color wc2 = out[t][0].color;
-                fb_->draw_line(int(p0.x), int(p0.y), int(p1.x), int(p1.y), wc2);
-                fb_->draw_line(int(p1.x), int(p1.y), int(p2.x), int(p2.y), wc2);
-                fb_->draw_line(int(p2.x), int(p2.y), int(p0.x), int(p0.y), wc2);
+                draw_clipped(*fb_, p0.x, p0.y, p1.x, p1.y, w_, h_, wc2);
+                draw_clipped(*fb_, p1.x, p1.y, p2.x, p2.y, w_, h_, wc2);
+                draw_clipped(*fb_, p2.x, p2.y, p0.x, p0.y, w_, h_, wc2);
             } else {
                 raster_triangle(out[t], gouraud);
             }
@@ -197,7 +206,7 @@ void Renderer3D::draw_lines(const geo::Mesh& mesh, const math::mat4& model) {
 
         const Screen sa = to_screen(ca, w_, h_);
         const Screen sb = to_screen(cb, w_, h_);
-        fb_->draw_line(int(sa.x), int(sa.y), int(sb.x), int(sb.y), col);
+        draw_clipped(*fb_, sa.x, sa.y, sb.x, sb.y, w_, h_, col);
     }
 }
 
@@ -218,9 +227,9 @@ void Renderer3D::draw_wire(const geo::Mesh& mesh, const math::mat4& model, gfx::
             const Screen p0 = to_screen(out[t][0].clip, w_, h_);
             const Screen p1 = to_screen(out[t][1].clip, w_, h_);
             const Screen p2 = to_screen(out[t][2].clip, w_, h_);
-            fb_->draw_line(int(p0.x), int(p0.y), int(p1.x), int(p1.y), color);
-            fb_->draw_line(int(p1.x), int(p1.y), int(p2.x), int(p2.y), color);
-            fb_->draw_line(int(p2.x), int(p2.y), int(p0.x), int(p0.y), color);
+            draw_clipped(*fb_, p0.x, p0.y, p1.x, p1.y, w_, h_, color);
+            draw_clipped(*fb_, p1.x, p1.y, p2.x, p2.y, w_, h_, color);
+            draw_clipped(*fb_, p2.x, p2.y, p0.x, p0.y, w_, h_, color);
         }
     }
 }
