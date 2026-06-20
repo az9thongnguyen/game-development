@@ -99,3 +99,16 @@ add_executable(test_math tests/test_math.cpp)
 target_include_directories(test_math PRIVATE src)
 target_link_libraries(test_math PRIVATE engine_flags)
 add_test(NAME math COMMAND test_math)
+
+# ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
+# Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
+add_library(chess_core STATIC
+  src/games/chess/board.cpp
+  src/games/chess/fen.cpp
+)
+target_include_directories(chess_core PUBLIC src)
+target_link_libraries(chess_core PRIVATE engine_flags)
+
+add_executable(test_chess tests/test_chess.cpp)
+target_link_libraries(test_chess PRIVATE chess_core engine_flags)
+add_test(NAME chess COMMAND test_chess)
