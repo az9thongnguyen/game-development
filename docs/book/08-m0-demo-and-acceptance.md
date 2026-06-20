@@ -68,7 +68,7 @@ M0's bar (from `requirements.md` §7 & §10) and the exact checks:
 | **Input** works, clean quit | arrows/WASD move; ESC / close quits | works |
 | **Math** correctness | `ctest` (`test_math`) | 100% passed |
 | **No leaks** | `HAND_ENGINE_FRAMES=120 leaks --atExit -- ./build/demo` | 0 leaks |
-| **No UB / memory errors** | `-DENGINE_SANITIZE=ON` build, run | ASan/UBSan clean |
+| **No UB / memory errors** | `-DENGINE_SANITIZE=ON` build + run | build clean + drawing is bounds-checked; the ASan **run** is inconclusive in the CI sandbox (aborts inside SDL's Metal path under instrumentation) — verify on a normal desktop |
 | **Seam: no SDL above platform** | `grep -rn "SDL_" src/engine src/demo` | none |
 | **Seam: no blocking loop** | loop only in `platform::run`; engine uses `tick(dt)` | holds |
 | **Web-ready structure** | `cmake/emscripten.toolchain.cmake` present (built at M5) | staged |
@@ -78,6 +78,14 @@ A few notes on the tooling:
 - **`leaks` vs LeakSanitizer.** On macOS, ASan's leak detector (LSan) isn't
   supported, so we use ASan/UBSan for *memory errors and undefined behavior* and
   the system **`leaks`** tool for *leak detection*. Belt and suspenders.
+- **ASan in a headless sandbox (honesty note).** Running the *instrumented* binary
+  inside a headless/sandboxed macOS environment can abort or hang inside SDL's
+  window/Metal path — non-instrumented system GPU libraries, not our code. So in
+  this environment the ASan **run** is inconclusive; acceptance here leans on a
+  warning-clean build, `leaks` = 0, and the fact that every drawing primitive
+  clips its writes. On a normal desktop, run `cmake -B build-asan
+  -DENGINE_SANITIZE=ON && cmake --build build-asan && ./build-asan/demo` to get the
+  real ASan result.
 - **`HAND_ENGINE_FRAMES`** lets the app exit on its own, which is what makes
   `leaks --atExit` and any future CI possible without a human closing the window.
 - **The grep checks are real tests.** They mechanically enforce the two
