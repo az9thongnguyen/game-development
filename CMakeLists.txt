@@ -28,11 +28,21 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ---- Options -----------------------------------------------------------------
 option(ENGINE_SANITIZE "Enable Address + UndefinedBehavior sanitizers (dev)" OFF)
 
+# ---- SDL2 (web build, M5: staged + untested) ---------------------------------
+# On the web, SDL2 is provided by Emscripten's port via a compile/link flag, NOT
+# find_package. This branch keeps the structure web-ready; it is exercised at M5.
+if(EMSCRIPTEN)
+  add_compile_options(-sUSE_SDL=2)
+  add_link_options(-sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1
+                   "--preload-file=${CMAKE_SOURCE_DIR}/assets@assets")
+  set(SDL2_LINK "")
+endif()
+
 # ---- Find SDL2 (desktop platform backend) ------------------------------------
 # Strategy: prefer SDL2's own CMake config package; fall back to pkg-config.
 # On macOS, Homebrew installs into a keg (e.g. .../opt/sdl2*), so we point CMake
 # at the brew prefix first. None of this leaks above the platform layer.
-if(APPLE)
+if(NOT EMSCRIPTEN AND APPLE)
   find_program(BREW_EXECUTABLE brew)
   if(BREW_EXECUTABLE)
     execute_process(
@@ -75,6 +85,7 @@ add_executable(demo
   src/engine/app.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp
+  src/demo/demo_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
 target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags)
