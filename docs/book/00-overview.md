@@ -87,7 +87,7 @@ checks).
 | 07 | Asset & audio **seams** (web-VFS-ready I/O; audio stub) |
 | 08 | The M0 demo + FPS counter + **acceptance** |
 | **M1 — chess** | |
-| 09–15 | Board & FEN · move generation & perft · game controller · AI search · TUI · GUI · M1 acceptance |
+| 09–15 | Board & FEN · move generation & perft · game controller · AI search · TUI · GUI + image pipeline (.hrt) · M1 acceptance |
 | **M2 — FPS raycaster** | |
 | 16–17 | Raycasting (DDA, textured walls) · sprites, depth & real audio |
 | **M3 — real 3D core** | |
