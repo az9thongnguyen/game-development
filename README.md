@@ -24,7 +24,7 @@ material that accompanies the code.
 | M3.5 | Interactive 3D sandbox: spawn/select/transform objects, mouse picking, orbit/pan/zoom camera | ✅ done |
 | M4 | Isometric farm sim: tile map + depth-sort + small ECS + A* pathfinding + save/load | ✅ done |
 | M5 | WebAssembly port (Emscripten) — chess + 3D core run in-browser, **no engine/game rewrite** | ✅ done |
-| _future (optional)_ | Native webserver (e.g. **Drogon**) to serve the web build / online features — **separate process, not part of engine core** | 💡 idea |
+| _extension (§11)_ | Native webserver — **hand-written** (no framework), serves the WASM build + a leaderboard API; **separate process, links no engine code** | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -75,6 +75,18 @@ The web build runs the **same** engine/game code; only the platform `run()` loop
 `#ifdef`'d to `emscripten_set_main_loop`. Pick the scene by editing
 `Module.arguments` in [`web/shell.html`](web/shell.html) (e.g. `['--3d']` or `['--iso']`).
 
+### Native webserver (requirements §11 — optional, separate process)
+
+A hand-written C++ HTTP server (no framework, POSIX sockets) that serves the WASM
+build and a tiny leaderboard API. It links **no** engine code — the game and server
+meet only over HTTP.
+
+```sh
+cmake --build build --target webserver
+./build/webserver --root build-web        # → http://localhost:8080/  (the game)
+# API: GET/POST http://localhost:8080/api/scores  ({"name":"..","score":N})
+```
+
 ## Project layout
 
 ```
@@ -86,6 +98,7 @@ src/games/      chess (M1), fps raycaster (M2), viz3d 3D showcase + sandbox (M3/
                 iso farm sim (M4: tilemap, ecs, pathfind, farm, serialize, render, scene)
 docs/book/      the guidebook — read these chapters alongside the code
 web/            shell.html for the WebAssembly build (M5)
+server/         hand-written native webserver (§11) — separate process, no engine code
 cmake/          Emscripten toolchain hook (used at M5)
 ```
 
