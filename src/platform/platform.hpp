@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <functional>
 
+#include "platform/input.hpp"
+
 namespace platform {
 
 // A view onto the CPU pixel buffer we draw into. Pixels are 32-bit ARGB8888,
@@ -54,6 +56,16 @@ void        present();          // upload + show it (run() calls this for you)
 // any change above the platform layer. This is why engine/game code never writes
 // its own `while(true)`.
 void run(const std::function<void(double dt)>& frame);
+
+// ---- Input ----
+// Normalized keyboard/mouse snapshot, refreshed once per frame before frame().
+const InputState& input();
+
+// ---- Audio (seam) ----
+// Brings up the audio device. Real sound playback is implemented at M2 (FPS);
+// for now this is a stub so the interface exists and the architecture stays
+// web-ready. Returns true on success.
+bool init_audio();
 
 // ---- Quit control ----
 bool should_quit();

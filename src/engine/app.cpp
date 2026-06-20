@@ -22,7 +22,7 @@ void App::frame(double dt) {
     // independent of the display's refresh rate.
     accumulator_ += dt;
     while (accumulator_ >= kFixedDt) {
-        scene_->update(kFixedDt);
+        scene_->update(kFixedDt, platform::input());
         accumulator_ -= kFixedDt;
         time_        += kFixedDt;
     }
@@ -30,11 +30,8 @@ void App::frame(double dt) {
     // Render once, after the logic has caught up. `alpha` is how far we are into
     // the next not-yet-simulated step; scenes can use it to interpolate motion so
     // rendering looks smooth even though logic ticks at a fixed rate.
-    Context ctx;
-    ctx.fb    = platform::framebuffer();
-    ctx.dt    = dt;
-    ctx.time  = time_;
-    ctx.alpha = accumulator_ / kFixedDt;
+    gfx::Renderer2D renderer(platform::framebuffer());
+    Context ctx{ renderer, platform::input(), dt, time_, accumulator_ / kFixedDt };
     scene_->render(ctx);
 }
 

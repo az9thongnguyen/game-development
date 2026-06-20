@@ -1,0 +1,103 @@
+# Chapter 00 — Overview & How to Read This Book
+
+> **What this is.** A from-scratch game engine in modern C++, built step by step,
+> with this guidebook explaining *why* at every turn. The goal is to **learn
+> deeply by building** — so we hand-write every core subsystem and lean on SDL2
+> only as a thin shim. This chapter is the map: the philosophy, the architecture,
+> the rules that shape everything, and the order to read in.
+
+---
+
+## 1. Philosophy
+
+- **Hand-write the core to understand it.** Math, the software renderer, the 3D
+  rasterizer (M3), game logic, and AI are all written by us. When "convenient" and
+  "educational" conflict, we pick educational — as long as it still ships.
+- **SDL2 is a thin shim only.** It may open a window, hand us a pixel buffer and
+  push it to the screen, give us raw input/audio, and tell the time. Nothing more.
+  Every pixel drawn, we draw.
+- **Web-ready from day one.** The architecture is shaped so the WebAssembly port
+  (M5) is a *drop-in*, not a rewrite. That single goal explains most of the
+  structural decisions below.
+
+## 2. Architecture (one-directional dependencies)
+
+```
+   [ games / tools: demo · chess · fps · 3d-viz ]   ← call engine API only
+                       │
+   [ engine core ]  app(loop) · scene · math · color · renderer2d · font
+                    · input(via platform) · assets · (3D core at M3)
+                       │
+   [ platform ]  platform.hpp  (fixed interface)
+                       │
+            backend_sdl.cpp        [ backend_web.cpp @ M5 ]
+```
+
+Dependencies only point **down**. The rules that keep the web port a drop-in:
+
+1. **Only a platform backend includes SDL.** No SDL type appears above
+   `src/platform/`. (Check: `grep -rn "SDL_" src/engine src/demo` → nothing.)
+2. **No blocking loop above the platform.** The loop lives in `platform::run`;
+   engine/game code only provides a `tick(dt)` callback. (Browsers can't block.)
+3. **All file I/O goes through `assets::`** — one place to adapt to the web's
+   virtual filesystem.
+4. **Single-threaded** for now (web threading needs special flags).
+
+## 3. The repository
+
+```
+src/platform/   platform.hpp (interface) + backend_sdl.cpp (impl) + input.hpp
+src/engine/     app, scene, math, color, renderer2d, font8x8, assets
+src/demo/       the M0 acceptance demo scene
+src/main.cpp    entry point: init platform → run the App
+tests/          dependency-free unit tests (CTest)
+assets/         data files (loaded via the asset seam)
+docs/book/      THIS guidebook (read in chapter order)
+cmake/          Emscripten toolchain (used at M5)
+```
+
+## 4. Build & run
+
+```sh
+brew install cmake sdl2                       # one-time
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+./build/demo                                  # run from the project root
+ctest --test-dir build --output-on-failure    # unit tests
+```
+
+Dev build with sanitizers (catches memory/UB bugs): `cmake -B build-asan
+-DENGINE_SANITIZE=ON && cmake --build build-asan`. Head-less:
+`HAND_ENGINE_FRAMES=120 ./build/demo` runs N frames then exits (for CI / leak
+checks).
+
+## 5. Reading order
+
+| Chapter | Topic |
+|--------:|-------|
+| 01 | Build & toolchain (CMake, SDL2, the compile→link→run pipeline) |
+| 02 | Platform layer: window, framebuffer, present, the **seam** |
+| 03 | Game loop & **fixed timestep** (and why the loop lives in platform) |
+| 04 | Math library (vectors, matrices, projection — tested) |
+| 05 | 2D software renderer (pixels, lines, rects, sprites, text) |
+| 06 | Normalized input (keyboard/mouse; down vs pressed vs released) |
+| 07 | Asset & audio **seams** (web-VFS-ready I/O; audio stub) |
+| 08 | The M0 demo + FPS counter + **acceptance** |
+
+Each chapter follows the same shape: **concept → code walkthrough → run &
+observe → pitfalls → exercises.**
+
+## 6. Milestone roadmap
+
+| MS | Deliverable |
+|----|-------------|
+| **M0** | Engine foundation (this part of the book) |
+| M1 | Chess — Human↔Human & Human↔AI (minimax/alpha-beta), GUI + TUI |
+| M2 | FPS raycaster (Wolfenstein-style) — adds real audio |
+| M3 | Real 3D core: software rasterizer, z-buffer, perspective, cameras |
+| M3.5 | 3D visualization sandbox |
+| M4 | Isometric sim (depth sort, A*, save/load) |
+| M5 | Web port via Emscripten (no engine rewrite) |
+
+See `requirements.md` for the full specification, and `README.md` for the git
+workflow (a feature branch per milestone, merged to `main` at each review).
