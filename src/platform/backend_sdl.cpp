@@ -30,6 +30,10 @@ InputState            g_input;
 
 long g_max_frames = -1;  // HAND_ENGINE_FRAMES test hook (-1 = run until quit)
 
+SDL_AudioDeviceID g_audio_dev  = 0;
+int               g_audio_rate = 44100;
+bool              g_audio_ok   = false;
+
 void pump_events() {
     // Pump the OS queue (also updates SDL's internal input state) + watch quit.
     SDL_Event e;
@@ -138,6 +142,7 @@ void shutdown() {
     if (g_window)   { SDL_DestroyWindow(g_window);     g_window   = nullptr; }
     g_pixels.clear();
     g_pixels.shrink_to_fit();
+    if (g_audio_dev) { SDL_CloseAudioDevice(g_audio_dev); g_audio_dev = 0; g_audio_ok = false; }
     SDL_Quit();
 }
 
@@ -156,8 +161,35 @@ void present() {
 const InputState& input() { return g_input; }
 
 bool init_audio() {
-    // M0 seam: no-op. Real device + mixing arrives at M2.
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+        std::fprintf(stderr, "platform: audio init failed: %s\n", SDL_GetError());
+        return false;
+    }
+    SDL_AudioSpec want, have;
+    SDL_zero(want);
+    want.freq     = 44100;
+    want.format   = AUDIO_S16SYS;  // signed 16-bit, native byte order
+    want.channels = 1;             // mono
+    want.samples  = 1024;
+    want.callback = nullptr;       // we push samples with SDL_QueueAudio
+    g_audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    if (g_audio_dev == 0) {
+        std::fprintf(stderr, "platform: open audio failed: %s\n", SDL_GetError());
+        return false;
+    }
+    g_audio_rate = have.freq;
+    SDL_PauseAudioDevice(g_audio_dev, 0);  // start playing
+    g_audio_ok = true;
     return true;
+}
+
+int audio_rate() { return g_audio_rate; }
+
+void play_sound(const int16_t* samples, int count) {
+    if (!g_audio_ok || samples == nullptr || count <= 0) return;
+    // Drop new clips if a lot is already queued (no callback mixer in M2).
+    if (SDL_GetQueuedAudioSize(g_audio_dev) > static_cast<Uint32>(g_audio_rate)) return;
+    SDL_QueueAudio(g_audio_dev, samples, static_cast<Uint32>(count) * sizeof(int16_t));
 }
 
 bool should_quit()  { return g_quit; }
