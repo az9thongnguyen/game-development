@@ -92,9 +92,11 @@ add_executable(demo
   src/games/fps/raycast_scene.cpp
   src/games/viz3d/scene3d.cpp
   src/games/viz3d/editor_scene.cpp
+  src/games/iso/iso_render.cpp
+  src/games/iso/iso_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core iso_core)
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:
@@ -153,6 +155,25 @@ target_link_libraries(chess_core PRIVATE engine_flags)
 add_executable(test_chess tests/test_chess.cpp)
 target_link_libraries(test_chess PRIVATE chess_core engine_flags)
 add_test(NAME chess COMMAND test_chess)
+
+# ---- Iso sim core (M4): tile map + ECS + A* + farm model + serialize ---------
+# Pure C++, SDL-free, so the simulation is unit-tested without a window. The
+# renderer + scene (iso_render.cpp, iso_scene.cpp) link into the demo exe, not here.
+add_library(iso_core STATIC
+  src/games/iso/tilemap.cpp
+  src/games/iso/pathfind.cpp
+  src/games/iso/farm.cpp
+  src/games/iso/serialize.cpp
+)
+target_include_directories(iso_core PUBLIC src)
+target_link_libraries(iso_core PRIVATE engine_flags)
+
+# test_iso also compiles assets.cpp directly so the serialize round-trip stays
+# dependency-free (the round-trip itself uses in-memory buffers, no disk).
+add_executable(test_iso tests/test_iso.cpp src/engine/assets.cpp)
+target_include_directories(test_iso PRIVATE src)
+target_link_libraries(test_iso PRIVATE iso_core engine_flags)
+add_test(NAME iso COMMAND test_iso)
 
 # ---- FPS core (M2): pure raycast/grid logic, testable without SDL --------------
 add_library(fps_core STATIC

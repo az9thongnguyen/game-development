@@ -19,6 +19,7 @@
 #include "games/fps/raycast_scene.hpp"
 #include "games/viz3d/scene3d.hpp"
 #include "games/viz3d/editor_scene.hpp"
+#include "games/iso/iso_scene.hpp"
 
 namespace {
 
@@ -103,6 +104,17 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         return run_window(cfg, std::make_unique<viz3d::EditorScene>());
+    }
+
+    if (mode == "--iso") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — iso farm sim";
+        cfg.fb_width  = 960;
+        cfg.fb_height = 600;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<iso::IsoScene>());
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
