@@ -17,7 +17,7 @@ material that accompanies the code.
 
 | MS | What | Status |
 |----|------|--------|
-| **M0** | Engine foundation: window + software renderer + tick loop + math + input | 🚧 in progress |
+| **M0** | Engine foundation: window + software renderer + tick loop + math + input | ✅ done |
 | M1 | Chess (desktop) — **2 chế độ chơi**: Người↔Người & Người↔Máy (AI minimax/alpha-beta); **GUI + TUI** | ⬜ planned |
 | M2 | FPS raycaster (Wolfenstein-style) | ⬜ planned |
 | M3 | Real 3D core: software rasterizer, z-buffer, perspective, cameras | ⬜ planned |
