@@ -105,6 +105,7 @@ add_test(NAME math COMMAND test_math)
 add_library(chess_core STATIC
   src/games/chess/board.cpp
   src/games/chess/fen.cpp
+  src/games/chess/movegen.cpp
 )
 target_include_directories(chess_core PUBLIC src)
 target_link_libraries(chess_core PRIVATE engine_flags)
