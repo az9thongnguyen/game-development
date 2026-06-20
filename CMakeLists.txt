@@ -73,6 +73,7 @@ add_executable(demo
   src/main.cpp
   src/platform/backend_sdl.cpp
   src/engine/app.cpp
+  src/engine/renderer2d.cpp
 )
 target_include_directories(demo PRIVATE src)
 target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags)
