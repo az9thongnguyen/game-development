@@ -101,6 +101,51 @@ Mesh make_sphere(float radius, int stacks, int slices, gfx::Color color) {
     return m;
 }
 
+Mesh make_cylinder(float radius, float height, int slices, gfx::Color color) {
+    if (slices < 3) slices = 3;
+    Mesh m;
+    const float hy = height * 0.5f;
+
+    // --- side wall: paired bottom/top vertices with radial normals ---
+    for (int j = 0; j <= slices; ++j) {
+        const float a = 2.0f * math::kPi * static_cast<float>(j) / static_cast<float>(slices);
+        const math::vec3 n{std::cos(a), 0.0f, std::sin(a)};
+        m.vertices.push_back({{n.x * radius, -hy, n.z * radius}, n, color});  // bottom (2j)
+        m.vertices.push_back({{n.x * radius,  hy, n.z * radius}, n, color});  // top    (2j+1)
+    }
+    for (int j = 0; j < slices; ++j) {
+        const uint32_t b0 = static_cast<uint32_t>(2 * j), t0 = b0 + 1;
+        const uint32_t b1 = static_cast<uint32_t>(2 * (j + 1)), t1 = b1 + 1;
+        m.indices.insert(m.indices.end(), {b0, t0, b1, b1, t0, t1});  // CCW from outside
+    }
+
+    // --- top cap (normal +Y): a triangle fan around the center ---
+    const uint32_t top_base = static_cast<uint32_t>(m.vertices.size());
+    for (int j = 0; j <= slices; ++j) {
+        const float a = 2.0f * math::kPi * static_cast<float>(j) / static_cast<float>(slices);
+        m.vertices.push_back({{std::cos(a) * radius, hy, std::sin(a) * radius}, {0, 1, 0}, color});
+    }
+    const uint32_t top_center = static_cast<uint32_t>(m.vertices.size());
+    m.vertices.push_back({{0, hy, 0}, {0, 1, 0}, color});
+    for (int j = 0; j < slices; ++j)
+        m.indices.insert(m.indices.end(),
+            {top_center, top_base + static_cast<uint32_t>(j + 1), top_base + static_cast<uint32_t>(j)});
+
+    // --- bottom cap (normal -Y) ---
+    const uint32_t bot_base = static_cast<uint32_t>(m.vertices.size());
+    for (int j = 0; j <= slices; ++j) {
+        const float a = 2.0f * math::kPi * static_cast<float>(j) / static_cast<float>(slices);
+        m.vertices.push_back({{std::cos(a) * radius, -hy, std::sin(a) * radius}, {0, -1, 0}, color});
+    }
+    const uint32_t bot_center = static_cast<uint32_t>(m.vertices.size());
+    m.vertices.push_back({{0, -hy, 0}, {0, -1, 0}, color});
+    for (int j = 0; j < slices; ++j)
+        m.indices.insert(m.indices.end(),
+            {bot_center, bot_base + static_cast<uint32_t>(j), bot_base + static_cast<uint32_t>(j + 1)});
+
+    return m;
+}
+
 Mesh make_grid(float half_extent, int divisions, gfx::Color color) {
     if (divisions < 1) divisions = 1;
     Mesh m;

@@ -201,4 +201,28 @@ void Renderer3D::draw_lines(const geo::Mesh& mesh, const math::mat4& model) {
     }
 }
 
+void Renderer3D::draw_wire(const geo::Mesh& mesh, const math::mat4& model, gfx::Color color) {
+    const math::mat4 mvp = proj_ * view_ * model;
+    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        const geo::Vertex& a = mesh.vertices[mesh.indices[i]];
+        const geo::Vertex& b = mesh.vertices[mesh.indices[i + 1]];
+        const geo::Vertex& c = mesh.vertices[mesh.indices[i + 2]];
+        ClipV tri[3] = {
+            {mvp * math::vec4{a.pos.x, a.pos.y, a.pos.z, 1.0f}, color},
+            {mvp * math::vec4{b.pos.x, b.pos.y, b.pos.z, 1.0f}, color},
+            {mvp * math::vec4{c.pos.x, c.pos.y, c.pos.z, 1.0f}, color},
+        };
+        ClipV out[2][3];
+        const int n = clip_near(tri, out);
+        for (int t = 0; t < n; ++t) {
+            const Screen p0 = to_screen(out[t][0].clip, w_, h_);
+            const Screen p1 = to_screen(out[t][1].clip, w_, h_);
+            const Screen p2 = to_screen(out[t][2].clip, w_, h_);
+            fb_->draw_line(int(p0.x), int(p0.y), int(p1.x), int(p1.y), color);
+            fb_->draw_line(int(p1.x), int(p1.y), int(p2.x), int(p2.y), color);
+            fb_->draw_line(int(p2.x), int(p2.y), int(p0.x), int(p0.y), color);
+        }
+    }
+}
+
 } // namespace r3d
