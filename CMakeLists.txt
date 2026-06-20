@@ -110,6 +110,7 @@ add_test(NAME math COMMAND test_math)
 add_library(render3d_core STATIC
   src/engine/geometry.cpp
   src/engine/renderer3d.cpp
+  src/engine/camera.cpp
 )
 target_include_directories(render3d_core PUBLIC src)
 target_link_libraries(render3d_core PRIVATE engine_flags)

@@ -5,6 +5,7 @@
 //  and the geometry generators (engine/geometry.hpp) with no window and no SDL.
 //  The framebuffer-touching rasterizer is verified separately via a headless run.
 // =============================================================================
+#include "engine/camera.hpp"
 #include "engine/geometry.hpp"
 #include "engine/math.hpp"
 #include "engine/pipeline.hpp"
@@ -202,6 +203,38 @@ static void test_rasterizer_depth() {
     CHECK(gfx::g_of(center()) > gfx::r_of(center()));
 }
 
+// ---- cameras ----
+static void test_cameras() {
+    // Orbit: yaw=0,pitch=0 sits on +Z; the target lands at view-space (0,0,-dist).
+    cam::OrbitCamera o;
+    o.yaw = 0; o.pitch = 0; o.distance = 5.0f; o.target = {0, 0, 0};
+    const math::vec3 e = o.eye();
+    CHECK(approx(e.x, 0.0f) && approx(e.y, 0.0f) && approx(e.z, 5.0f));
+    const math::vec3 tv = math::transform_point(o.view(), o.target);
+    CHECK(approx(tv.x, 0.0f, 1e-4f) && approx(tv.y, 0.0f, 1e-4f) && approx(tv.z, -5.0f, 1e-4f));
+
+    // Orbit 90° in yaw -> camera swings onto +X.
+    o.orbit(math::radians(90.0f), 0.0f);
+    const math::vec3 e2 = o.eye();
+    CHECK(approx(e2.x, 5.0f, 1e-4f) && approx(e2.z, 0.0f, 1e-4f));
+
+    // Zoom + pitch clamp.
+    o.zoom(0.5f);
+    CHECK(approx(o.distance, 2.5f));
+    o.orbit(0.0f, math::radians(1000.0f));
+    CHECK(o.pitch < math::radians(90.0f));
+
+    // Fly: yaw=0 looks down -Z; moving forward decreases z.
+    cam::FlyCamera f;
+    f.pos = {0, 0, 0}; f.yaw = 0; f.pitch = 0;
+    const math::vec3 fwd = f.forward();
+    CHECK(approx(fwd.x, 0.0f) && approx(fwd.y, 0.0f) && approx(fwd.z, -1.0f));
+    f.move(2.0f, 0.0f, 0.0f);
+    CHECK(approx(f.pos.z, -2.0f, 1e-4f));
+    f.look(0.0f, math::radians(1000.0f));
+    CHECK(f.pitch < math::radians(90.0f));
+}
+
 int main() {
     test_to_screen();
     test_mvp_projection();
@@ -211,6 +244,7 @@ int main() {
     test_lerp_color();
     test_geometry();
     test_rasterizer_depth();
+    test_cameras();
 
     if (g_failures == 0) std::printf("render3d: all tests passed\n");
     else                 std::printf("render3d: %d FAILURE(S)\n", g_failures);
