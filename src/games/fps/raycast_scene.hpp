@@ -7,6 +7,7 @@
 // =============================================================================
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include "engine/scene.hpp"
@@ -32,6 +33,9 @@ private:
     gfx::Image              barrel_;
     std::vector<SpriteInst> sprites_;
     std::vector<double>     zbuf_;   // per-column wall depth (for sprite occlusion)
+    std::vector<int16_t>    gun_, step_;     // generated SFX (S16 mono)
+    double                  step_timer_ = 0.0;
+    bool                    space_latched_ = false;
     // Lodev-style camera: position + direction + camera plane (perpendicular).
     double posX_, posY_;
     double dirX_, dirY_;
