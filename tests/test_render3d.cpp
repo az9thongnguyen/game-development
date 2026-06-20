@@ -5,6 +5,7 @@
 //  and the geometry generators (engine/geometry.hpp) with no window and no SDL.
 //  The framebuffer-touching rasterizer is verified separately via a headless run.
 // =============================================================================
+#include "engine/geometry.hpp"
 #include "engine/math.hpp"
 #include "engine/pipeline.hpp"
 
@@ -120,6 +121,41 @@ static void test_lerp_color() {
     CHECK(lerp_color(gfx::colors::red, gfx::colors::green, 0.0f) == gfx::colors::red);
 }
 
+// ---- geometry generators ----
+static void test_geometry() {
+    // Cube: 8 shared corners, 12 triangles (36 indices); normals unit + outward.
+    const geo::Mesh cube = geo::make_cube(2.0f);
+    CHECK(cube.vertices.size() == 8);
+    CHECK(cube.indices.size() == 36);
+    for (const auto& v : cube.vertices) {
+        CHECK(approx(math::length(v.normal), 1.0f));
+        CHECK(math::dot(v.normal, v.pos) > 0.0f);  // points away from the center
+    }
+
+    // Plane: (subdiv+1)^2 verts, subdiv^2*2 triangles, all normals +Y.
+    const geo::Mesh plane = geo::make_plane(4.0f, 2, gfx::colors::white);
+    CHECK(plane.vertices.size() == 9);
+    CHECK(plane.indices.size() == 2 * 2 * 6);
+    for (const auto& v : plane.vertices) CHECK(approx(v.normal.y, 1.0f));
+
+    // Sphere: index count = stacks*slices*6; normals unit and == normalize(pos).
+    const geo::Mesh sph = geo::make_sphere(1.0f, 8, 12);
+    CHECK(sph.indices.size() == static_cast<size_t>(8 * 12 * 6));
+    for (const auto& v : sph.vertices) {
+        CHECK(approx(math::length(v.normal), 1.0f, 1e-3f));
+        const math::vec3 nf = math::normalize(v.pos);
+        CHECK(approx(v.normal.x, nf.x, 1e-3f));
+    }
+
+    // Grid + axes are LINE lists (index count divisible by 2).
+    const geo::Mesh grid = geo::make_grid(5.0f, 4);
+    CHECK(grid.indices.size() == static_cast<size_t>(4 * (4 + 1)));  // 2 lines per division line
+    CHECK(grid.indices.size() % 2 == 0);
+    const geo::Mesh axes = geo::make_axes(1.0f);
+    CHECK(axes.vertices.size() == 6);
+    CHECK(axes.indices.size() == 6);
+}
+
 int main() {
     test_to_screen();
     test_mvp_projection();
@@ -127,6 +163,7 @@ int main() {
     test_barycentric();
     test_clip_near();
     test_lerp_color();
+    test_geometry();
 
     if (g_failures == 0) std::printf("render3d: all tests passed\n");
     else                 std::printf("render3d: %d FAILURE(S)\n", g_failures);
