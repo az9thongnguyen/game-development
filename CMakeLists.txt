@@ -109,12 +109,15 @@ add_test(NAME math COMMAND test_math)
 # by whichever final target links it (the demo exe, or the test below).
 add_library(render3d_core STATIC
   src/engine/geometry.cpp
+  src/engine/renderer3d.cpp
 )
 target_include_directories(render3d_core PUBLIC src)
 target_link_libraries(render3d_core PRIVATE engine_flags)
 
-# ---- 3D pipeline + geometry tests (M3): pure math, no SDL --------------------
-add_executable(test_render3d tests/test_render3d.cpp)
+# ---- 3D pipeline + geometry + rasterizer tests (M3): no SDL ------------------
+# The rasterizer test drives a real (heap-allocated) framebuffer through
+# Renderer2D, so it compiles renderer2d.cpp directly — no window needed.
+add_executable(test_render3d tests/test_render3d.cpp src/engine/renderer2d.cpp)
 target_include_directories(test_render3d PRIVATE src)
 target_link_libraries(test_render3d PRIVATE render3d_core engine_flags)
 add_test(NAME render3d COMMAND test_render3d)
