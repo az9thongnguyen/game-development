@@ -21,7 +21,7 @@ material that accompanies the code.
 | M1 | Chess (desktop) — **2 chế độ chơi**: Người↔Người & Người↔Máy (AI minimax/alpha-beta); **GUI + TUI** | ✅ done |
 | M2 | FPS raycaster (Wolfenstein-style) — textured walls, billboard sprites, real audio | ✅ done |
 | M3 | Real 3D core: software rasterizer, z-buffer, perspective, mesh/primitives, orbit + free cameras, flat/Gouraud/wireframe, backface culling | ✅ done |
-| M3.5 | 3D visualization sandbox | ⬜ planned |
+| M3.5 | Interactive 3D sandbox: spawn/select/transform objects, mouse picking, orbit/pan/zoom camera | ✅ done |
 | M4 | Isometric sim (depth-sort + A* + save/load) | ⬜ planned |
 | M5 | Web port via Emscripten (no engine rewrite) | ⬜ planned |
 | _future (optional)_ | Native webserver (e.g. **Drogon**) to serve the web build / online features — **separate process, not part of engine core** | 💡 idea |
@@ -44,7 +44,8 @@ cmake --build build
 ./build/demo --tui      # chess (terminal)
 ./build/demo --fps      # M2 raycaster
 ./build/demo --3d       # M3 real 3D core (cube + sphere + grid; drag/WASD/ENTER/SPACE/RMB)
-ctest --test-dir build --output-on-failure   # unit tests (math, render3d, chess, fps)
+./build/demo --viz3d    # M3.5 interactive sandbox (1-4 spawn, click select, drag move, ...)
+ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps)
 ```
 
 For a sanitizer build (catches memory + undefined-behavior bugs during dev):
@@ -62,7 +63,7 @@ src/platform/   thin platform layer behind a fixed interface (platform.hpp)
 src/engine/     hand-written engine core: math, renderer2d, input, assets,
                 image, and the M3 3D core (pipeline, renderer3d, geometry, camera)
 src/demo/       the M0 acceptance demo scene
-src/games/      chess (M1), fps raycaster (M2), viz3d 3D showcase (M3)
+src/games/      chess (M1), fps raycaster (M2), viz3d 3D showcase + sandbox (M3/M3.5)
 docs/book/      the guidebook — read these chapters alongside the code
 cmake/          toolchain files (Emscripten added at M5)
 ```
