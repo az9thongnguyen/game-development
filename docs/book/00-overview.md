@@ -31,7 +31,9 @@
                        │
    [ platform ]  platform.hpp  (fixed interface)
                        │
-            backend_sdl.cpp        [ backend_web.cpp @ M5 ]
+            backend_sdl.cpp  (desktop + web: Emscripten ships SDL2,
+                              so the web reuses this file — only run()'s
+                              loop is #ifdef'd to emscripten_set_main_loop)
 ```
 
 Dependencies only point **down**. The rules that keep the web port a drop-in:
@@ -105,6 +107,8 @@ checks).
 | 29 | **A\* pathfinding** (g/h/f, octile heuristic, no corner cutting, smooth follow) |
 | 30 | **Save / load & serialization** (versioned text, transactional load, write seam) |
 | 31 | **M4 acceptance**: the isometric farm sim in action |
+| **M5 — WebAssembly port** | |
+| 32 | **The web port** (emscripten_set_main_loop, canvas, preload, why tick paid off) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -119,7 +123,7 @@ observe → pitfalls → exercises.**
 | **M3 ✅** | Real 3D core: software rasterizer, z-buffer, perspective, cameras |
 | **M3.5 ✅** | Interactive 3D sandbox: spawn/select/transform objects, mouse picking |
 | **M4 ✅** | Isometric farm sim: tile map, depth sort, ECS, A* pathfinding, save/load |
-| M5 | Web port via Emscripten (no engine rewrite) |
+| **M5 ✅** | WebAssembly port — chess + 3D core run in-browser, no engine/game rewrite |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

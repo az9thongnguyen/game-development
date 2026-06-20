@@ -32,39 +32,44 @@ option(ENGINE_SANITIZE "Enable Address + UndefinedBehavior sanitizers (dev)" OFF
 # On the web, SDL2 is provided by Emscripten's port via a compile/link flag, NOT
 # find_package. This branch keeps the structure web-ready; it is exercised at M5.
 if(EMSCRIPTEN)
+  # SDL2 comes from Emscripten's port (NOT find_package); the framebuffer is
+  # pushed to a <canvas>; assets are preloaded into the virtual filesystem; the
+  # output is a self-contained .html using our shell (which sets Module.arguments).
   add_compile_options(-sUSE_SDL=2)
   add_link_options(-sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1
-                   "--preload-file=${CMAKE_SOURCE_DIR}/assets@assets")
+                   "--preload-file=${CMAKE_SOURCE_DIR}/assets@assets"
+                   "--shell-file=${CMAKE_SOURCE_DIR}/web/shell.html")
+  set(CMAKE_EXECUTABLE_SUFFIX ".html")   # emcc emits demo.html + demo.js + demo.wasm
   set(SDL2_LINK "")
-endif()
-
-# ---- Find SDL2 (desktop platform backend) ------------------------------------
-# Strategy: prefer SDL2's own CMake config package; fall back to pkg-config.
-# On macOS, Homebrew installs into a keg (e.g. .../opt/sdl2*), so we point CMake
-# at the brew prefix first. None of this leaks above the platform layer.
-if(NOT EMSCRIPTEN AND APPLE)
-  find_program(BREW_EXECUTABLE brew)
-  if(BREW_EXECUTABLE)
-    execute_process(
-      COMMAND ${BREW_EXECUTABLE} --prefix sdl2
-      OUTPUT_VARIABLE SDL2_BREW_PREFIX
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET)
-    if(SDL2_BREW_PREFIX)
-      list(PREPEND CMAKE_PREFIX_PATH "${SDL2_BREW_PREFIX}")
+else()
+  # ---- Find SDL2 (desktop platform backend) ----------------------------------
+  # Strategy: prefer SDL2's own CMake config package; fall back to pkg-config.
+  # On macOS, Homebrew installs into a keg (e.g. .../opt/sdl2*), so we point CMake
+  # at the brew prefix first. None of this leaks above the platform layer.
+  if(APPLE)
+    find_program(BREW_EXECUTABLE brew)
+    if(BREW_EXECUTABLE)
+      execute_process(
+        COMMAND ${BREW_EXECUTABLE} --prefix sdl2
+        OUTPUT_VARIABLE SDL2_BREW_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+      if(SDL2_BREW_PREFIX)
+        list(PREPEND CMAKE_PREFIX_PATH "${SDL2_BREW_PREFIX}")
+      endif()
     endif()
   endif()
-endif()
 
-find_package(SDL2 CONFIG QUIET)
-if(SDL2_FOUND)
-  set(SDL2_LINK SDL2::SDL2)
-  message(STATUS "SDL2: found via CMake config (${SDL2_DIR})")
-else()
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
-  set(SDL2_LINK PkgConfig::SDL2)
-  message(STATUS "SDL2: found via pkg-config (version ${SDL2_VERSION})")
+  find_package(SDL2 CONFIG QUIET)
+  if(SDL2_FOUND)
+    set(SDL2_LINK SDL2::SDL2)
+    message(STATUS "SDL2: found via CMake config (${SDL2_DIR})")
+  else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+    set(SDL2_LINK PkgConfig::SDL2)
+    message(STATUS "SDL2: found via pkg-config (version ${SDL2_VERSION})")
+  endif()
 endif()
 
 # ---- Shared compile flags ----------------------------------------------------

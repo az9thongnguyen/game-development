@@ -16,6 +16,15 @@
 #include <cstdlib>
 #include <vector>
 
+#ifdef __EMSCRIPTEN__
+// On the web there is no OS-owned thread we may block: the browser owns the event
+// loop, so we hand it a per-frame callback via emscripten_set_main_loop instead of
+// spinning a while(true). This is the ONE platform difference the web port needs —
+// proof that the tick(dt) design (ch03) was the right call. SDL2 itself is provided
+// by Emscripten's port (-sUSE_SDL=2), so the rest of this file is unchanged.
+#include <emscripten.h>
+#endif
+
 namespace platform {
 namespace {
 
@@ -28,7 +37,10 @@ int                   g_fb_h = 0;
 bool                  g_quit  = false;
 InputState            g_input;
 
-long g_max_frames = -1;  // HAND_ENGINE_FRAMES test hook (-1 = run until quit)
+#ifndef __EMSCRIPTEN__
+long g_max_frames = -1;  // HAND_ENGINE_FRAMES test hook (-1 = run until quit);
+                         // only the desktop loop honors it, so it's desktop-only.
+#endif
 
 SDL_AudioDeviceID g_audio_dev  = 0;
 int               g_audio_rate = 44100;
@@ -141,9 +153,11 @@ bool init(const Config& cfg) {
 
     g_pixels.assign(static_cast<size_t>(g_fb_w) * static_cast<size_t>(g_fb_h), 0xFF000000u);
 
+#ifndef __EMSCRIPTEN__
     if (const char* s = std::getenv("HAND_ENGINE_FRAMES")) {
         g_max_frames = std::strtol(s, nullptr, 10);
     }
+#endif
     g_quit = false;
     return true;
 }
@@ -207,7 +221,36 @@ void play_sound(const int16_t* samples, int count) {
 bool should_quit()  { return g_quit; }
 void request_quit() { g_quit = true; }
 
+#ifdef __EMSCRIPTEN__
+namespace {
+std::function<void(double)> g_frame;     // the App::frame callback, held across ticks
+uint64_t                    g_prev = 0;
+double                      g_freq = 1.0;
+
+// The browser calls this once per animation frame (via requestAnimationFrame).
+void emscripten_tick() {
+    pump_events();
+    const uint64_t now = SDL_GetPerformanceCounter();
+    double         dt  = static_cast<double>(now - g_prev) / g_freq;
+    g_prev = now;
+    if (dt > 0.25) dt = 0.25;            // same spiral-of-death clamp as App::frame
+    g_frame(dt);
+    present();
+    if (g_quit) emscripten_cancel_main_loop();
+}
+} // namespace
+#endif
+
 void run(const std::function<void(double)>& frame) {
+#ifdef __EMSCRIPTEN__
+    g_frame = frame;
+    g_prev  = SDL_GetPerformanceCounter();
+    g_freq  = static_cast<double>(SDL_GetPerformanceFrequency());
+    // fps=0 → drive from requestAnimationFrame (vsync); simulate_infinite_loop=1 →
+    // this call does not return (the browser keeps calling emscripten_tick), so the
+    // engine/game code above is byte-for-byte the same as on desktop.
+    emscripten_set_main_loop(emscripten_tick, 0, 1);
+#else
     uint64_t     prev = SDL_GetPerformanceCounter();
     const double freq = static_cast<double>(SDL_GetPerformanceFrequency());
     long         frames = 0;
@@ -224,6 +267,7 @@ void run(const std::function<void(double)>& frame) {
 
         if (g_max_frames >= 0 && ++frames >= g_max_frames) g_quit = true;
     }
+#endif
 }
 
 } // namespace platform
