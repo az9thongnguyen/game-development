@@ -26,7 +26,8 @@
    [ games / tools: demo · chess · fps · 3d-viz ]   ← call engine API only
                        │
    [ engine core ]  app(loop) · scene · math · color · renderer2d · font
-                    · input(via platform) · assets · (3D core at M3)
+                    · input(via platform) · assets · image
+                    · 3D core: pipeline · renderer3d · geometry · camera (M3)
                        │
    [ platform ]  platform.hpp  (fixed interface)
                        │
@@ -83,6 +84,17 @@ checks).
 | 06 | Normalized input (keyboard/mouse; down vs pressed vs released) |
 | 07 | Asset & audio **seams** (web-VFS-ready I/O; audio stub) |
 | 08 | The M0 demo + FPS counter + **acceptance** |
+| **M1 — chess** | |
+| 09–15 | Board & FEN · move generation & perft · game controller · AI search · TUI · GUI · M1 acceptance |
+| **M2 — FPS raycaster** | |
+| 16–17 | Raycasting (DDA, textured walls) · sprites, depth & real audio |
+| **M3 — real 3D core** | |
+| 18 | The 3D **transform pipeline** (model→view→projection→NDC→screen) |
+| 19 | Triangle **rasterization & the z-buffer** (edge fns, barycentric, depth) |
+| 20 | **Geometry**: meshes & primitive generators (cube/plane/sphere/grid/axes) |
+| 21 | **Cameras**: orbit & free/fly |
+| 22 | **Shading, culling & clipping** (Lambert, flat/Gouraud, backface, near-clip) |
+| 23 | **M3 acceptance**: the `viz3d` scene in action |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -91,11 +103,11 @@ observe → pitfalls → exercises.**
 
 | MS | Deliverable |
 |----|-------------|
-| **M0** | Engine foundation (this part of the book) |
-| M1 | Chess — Human↔Human & Human↔AI (minimax/alpha-beta), GUI + TUI |
-| M2 | FPS raycaster (Wolfenstein-style) — adds real audio |
-| M3 | Real 3D core: software rasterizer, z-buffer, perspective, cameras |
-| M3.5 | 3D visualization sandbox |
+| **M0 ✅** | Engine foundation |
+| **M1 ✅** | Chess — Human↔Human & Human↔AI (minimax/alpha-beta), GUI + TUI |
+| **M2 ✅** | FPS raycaster (Wolfenstein-style) — adds real audio |
+| **M3 ✅** | Real 3D core: software rasterizer, z-buffer, perspective, cameras |
+| M3.5 | 3D visualization sandbox (next) |
 | M4 | Isometric sim (depth sort, A*, save/load) |
 | M5 | Web port via Emscripten (no engine rewrite) |
 
