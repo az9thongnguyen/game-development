@@ -107,6 +107,8 @@ add_library(chess_core STATIC
   src/games/chess/fen.cpp
   src/games/chess/movegen.cpp
   src/games/chess/game.cpp
+  src/games/chess/evaluate.cpp
+  src/games/chess/search.cpp
 )
 target_include_directories(chess_core PUBLIC src)
 target_link_libraries(chess_core PRIVATE engine_flags)

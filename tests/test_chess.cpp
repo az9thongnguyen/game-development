@@ -6,8 +6,10 @@
 // =============================================================================
 #include "games/chess/board.hpp"
 #include "games/chess/fen.hpp"
+#include "games/chess/evaluate.hpp"
 #include "games/chess/game.hpp"
 #include "games/chess/movegen.hpp"
+#include "games/chess/search.hpp"
 
 #include <cstdio>
 #include <string>
@@ -161,6 +163,40 @@ static void test_game() {
     CHECK(!g2.play(Move{ 0, 0, PieceType::None, false, false, false, false }));
 }
 
+static void test_search() {
+    auto start = parse_fen(kStartFEN);
+    CHECK(start.has_value());
+    if (start) {
+        CHECK(evaluate(*start) == 0);   // symmetric start position is balanced
+        SearchResult r = search(*start, 3);
+        CHECK(r.nodes > 0);
+        // The chosen move must be legal.
+        std::vector<Move> mv; generate_legal(*start, mv);
+        bool legal = false;
+        for (const Move& m : mv)
+            if (m.from == r.best.from && m.to == r.best.to && m.promotion == r.best.promotion)
+                legal = true;
+        CHECK(legal);
+    }
+
+    // Mate in one: back-rank mate Ra1-a8#. Depth 2 sees it.
+    auto m1 = parse_fen("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1");
+    CHECK(m1.has_value());
+    if (m1) {
+        SearchResult r = search(*m1, 2);
+        CHECK(move_to_string(r.best) == "a1a8");
+        CHECK(r.score > 50000);          // a mate score
+    }
+
+    // Free hanging queen: White should capture it (Rxd5).
+    auto hang = parse_fen("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1");
+    CHECK(hang.has_value());
+    if (hang) {
+        SearchResult r = search(*hang, 3);
+        CHECK(move_to_string(r.best) == "d1d5");
+    }
+}
+
 int main() {
     test_start_position();
     test_fen_roundtrip();
@@ -168,6 +204,7 @@ int main() {
     test_perft();
     test_end_states();
     test_game();
+    test_search();
 
     if (g_failures == 0) std::printf("chess: all tests passed\n");
     else                 std::printf("chess: %d FAILURE(S)\n", g_failures);
