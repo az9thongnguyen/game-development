@@ -3,6 +3,7 @@
 // =============================================================================
 #include "games/iso/serialize.hpp"
 
+#include <cmath>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -77,7 +78,8 @@ std::vector<uint8_t> save_farm(const Farm& f) {
         const Position*   p = w.positions.get(e);
         if (!r || !p || r->kind == ObjKind::Farmer) continue;
         objs << objkind_char(r->kind) << ' '
-             << static_cast<int>(p->x) << ' ' << static_cast<int>(p->y) << '\n';
+             << static_cast<int>(std::lround(p->x)) << ' '
+             << static_cast<int>(std::lround(p->y)) << '\n';
         ++count;
     }
     s << "OBJECTS " << count << '\n' << objs.str();
@@ -115,7 +117,9 @@ bool load_farm(Farm& f, const std::vector<uint8_t>& bytes) {
     }
 
     int n = 0;
-    if (!(in >> tok >> n) || tok != "OBJECTS" || n < 0) return false;
+    // At most one object per tile, so a legitimate count never exceeds w*h.
+    // Bounding it here also rejects absurd hand-crafted counts up front.
+    if (!(in >> tok >> n) || tok != "OBJECTS" || n < 0 || n > w * h) return false;
     for (int i = 0; i < n; ++i) {
         std::string kc;
         int x = 0, y = 0;

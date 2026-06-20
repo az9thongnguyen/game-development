@@ -61,8 +61,9 @@ inline Vec2i screen_to_grid(float sx, float sy, float ox, float oy) {
                  static_cast<int>(std::floor(gy)) };
 }
 
-// Painter's-algorithm depth key: bigger sum = nearer the camera = drawn later.
-// Correct for 1×1 footprints (everything in M4). See iso_render for the sort.
+// Painter's-algorithm depth key. A bigger sum is NEARER the camera, so iso_render
+// sorts ASCENDING and paints small-key (far) tiles first and big-key (near) tiles
+// LAST, on top. Correct for 1×1 footprints (everything in M4); see iso_render.
 inline float depth_key(float gx, float gy) { return gx + gy; }
 
 } // namespace iso
