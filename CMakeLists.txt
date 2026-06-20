@@ -90,9 +90,10 @@ add_executable(demo
   src/games/chess/chess_tui.cpp
   src/games/chess/chess_gui.cpp
   src/games/fps/raycast_scene.cpp
+  src/games/viz3d/scene3d.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core)
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:

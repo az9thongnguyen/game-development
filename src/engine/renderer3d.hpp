@@ -7,10 +7,14 @@
 //  the transform pipeline + z-buffered triangle fill that everything 3D reuses.
 //
 //  Per frame:
-//      r3d.begin(sky);                         // clear color + reset depth
+//      r3d.begin(ctx.gfx, sky);                // bind framebuffer, clear, reset depth
 //      r3d.set_camera(cam.view(), cam.proj()); // view + projection matrices
 //      r3d.draw_lines(grid, I);                // ground grid / axes (overlayed)
 //      r3d.draw_mesh(cube, model, Mode::SolidFlat, light);
+//
+//  The framebuffer is bound per frame in begin() (the engine hands the scene a
+//  fresh Renderer2D each frame), while the depth buffer lives in the Renderer3D
+//  so it is allocated once and only refilled — no per-frame allocation.
 //
 //  Nothing here touches SDL — it only writes pixels via Renderer2D, so it ports
 //  to the web exactly like the 2D renderer does.
@@ -42,9 +46,10 @@ struct Light {
 
 class Renderer3D {
 public:
-    explicit Renderer3D(gfx::Renderer2D& fb);
+    Renderer3D() = default;
 
-    void begin(gfx::Color clear);                  // clear color buffer + reset depth
+    // Bind this frame's framebuffer, clear the color buffer, reset depth to +inf.
+    void begin(gfx::Renderer2D& fb, gfx::Color clear);
     void set_camera(const math::mat4& view, const math::mat4& proj);
     void set_cull(bool on) { cull_ = on; }
     bool cull() const { return cull_; }
@@ -59,9 +64,9 @@ public:
 private:
     void raster_triangle(const ClipV v[3], bool gouraud);
 
-    gfx::Renderer2D&   fb_;
-    int                w_;
-    int                h_;
+    gfx::Renderer2D*   fb_ = nullptr;  // bound each frame in begin()
+    int                w_ = 0;
+    int                h_ = 0;
     std::vector<float> depth_;   // w_*h_, initialised to +inf each begin()
     math::mat4         view_ = math::mat4_identity();
     math::mat4         proj_ = math::mat4_identity();

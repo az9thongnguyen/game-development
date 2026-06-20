@@ -28,11 +28,11 @@ float lambert(math::vec3 n, const Light& light) {
 }
 } // namespace
 
-Renderer3D::Renderer3D(gfx::Renderer2D& fb)
-    : fb_(fb), w_(fb.width()), h_(fb.height()) {}
-
-void Renderer3D::begin(gfx::Color clear) {
-    fb_.clear(clear);
+void Renderer3D::begin(gfx::Renderer2D& fb, gfx::Color clear) {
+    fb_ = &fb;
+    w_ = fb.width();
+    h_ = fb.height();
+    fb.clear(clear);
     // (Re)size and reset the depth buffer. The framebuffer size is fixed for the
     // window, so this allocates once and only refills afterwards.
     const size_t n = static_cast<size_t>(w_) * static_cast<size_t>(h_);
@@ -97,7 +97,7 @@ void Renderer3D::raster_triangle(const ClipV v[3], bool gouraud) {
             } else {
                 c = v[0].color;  // flat: constant face color
             }
-            fb_.set_pixel(x, y, c);
+            fb_->set_pixel(x, y, c);
         }
     }
 }
@@ -151,9 +151,9 @@ void Renderer3D::draw_mesh(const geo::Mesh& mesh, const math::mat4& model, Mode 
                     if (ar >= 0.0f) continue;  // skip back faces (and degenerate)
                 }
                 const gfx::Color wc2 = out[t][0].color;
-                fb_.draw_line(int(p0.x), int(p0.y), int(p1.x), int(p1.y), wc2);
-                fb_.draw_line(int(p1.x), int(p1.y), int(p2.x), int(p2.y), wc2);
-                fb_.draw_line(int(p2.x), int(p2.y), int(p0.x), int(p0.y), wc2);
+                fb_->draw_line(int(p0.x), int(p0.y), int(p1.x), int(p1.y), wc2);
+                fb_->draw_line(int(p1.x), int(p1.y), int(p2.x), int(p2.y), wc2);
+                fb_->draw_line(int(p2.x), int(p2.y), int(p0.x), int(p0.y), wc2);
             } else {
                 raster_triangle(out[t], gouraud);
             }
@@ -178,7 +178,7 @@ void Renderer3D::draw_lines(const geo::Mesh& mesh, const math::mat4& model) {
 
         const Screen sa = to_screen(ca, w_, h_);
         const Screen sb = to_screen(cb, w_, h_);
-        fb_.draw_line(int(sa.x), int(sa.y), int(sb.x), int(sb.y), va.color);
+        fb_->draw_line(int(sa.x), int(sa.y), int(sb.x), int(sb.y), va.color);
     }
 }
 

@@ -178,7 +178,7 @@ static void test_rasterizer_depth() {
     std::vector<uint32_t> buf(static_cast<size_t>(W * H));
     platform::Framebuffer fb{buf.data(), W, H, W};
     gfx::Renderer2D r2(fb);
-    r3d::Renderer3D r3(r2);
+    r3d::Renderer3D r3;
     r3.set_cull(false);  // identity projection: don't reason about winding here
     r3.set_camera(math::mat4_identity(), math::mat4_identity());
     const r3d::Light light;
@@ -186,18 +186,18 @@ static void test_rasterizer_depth() {
     auto center = [&]() { return buf[static_cast<size_t>(H / 2) * W + W / 2]; };
 
     // Coverage: a centered triangle paints the center pixel.
-    r3.begin(gfx::colors::black);
+    r3.begin(r2, gfx::colors::black);
     r3.draw_mesh(single_tri(0.0f, gfx::colors::white), I, r3d::Mode::SolidFlat, light);
     CHECK(center() != gfx::colors::black);
 
     // Depth: near green (z=-0.5) beats far red (z=+0.5) — far drawn FIRST.
-    r3.begin(gfx::colors::black);
+    r3.begin(r2, gfx::colors::black);
     r3.draw_mesh(single_tri( 0.5f, gfx::colors::red),   I, r3d::Mode::SolidFlat, light);
     r3.draw_mesh(single_tri(-0.5f, gfx::colors::green), I, r3d::Mode::SolidFlat, light);
     CHECK(gfx::g_of(center()) > gfx::r_of(center()));
 
     // ...and near drawn FIRST: the far red fragment must be depth-rejected.
-    r3.begin(gfx::colors::black);
+    r3.begin(r2, gfx::colors::black);
     r3.draw_mesh(single_tri(-0.5f, gfx::colors::green), I, r3d::Mode::SolidFlat, light);
     r3.draw_mesh(single_tri( 0.5f, gfx::colors::red),   I, r3d::Mode::SolidFlat, light);
     CHECK(gfx::g_of(center()) > gfx::r_of(center()));
