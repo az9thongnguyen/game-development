@@ -192,3 +192,30 @@ target_link_libraries(fps_core PRIVATE engine_flags)
 add_executable(test_fps tests/test_fps.cpp)
 target_link_libraries(test_fps PRIVATE fps_core engine_flags)
 add_test(NAME fps COMMAND test_fps)
+
+# ---- Native webserver (requirements.md §11): SEPARATE process, NOT engine core --
+# Hand-written HTTP over POSIX sockets; serves the WASM bundle + a leaderboard API.
+# Links NO engine/game code (engine_flags carries only warning flags). Desktop only:
+# it is never part of the web build. Include root is the project root so the files
+# resolve their own "server/..." headers.
+if(NOT EMSCRIPTEN)
+  add_executable(webserver
+    server/main.cpp
+    server/http.cpp
+    server/static_files.cpp
+    server/leaderboard.cpp
+    server/net.cpp
+  )
+  target_include_directories(webserver PRIVATE ${CMAKE_SOURCE_DIR})
+  target_link_libraries(webserver PRIVATE engine_flags)
+endif()
+
+# test_server omits net.cpp on purpose, so the suite never opens a socket.
+add_executable(test_server tests/test_server.cpp
+  server/http.cpp
+  server/static_files.cpp
+  server/leaderboard.cpp
+)
+target_include_directories(test_server PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(test_server PRIVATE engine_flags)
+add_test(NAME server COMMAND test_server)
