@@ -16,6 +16,7 @@
 #include "demo/demo_scene.hpp"
 #include "games/chess/chess_gui.hpp"
 #include "games/chess/chess_tui.hpp"
+#include "games/fps/raycast_scene.hpp"
 
 namespace {
 
@@ -67,6 +68,17 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         return run_window(cfg, std::make_unique<chess::ChessScene>(vs_ai, depth));
+    }
+
+    if (mode == "--fps") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — fps";
+        cfg.fb_width  = 640;
+        cfg.fb_height = 400;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<fps::RaycastScene>());
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
