@@ -22,7 +22,7 @@ void App::frame(double dt) {
     // independent of the display's refresh rate.
     accumulator_ += dt;
     while (accumulator_ >= kFixedDt) {
-        scene_->update(kFixedDt);
+        scene_->update(kFixedDt, platform::input());
         accumulator_ -= kFixedDt;
         time_        += kFixedDt;
     }
@@ -31,7 +31,7 @@ void App::frame(double dt) {
     // the next not-yet-simulated step; scenes can use it to interpolate motion so
     // rendering looks smooth even though logic ticks at a fixed rate.
     gfx::Renderer2D renderer(platform::framebuffer());
-    Context ctx{ renderer, dt, time_, accumulator_ / kFixedDt };
+    Context ctx{ renderer, platform::input(), dt, time_, accumulator_ / kFixedDt };
     scene_->render(ctx);
 }
 

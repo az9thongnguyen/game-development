@@ -18,6 +18,9 @@ compile_commands.json
 .idea/
 .cache/
 
+# Local Claude Code settings (machine-local)
+.claude/settings.local.json
+
 # Emscripten (M5)
 *.wasm
 *.wat
