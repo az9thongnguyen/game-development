@@ -89,6 +89,8 @@ add_executable(demo
   src/demo/demo_scene.cpp
   src/games/chess/chess_tui.cpp
   src/games/chess/chess_gui.cpp
+  src/games/fps/map.cpp
+  src/games/fps/raycast_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
 target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core)
