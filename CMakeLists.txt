@@ -104,11 +104,19 @@ target_include_directories(test_math PRIVATE src)
 target_link_libraries(test_math PRIVATE engine_flags)
 add_test(NAME math COMMAND test_math)
 
-# ---- 3D pipeline tests (M3): pure math, no SDL -------------------------------
-# Sources grow with the milestone; step 2 covers the header-only pipeline.
+# ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
+# Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
+# by whichever final target links it (the demo exe, or the test below).
+add_library(render3d_core STATIC
+  src/engine/geometry.cpp
+)
+target_include_directories(render3d_core PUBLIC src)
+target_link_libraries(render3d_core PRIVATE engine_flags)
+
+# ---- 3D pipeline + geometry tests (M3): pure math, no SDL --------------------
 add_executable(test_render3d tests/test_render3d.cpp)
 target_include_directories(test_render3d PRIVATE src)
-target_link_libraries(test_render3d PRIVATE engine_flags)
+target_link_libraries(test_render3d PRIVATE render3d_core engine_flags)
 add_test(NAME render3d COMMAND test_render3d)
 
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
