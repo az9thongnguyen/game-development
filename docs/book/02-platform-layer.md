@@ -1,161 +1,297 @@
 # Chapter 02 — The Platform Layer: Window, Framebuffer, Present
 
-> **What you'll learn:** what a *framebuffer* is and why we own it; how a window
-> appears and how we push our pixels onto it; and the single most important
-> architectural idea in this whole project — the **platform seam** that will let
-> us port to the web later without rewriting anything.
+> **Goal of this chapter.** Open a real window, allocate the **framebuffer** (the
+> array of pixels we own and draw into), and push it to the screen — and set up the
+> **platform seam**, the single most important architectural decision in the whole
+> project. By the end you'll have a window you filled, pixel by pixel, yourself.
 
 ---
 
-## 1. The idea
+## 1. A framebuffer is just a big array of pixels
 
-### A framebuffer is just a big array of pixels
+A screen is a grid of colored dots. To draw anything — a line, a sprite, a 3D
+triangle — we keep our *own* grid in memory and write colors into it. That grid is
+the **framebuffer**: a flat array of 32-bit integers, one integer per pixel.
 
-A screen is a grid of pixels. To draw, we keep our own grid in memory — a plain
-array of 32-bit integers, one per pixel — and we write colors into it. That array
-is the **framebuffer**. Drawing a line, a sprite, or a 3D triangle all come down
-to the same thing: *computing which array elements to set, and to what color.*
+Ours is `480 × 270` pixels. It is stored **row-major**: all of row 0 left-to-right,
+then all of row 1, and so on. So the pixel at column `x`, row `y` lives at:
 
-We use the format **ARGB8888**: each pixel is one `uint32_t` holding four 8-bit
-channels — Alpha, Red, Green, Blue:
+```
+   index = y * width + x          // width = 480
+
+   (0,0) ── (1,0) ── (2,0) ── …   row 0  →  indices 0,1,2,…,479
+   (0,1) ── (1,1) ── …            row 1  →  indices 480,481,…
+   (0,2) ── …                     row 2  →  indices 960,…
+```
+
+Worked example: the pixel at `(x=10, y=3)` is at index `3*480 + 10 = 1450`. To set
+it red: `fb.pixels[1450] = 0xFFFF0000;`.
+
+**Pitch.** We also carry a `pitch` (pixels per row). For us `pitch == width`,
+because our rows are tightly packed. But some surfaces pad each row for alignment,
+so the *correct* general formula is `index = y * pitch + x`. Writing it with
+`pitch` from the start means our renderer code stays correct even if the buffer
+layout changes later. (Memory cost, for the curious: `480*270*4 bytes ≈ 506 KB` —
+tiny, allocated once.)
+
+### The pixel format: ARGB8888 (and a word on endianness)
+
+Each pixel packs four 8-bit channels into one `uint32_t` — **A**lpha, **R**ed,
+**G**reen, **B**lue:
 
 ```
   bits:  31..24   23..16   15..8    7..0
          [  A  ]  [  R  ]  [  G  ]  [  B  ]
-  e.g.   0xFF      0x64     0x95     0xED    ->  opaque cornflower blue
+
+  0xFF6495ED  →  A=0xFF (opaque)  R=0x64(100)  G=0x95(149)  B=0xED(237) = cornflower
+  0xFF000000  →  opaque black     |  0x00FFFFFF → fully TRANSPARENT white
 ```
 
-Our framebuffer is `480 × 270 = 129,600` pixels, stored row-major (row 0 left to
-right, then row 1, …). The pixel at `(x, y)` lives at index `y * width + x`. We
-expose this as a `Framebuffer` struct: a pointer plus width/height/pitch.
+Pack and unpack are just shifts and masks:
 
-> **Why a small resolution (480×270) scaled up?** Software rendering means the CPU
-> touches every pixel every frame. Fewer pixels = more headroom to do interesting
-> work by hand. We then upscale by an integer factor (×2 → 960×540) so it fills a
-> reasonable window while staying pixel-crisp. This is the classic retro/pixel-art
-> approach, and it keeps M0–M2 comfortably at 60 FPS.
-
-### The platform seam (the big idea)
-
-Our engine needs the OS for four things: a window, a way to show pixels, input,
-and time. We isolate **all** of that behind one header, `platform.hpp`, and put
-the actual OS-specific code in a separate "backend" file:
-
-```
-   engine + games   →   platform.hpp     ← they only ever see this
-                            ↑
-              ┌─────────────┴─────────────┐
-        backend_sdl.cpp            backend_web.cpp   (added at M5)
-       (desktop, today)            (browser, later)
+```cpp
+uint32_t argb = (a<<24) | (r<<16) | (g<<8) | b;   // pack
+uint8_t  r    = (argb >> 16) & 0xFF;              // unpack one channel
 ```
 
-The strict rule: **only the backend file may `#include <SDL.h>`.** Engine and game
-code never see an SDL type. Why bother? Because at M5 we add a *second* backend for
-the browser, and if the seam is clean, **none of the engine or game code changes**.
-This single discipline is what makes "port to web without a rewrite" realistic
-rather than wishful.
+> **The classic beginner trap:** forgetting alpha. `0x00FF0000` is "red, fully
+> transparent" — it may render as nothing or black depending on the path. When you
+> mean "opaque", the top byte must be `0xFF`. Almost every "why is my drawing
+> invisible?" bug is a missing `0xFF` alpha.
+
+**Endianness, briefly.** We always *think* of a pixel as the number `0xAARRGGBB`.
+In memory on a little-endian Mac the four bytes are actually stored `B, G, R, A`.
+We don't have to care, because we hand SDL the token `SDL_PIXELFORMAT_ARGB8888`,
+which tells it our *logical* channel order; SDL maps it correctly regardless of
+byte order. Rule of thumb: reason in terms of the `0xAARRGGBB` number, never in
+terms of raw byte offsets.
 
 ---
 
-## 2. The code
+## 2. The platform seam (the big idea)
 
-### `platform.hpp` — the interface
+The engine needs the OS for four things: a window, a way to show pixels, input, and
+time. We isolate **all** of it behind one header, `platform.hpp`, and put the
+OS-specific code in a swappable **backend**:
 
-Read it as a contract. The important pieces:
-
-- `struct Framebuffer { uint32_t* pixels; int width, height, pitch; };` — the
-  pixel grid, handed to whoever is drawing.
-- `struct Config` — title + logical resolution + integer scale.
-- `init` / `shutdown` — bring the window up and tear it down.
-- `framebuffer()` — get the buffer to draw into this frame.
-- `present()` — push the buffer to the screen.
-- `run(frame)` — the main loop (covered in Chapter 03).
-
-Notice there is **no SDL type anywhere** in this header. That's the seam working.
-
-### `backend_sdl.cpp` — the SDL implementation
-
-This is the only file that includes SDL. Three SDL objects do the work:
-
-- an `SDL_Window` — the actual OS window,
-- an `SDL_Texture` (streaming, ARGB8888, 480×270) — a GPU-side copy of our buffer,
-- an `SDL_Renderer` — used **only** to upload the texture and blit it.
-
-`present()` is the whole "show it on screen" story:
-
-```cpp
-SDL_UpdateTexture(g_texture, nullptr, g_pixels.data(), g_fb_w * 4); // CPU → GPU
-SDL_RenderClear(g_renderer);
-SDL_RenderCopy(g_renderer, g_texture, nullptr, nullptr);            // stretch to fill
-SDL_RenderPresent(g_renderer);                                       // flip to display
+```
+        engine + games          ← only ever #include "platform/platform.hpp"
+             │  (depends on)
+             ▼
+        platform.hpp             ← pure interface, ZERO SDL types
+             ▲  (implemented by)
+   ┌─────────┴──────────┐
+ backend_sdl.cpp     backend_web.cpp   (added at M5)
+ (desktop, today)    (browser, later)
 ```
 
-> **Isn't using `SDL_Renderer` cheating?** This is the one sanctioned use. We are
-> not asking SDL to draw shapes — we hand it a single finished image (our
-> framebuffer) and ask it to blit that one rectangle. Every pixel inside it was
-> computed by us. On the web, this exact step becomes "copy the buffer to a
-> `<canvas>`".
+The dependency arrows only ever point **down**: games depend on the engine, the
+engine depends on `platform.hpp`, and `platform.hpp` depends on nothing. The
+backend depends *up* on the interface to implement it. The strict, enforceable
+rule that makes this real:
 
-A few setup details worth understanding:
+> **Only a backend file may `#include <SDL.h>`.** No SDL type ever appears in
+> `platform.hpp` or anywhere above it.
 
-- `SDL_RenderSetLogicalSize(r, 480, 270)` + `SDL_RenderSetIntegerScale(r, true)` +
-  `SDL_HINT_RENDER_SCALE_QUALITY = "nearest"` together give a crisp, exact 2×
-  upscale with no blur.
-- `#define SDL_MAIN_HANDLED` + `SDL_SetMainReady()` let us keep a normal
-  `int main()` instead of letting SDL rewrite our entry point. (SDL sometimes
-  `#define`s `main` to its own; we opt out so `main.cpp` stays plain and doesn't
-  need to link `SDL2main`.)
-- The framebuffer is allocated **once** in `init()` (`g_pixels.assign(...)`) and
-  reused every frame. Allocating per frame would create garbage and stutter.
+Why pay for this discipline now? Because at M5 we add a *second* backend for the
+browser. If the seam is clean, the browser backend is a new file and **nothing in
+the engine or games changes**. "Port to web without a rewrite" is only realistic
+if the seam exists from day one — retrofitting it later means touching everything.
+You can even check the rule mechanically: `grep -rl "SDL" src/engine src/games`
+should print nothing.
+
+---
+
+## 3. The interface: `platform.hpp`
+
+Read it as a contract:
+
+```cpp
+struct Framebuffer { uint32_t* pixels; int width, height, pitch; };
+struct Config      { const char* title; int fb_width, fb_height, scale; };
+
+bool init(const Config&);   void shutdown();
+Framebuffer framebuffer();  void present();
+void run(const std::function<void(double dt)>& frame);
+bool should_quit();         void request_quit();
+```
+
+Notice what's *absent*: any `SDL_` type. `Framebuffer` is plain pointers and ints;
+`run` takes a plain callback. That absence is the seam doing its job. `fb_width`/
+`fb_height` are the **logical** render resolution; `scale` is the integer factor
+the window is blown up by (480×270 ×2 → a 960×540 window).
+
+---
+
+## 4. The implementation: `backend_sdl.cpp`
+
+This is the *only* file that includes SDL. Its state is three SDL objects plus our
+pixel array:
+
+```cpp
+SDL_Window*           g_window;    // the OS window
+SDL_Renderer*         g_renderer;  // used ONLY to upload + blit our texture
+SDL_Texture*          g_texture;   // a GPU-side streaming copy of our framebuffer
+std::vector<uint32_t> g_pixels;    // <-- THE framebuffer (ARGB8888), the real thing
+```
+
+### How a frame reaches the screen: `present()`
+
+Our pixels live in CPU memory (`g_pixels`). The display is driven by the GPU. So
+"show it" means *copy CPU pixels to the GPU and blit them*:
+
+```
+  g_pixels (CPU)  ──SDL_UpdateTexture──▶  g_texture (GPU)
+                                              │ SDL_RenderCopy (stretch to window)
+                                              ▼
+                                      back buffer ──SDL_RenderPresent──▶ screen
+```
+
+```cpp
+SDL_UpdateTexture(g_texture, nullptr, g_pixels.data(), g_fb_w * 4); // CPU → GPU (4 bytes/pixel)
+SDL_RenderClear(g_renderer);
+SDL_RenderCopy(g_renderer, g_texture, nullptr, nullptr);            // scale to fill window
+SDL_RenderPresent(g_renderer);                                       // flip back buffer to display
+```
+
+`SDL_RenderPresent` flips a **back buffer** to the screen — the image you were
+building is shown all at once, so you never see a half-drawn frame (tearing). With
+vsync enabled, the flip waits for the monitor's refresh, which also paces us to
+~60 FPS.
+
+> **"Isn't using `SDL_Renderer` cheating on the no-SDL-drawing rule?"** No — this is
+> the one sanctioned use. We are not asking SDL to draw *shapes*; we hand it a
+> single finished image (our whole framebuffer) and ask it to copy that one
+> rectangle to the window. Every pixel inside was computed by us. On the web this
+> exact step becomes "copy the buffer into a `<canvas>`".
+
+### Crisp upscaling
+
+Three settings make the small framebuffer fill the window with sharp, blocky
+pixels instead of a blurry stretch:
+
+```cpp
+SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest"); // no interpolation between pixels
+SDL_RenderSetLogicalSize(g_renderer, g_fb_w, g_fb_h);  // pretend the window IS 480×270
+SDL_RenderSetIntegerScale(g_renderer, SDL_TRUE);        // only whole-number multiples
+```
+"nearest" picks the closest source pixel (crisp); "linear" would blend neighbours
+(blurry — wrong for pixel art). Logical size + integer scale guarantee an exact
+2×, 3×, … multiple with no fractional smearing.
+
+### Keeping `main()` ours: `SDL_MAIN_HANDLED`
+
+On some platforms SDL `#define`s `main` to its own `SDL_main` and expects you to
+link `SDL2main`, so it can run setup before your code. We don't want that magic:
+
+```cpp
+#define SDL_MAIN_HANDLED   // tell SDL: "I provide a normal int main()"
+#include <SDL.h>
+...
+SDL_SetMainReady();        // (in init) "I've done any pre-init myself"
+```
+
+This keeps `main.cpp` a plain `int main()` that includes only `platform.hpp`, and
+avoids an extra link dependency. It's a small thing that keeps the seam clean.
+
+### Ownership & lifetime (no leaks)
+
+We allocate the framebuffer **once** in `init` and reuse it every frame:
+
+```cpp
+g_pixels.assign(size_t(g_fb_w) * g_fb_h, 0xFF000000u);  // once, opaque black
+```
+
+Allocating per frame would create garbage, fragment memory, and cause stutter — and
+the requirements forbid per-frame allocation in the render path. `shutdown()`
+tears everything down in reverse order (texture → renderer → window → `SDL_Quit`)
+and frees the buffer, so the program exits with no leaks. (At M0 acceptance we'll
+*prove* that with a leak checker.)
 
 ### A testing aid: `HAND_ENGINE_FRAMES`
 
-The loop checks an environment variable `HAND_ENGINE_FRAMES`. If set to a number,
-the program runs that many frames and exits on its own. That lets us run it
-without a human closing the window — useful for automated checks and, later, for
-running memory-leak tools at M0 acceptance.
+`run()` reads the environment variable `HAND_ENGINE_FRAMES`. If set to a number,
+the loop quits after that many frames. That lets us run head-less — no human
+closing the window — which is exactly what automated checks and the M0 leak test
+need:
+
+```sh
+HAND_ENGINE_FRAMES=60 ./build/demo   # runs ~60 frames, exits 0
+```
+
+(The frame loop itself — and *why* it lives here in the platform layer — is the
+subject of Chapter 03. For now: `run()` calls your `frame(dt)` once per frame and
+presents.)
 
 ---
 
-## 3. Run & observe
+## 5. Run & observe
 
 ```sh
 cmake --build build
 ./build/demo
 ```
 
-A **960×540 window** titled *"hand-engine — M0"* opens, filled solid
-**cornflower blue**. Close it with the window's red button (ESC works after
-Chapter 03's edit). Every one of those pixels was written by this loop in
+A **960×540 window** titled *"hand-engine — M0"* opens, filled solid **cornflower
+blue**. Close it with the red button. Those pixels came from this loop in
 `main.cpp`:
 
 ```cpp
-for (int i = 0; i < count; ++i) fb.pixels[i] = 0xFF6495ED; // we set each pixel
+platform::Framebuffer fb = platform::framebuffer();
+for (int i = 0; i < fb.width * fb.height; ++i)
+    fb.pixels[i] = 0xFF6495ED;   // every single pixel, set by us
 ```
 
-To run it head-less (no manual close):
-
-```sh
-HAND_ENGINE_FRAMES=60 ./build/demo   # runs ~60 frames, exits 0
-```
+You are now in complete control of every dot on that surface.
 
 ---
 
-## 4. Exercises
+## 6. Common pitfalls
 
-1. **Change the color.** Edit the constant in `main.cpp` to `0xFFFF0000` (opaque
-   red) and rebuild. Then work out the hex for pure green and pure blue.
-2. **Draw a gradient by hand.** Replace the solid fill with a loop over `x` and
-   `y` (`for y … for x …`) that sets the red channel from `x` and the green
-   channel from `y`. You'll see a smooth color ramp — proof you control every
-   pixel. (Index is `y * fb.width + x`.)
-3. **Resize.** Change `fb_width/fb_height/scale` in the `Config`. Try `320×180`
-   at scale `3`. Notice the window size changes but the drawing code doesn't.
+- **Missing alpha** → invisible/black drawing. Opaque means top byte `0xFF`.
+- **Row math with `width` when you mean `pitch`** → a slanted/garbled image if the
+  buffer is ever padded. Always `y * pitch + x`.
+- **Writing outside the buffer** (`x ≥ width`, `y ≥ height`, or a negative) →
+  memory corruption. Clipping (Chapter 05) and ASan (Chapter 01) are your safety
+  nets.
+- **Allocating in the frame path** → stutter. Allocate once in `init`.
+- **Reaching for `SDL_RenderDrawLine` etc.** → that's the rule we don't break; we
+  draw lines ourselves in Chapter 05.
 
 ---
 
-## 5. What's next
+## 7. Glossary
 
-Right now the screen is static. In **Chapter 03** we turn `run()` into a proper
-**game loop** with a **fixed-timestep** update, and introduce the `Scene`/`App`
-structure that every game in this project will build on.
+- **Framebuffer** — the CPU array of pixels we draw into.
+- **Pixel format (ARGB8888)** — 4 channels × 8 bits packed in a `uint32_t`.
+- **Pitch / stride** — bytes (or pixels) per row; ≥ width.
+- **Texture (streaming)** — a GPU image we update every frame from the framebuffer.
+- **Back buffer / present / vsync** — draw off-screen, flip to display, synced to
+  refresh.
+- **Backend** — a concrete implementation of `platform.hpp` (SDL now, web later).
+
+---
+
+## 8. Exercises
+
+1. **Recolor.** Set every pixel to `0xFFFF0000` (red). Then derive the hex for pure
+   green and pure blue. *(Hint: which byte is which channel?)*
+2. **Hand-draw a gradient.** Replace the solid fill with nested loops over `y` then
+   `x`, setting `r = x * 255 / fb.width` and `g = y * 255 / fb.height`. You'll see a
+   smooth ramp — proof you own every pixel. *(Hint: index is `y*fb.pitch + x`; keep
+   alpha `0xFF`.)*
+3. **Plot one dot.** Set just the pixel at `(x=240, y=135)` to white on a black
+   background. Compute its index by hand first, then check your loop hits it.
+4. **Resize without touching draw code.** Change `Config` to `320×180`, `scale 3`.
+   The window size changes; your drawing code doesn't. Why is that a good sign for
+   the architecture?
+
+---
+
+## 9. What's next
+
+We have a window and full control of its pixels — but the screen is static and the
+program structure is ad-hoc. **Chapter 03** turns `run()` into a proper **game
+loop** with a **fixed-timestep** update, introduces the `Scene`/`App` structure
+every game will build on, and explains why the loop lives down here in the platform
+layer (it's the key to the web port).

@@ -18,12 +18,13 @@ material that accompanies the code.
 | MS | What | Status |
 |----|------|--------|
 | **M0** | Engine foundation: window + software renderer + tick loop + math + input | 🚧 in progress |
-| M1 | Chess (desktop), human-vs-human + minimax/alpha-beta AI | ⬜ planned |
+| M1 | Chess (desktop) — **2 chế độ chơi**: Người↔Người & Người↔Máy (AI minimax/alpha-beta); **GUI + TUI** | ⬜ planned |
 | M2 | FPS raycaster (Wolfenstein-style) | ⬜ planned |
 | M3 | Real 3D core: software rasterizer, z-buffer, perspective, cameras | ⬜ planned |
 | M3.5 | 3D visualization sandbox | ⬜ planned |
 | M4 | Isometric sim (depth-sort + A* + save/load) | ⬜ planned |
 | M5 | Web port via Emscripten (no engine rewrite) | ⬜ planned |
+| _future (optional)_ | Native webserver (e.g. **Drogon**) to serve the web build / online features — **separate process, not part of engine core** | 💡 idea |
 
 ## Prerequisites (macOS)
 
@@ -58,6 +59,19 @@ src/demo/       the M0 acceptance demo scene
 docs/book/      the guidebook — read these chapters alongside the code
 cmake/          toolchain files (Emscripten added at M5)
 ```
+
+## Development workflow (git)
+
+History is kept clean and reviewable:
+
+- **`main`** — stable, reviewed checkpoints only.
+- **One feature branch per milestone**, e.g. `feat/m0-engine-foundation`,
+  `feat/m1-chess`. Each build step is its own commit on the branch.
+- At a milestone's review/acceptance, the branch is merged into `main` with
+  `--no-ff`, so the merge commit marks the milestone boundary.
+
+`git log --oneline --graph main` then reads as a milestone timeline, while each
+feature branch keeps the detailed step-by-step history.
 
 ## How to follow along
 
