@@ -1,0 +1,23 @@
+# Build output
+/build/
+/build-*/
+*.o
+*.obj
+*.a
+*.dylib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+.cache/
+
+# Emscripten (M5)
+*.wasm
+*.wat
