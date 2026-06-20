@@ -85,6 +85,7 @@ add_executable(demo
   src/engine/app.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp
+  src/engine/image.cpp
   src/demo/demo_scene.cpp
   src/games/chess/chess_tui.cpp
   src/games/chess/chess_gui.cpp

@@ -1,14 +1,13 @@
 // =============================================================================
 //  platform/backend_sdl.cpp  —  the SDL2 implementation of platform.hpp
 // =============================================================================
-//  This is the ONLY file in the project allowed to #include <SDL.h>. It uses SDL
-//  for exactly the "thin shim" responsibilities: create a window, hand us a pixel
-//  buffer + push it to the screen, run the loop, and report time. We deliberately
-//  do NOT use any SDL drawing primitives — the only SDL_Renderer calls here exist
-//  to upload our own framebuffer as a texture and blit that single texture to the
-//  window. Every actual pixel is written by our software renderer.
+//  The ONLY file allowed to #include <SDL.h>. SDL is used as a thin shim:
+//  window, a framebuffer we present via one texture blit, raw input, time. No SDL
+//  drawing primitives. Input is read by POLLING SDL's key/mouse state each frame
+//  (robust to event-delivery quirks under sdl2-compat / HiDPI); mouse position is
+//  mapped from window points to framebuffer coords by simple ratio.
 // =============================================================================
-#define SDL_MAIN_HANDLED          // we provide a normal int main(); see note below
+#define SDL_MAIN_HANDLED
 #include <SDL.h>
 
 #include "platform/platform.hpp"
@@ -20,8 +19,6 @@
 namespace platform {
 namespace {
 
-// All backend state is file-local. The engine never sees these; it only sees the
-// functions declared in platform.hpp.
 SDL_Window*           g_window   = nullptr;
 SDL_Renderer*         g_renderer = nullptr;  // used ONLY to present the texture
 SDL_Texture*          g_texture  = nullptr;  // streaming texture we upload into
@@ -29,101 +26,62 @@ std::vector<uint32_t> g_pixels;              // <-- THE framebuffer (ARGB8888)
 int                   g_fb_w = 0;
 int                   g_fb_h = 0;
 bool                  g_quit  = false;
-InputState            g_input;             // normalized input snapshot (Step 6)
+InputState            g_input;
 
-// Testing aid: if HAND_ENGINE_FRAMES=N is set in the environment, the loop quits
-// after N frames. Lets us run head-less (CI, leak checks) without a human closing
-// the window. -1 means "run until quit".
-long g_max_frames = -1;
-
-Key map_key(SDL_Keycode k) {
-    switch (k) {
-        case SDLK_UP:     return Key::Up;
-        case SDLK_DOWN:   return Key::Down;
-        case SDLK_LEFT:   return Key::Left;
-        case SDLK_RIGHT:  return Key::Right;
-        case SDLK_w:      return Key::W;
-        case SDLK_a:      return Key::A;
-        case SDLK_s:      return Key::S;
-        case SDLK_d:      return Key::D;
-        case SDLK_SPACE:  return Key::Space;
-        case SDLK_RETURN: return Key::Enter;
-        case SDLK_ESCAPE: return Key::Escape;
-        default:          return Key::Unknown;
-    }
-}
+long g_max_frames = -1;  // HAND_ENGINE_FRAMES test hook (-1 = run until quit)
 
 void pump_events() {
-    // A new frame: clear the per-frame EDGES (pressed/released) but keep the LEVEL
-    // (down) state, which persists until a key-up arrives.
-    for (int i = 0; i < int(Key::Count); ++i) {
-        g_input.key_pressed[i]  = false;
-        g_input.key_released[i] = false;
-    }
-    for (int i = 0; i < int(MouseButton::Count); ++i) {
-        g_input.mouse_pressed[i]  = false;
-        g_input.mouse_released[i] = false;
-    }
-
+    // Pump the OS queue (also updates SDL's internal input state) + watch quit.
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        switch (e.type) {
-            case SDL_QUIT:
-                g_quit = true;  // window close button / Cmd-Q
-                break;
+        if (e.type == SDL_QUIT) g_quit = true;
+    }
 
-            case SDL_KEYDOWN: {
-                if (e.key.keysym.sym == SDLK_ESCAPE) g_quit = true;  // kill switch
-                if (e.key.repeat) break;          // ignore auto-repeat for edges
-                const Key k = map_key(e.key.keysym.sym);
-                if (k != Key::Unknown) {
-                    g_input.key_down[int(k)]    = true;
-                    g_input.key_pressed[int(k)] = true;
-                }
-                break;
-            }
-            case SDL_KEYUP: {
-                const Key k = map_key(e.key.keysym.sym);
-                if (k != Key::Unknown) {
-                    g_input.key_down[int(k)]     = false;
-                    g_input.key_released[int(k)] = true;
-                }
-                break;
-            }
+    // ---- Keyboard: poll state, edge-detect against last frame ----
+    const Uint8* ks = SDL_GetKeyboardState(nullptr);
+    struct KeyMap { Key k; SDL_Scancode sc; };
+    static const KeyMap kmap[] = {
+        {Key::Up, SDL_SCANCODE_UP}, {Key::Down, SDL_SCANCODE_DOWN},
+        {Key::Left, SDL_SCANCODE_LEFT}, {Key::Right, SDL_SCANCODE_RIGHT},
+        {Key::W, SDL_SCANCODE_W}, {Key::A, SDL_SCANCODE_A},
+        {Key::S, SDL_SCANCODE_S}, {Key::D, SDL_SCANCODE_D},
+        {Key::Space, SDL_SCANCODE_SPACE}, {Key::Enter, SDL_SCANCODE_RETURN},
+        {Key::Escape, SDL_SCANCODE_ESCAPE},
+    };
+    for (const KeyMap& m : kmap) {
+        const bool now = ks[m.sc] != 0;
+        const bool was = g_input.key_down[int(m.k)];
+        g_input.key_pressed[int(m.k)]  = now && !was;
+        g_input.key_released[int(m.k)] = !now && was;
+        g_input.key_down[int(m.k)]     = now;
+    }
+    if (g_input.key_down[int(Key::Escape)]) g_quit = true;
 
-            case SDL_MOUSEMOTION: {
-                // Convert window pixels -> framebuffer (logical) coordinates, so
-                // mouse position matches what the renderer draws.
-                float lx = 0.0f, ly = 0.0f;
-                SDL_RenderWindowToLogical(g_renderer, e.motion.x, e.motion.y, &lx, &ly);
-                g_input.mouse_x = int(lx);
-                g_input.mouse_y = int(ly);
-                break;
-            }
-            case SDL_MOUSEBUTTONDOWN:
-            case SDL_MOUSEBUTTONUP: {
-                int b = -1;
-                if      (e.button.button == SDL_BUTTON_LEFT)   b = int(MouseButton::Left);
-                else if (e.button.button == SDL_BUTTON_RIGHT)  b = int(MouseButton::Right);
-                else if (e.button.button == SDL_BUTTON_MIDDLE) b = int(MouseButton::Middle);
-                if (b >= 0) {
-                    const bool now_down = (e.type == SDL_MOUSEBUTTONDOWN);
-                    g_input.mouse_down[b] = now_down;
-                    if (now_down) g_input.mouse_pressed[b]  = true;
-                    else          g_input.mouse_released[b] = true;
-                }
-                break;
-            }
-        }
+    // ---- Mouse: poll position + buttons; map window points -> framebuffer ----
+    int mx = 0, my = 0;
+    const Uint32 mask = SDL_GetMouseState(&mx, &my);
+    int ww = g_fb_w, wh = g_fb_h;
+    SDL_GetWindowSize(g_window, &ww, &wh);
+    g_input.mouse_x = (ww > 0) ? mx * g_fb_w / ww : mx;
+    g_input.mouse_y = (wh > 0) ? my * g_fb_h / wh : my;
+    struct BtnMap { MouseButton b; Uint32 m; };
+    static const BtnMap bmap[] = {
+        {MouseButton::Left,   SDL_BUTTON_LMASK},
+        {MouseButton::Right,  SDL_BUTTON_RMASK},
+        {MouseButton::Middle, SDL_BUTTON_MMASK},
+    };
+    for (const BtnMap& bm : bmap) {
+        const bool now = (mask & bm.m) != 0;
+        const bool was = g_input.mouse_down[int(bm.b)];
+        g_input.mouse_pressed[int(bm.b)]  = now && !was;
+        g_input.mouse_released[int(bm.b)] = !now && was;
+        g_input.mouse_down[int(bm.b)]     = now;
     }
 }
 
 } // anonymous namespace
 
 bool init(const Config& cfg) {
-    // Because we compiled with SDL_MAIN_HANDLED, SDL doesn't hijack main(); we
-    // must tell it we're ready before init. This keeps main() a plain int main()
-    // and avoids linking SDL2main.
     SDL_SetMainReady();
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -136,9 +94,11 @@ bool init(const Config& cfg) {
     const int win_w = cfg.fb_width  * cfg.scale;
     const int win_h = cfg.fb_height * cfg.scale;
 
+    const Uint32 win_flags = SDL_WINDOW_SHOWN |
+                             (cfg.highdpi ? SDL_WINDOW_ALLOW_HIGHDPI : 0u);
     g_window = SDL_CreateWindow(cfg.title,
                                 SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                win_w, win_h, SDL_WINDOW_SHOWN);
+                                win_w, win_h, win_flags);
     if (!g_window) {
         std::fprintf(stderr, "platform: SDL_CreateWindow failed: %s\n", SDL_GetError());
         return false;
@@ -151,12 +111,10 @@ bool init(const Config& cfg) {
         return false;
     }
 
-    // Nearest-neighbour scaling keeps our low-res pixels crisp when the small
-    // framebuffer is stretched to fill the larger window. Logical size + integer
-    // scale make the upscale an exact whole-number multiple (no blurry edges).
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+    // Smooth (linear) present for real artwork; nearest for crisp retro pixels.
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, cfg.smooth ? "linear" : "nearest");
     SDL_RenderSetLogicalSize(g_renderer, g_fb_w, g_fb_h);
-    SDL_RenderSetIntegerScale(g_renderer, SDL_TRUE);
+    SDL_RenderSetIntegerScale(g_renderer, cfg.smooth ? SDL_FALSE : SDL_TRUE);
 
     g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ARGB8888,
                                   SDL_TEXTUREACCESS_STREAMING, g_fb_w, g_fb_h);
@@ -165,9 +123,7 @@ bool init(const Config& cfg) {
         return false;
     }
 
-    // Allocate the framebuffer once (opaque black). We never reallocate per frame.
-    g_pixels.assign(static_cast<size_t>(g_fb_w) * static_cast<size_t>(g_fb_h),
-                    0xFF000000u);
+    g_pixels.assign(static_cast<size_t>(g_fb_w) * static_cast<size_t>(g_fb_h), 0xFF000000u);
 
     if (const char* s = std::getenv("HAND_ENGINE_FRAMES")) {
         g_max_frames = std::strtol(s, nullptr, 10);
@@ -190,8 +146,6 @@ Framebuffer framebuffer() {
 }
 
 void present() {
-    // Upload our CPU pixels into the GPU texture, then blit that one texture to
-    // fill the window. This is the only sanctioned use of SDL_Renderer.
     SDL_UpdateTexture(g_texture, nullptr, g_pixels.data(),
                       g_fb_w * static_cast<int>(sizeof(uint32_t)));
     SDL_RenderClear(g_renderer);
@@ -202,8 +156,7 @@ void present() {
 const InputState& input() { return g_input; }
 
 bool init_audio() {
-    // M0 seam: no-op. Real device open + sound mixing arrives at M2 (gun /
-    // footstep audio for the FPS). Kept here so audio lives in the platform layer.
+    // M0 seam: no-op. Real device + mixing arrives at M2.
     return true;
 }
 
@@ -222,8 +175,8 @@ void run(const std::function<void(double)>& frame) {
         const double   dt  = static_cast<double>(now - prev) / freq;
         prev = now;
 
-        frame(dt);     // engine does update + render into the framebuffer
-        present();     // we push it to the screen
+        frame(dt);
+        present();
 
         if (g_max_frames >= 0 && ++frames >= g_max_frames) g_quit = true;
     }
