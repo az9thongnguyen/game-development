@@ -118,6 +118,28 @@ static void test_clip_near() {
             CHECK(out[t][v].clip.w + out[t][v].clip.z >= -1e-5f);
 }
 
+// ---- 2D segment clipping (keeps the line int-cast in range, slope preserved) ----
+static void test_clip_segment() {
+    // Fully inside: unchanged, returns true.
+    float x0 = 5, y0 = 5, x1 = 15, y1 = 15;
+    CHECK(clip_segment(x0, y0, x1, y1, 20, 20));
+    CHECK(approx(x0, 5.0f) && approx(x1, 15.0f));
+
+    // Crosses the left edge: x0 clamped to 0, slope preserved (horizontal line).
+    x0 = -10; y0 = 5; x1 = 5; y1 = 5;
+    CHECK(clip_segment(x0, y0, x1, y1, 20, 20));
+    CHECK(approx(x0, 0.0f) && approx(y0, 5.0f));
+
+    // Huge coordinate (the pathological near-plane case): clipped into range.
+    x0 = 500000.0f; y0 = 10; x1 = 10; y1 = 10;
+    CHECK(clip_segment(x0, y0, x1, y1, 64, 64));
+    CHECK(x0 <= 63.0f && x0 >= 0.0f);
+
+    // Fully outside (both left of the rect): returns false.
+    x0 = -50; y0 = 5; x1 = -10; y1 = 5;
+    CHECK(!clip_segment(x0, y0, x1, y1, 20, 20));
+}
+
 // ---- color interpolation used by clipping / Gouraud ----
 static void test_lerp_color() {
     const gfx::Color mid = lerp_color(gfx::colors::black, gfx::colors::white, 0.5f);
@@ -151,6 +173,11 @@ static void test_geometry() {
         const math::vec3 nf = math::normalize(v.pos);
         CHECK(approx(v.normal.x, nf.x, 1e-3f));
     }
+
+    // Cylinder: side + two caps; slices*12 indices; normals unit length.
+    const geo::Mesh cyl = geo::make_cylinder(0.8f, 1.6f, 24);
+    CHECK(cyl.indices.size() == static_cast<size_t>(24 * 12));
+    for (const auto& v : cyl.vertices) CHECK(approx(math::length(v.normal), 1.0f, 1e-3f));
 
     // Grid + axes are LINE lists (index count divisible by 2).
     const geo::Mesh grid = geo::make_grid(5.0f, 4);
@@ -272,6 +299,7 @@ int main() {
     test_signed_area_winding();
     test_barycentric();
     test_clip_near();
+    test_clip_segment();
     test_lerp_color();
     test_geometry();
     test_rasterizer_depth();

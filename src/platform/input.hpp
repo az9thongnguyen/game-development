@@ -20,6 +20,12 @@ enum class Key {
     Up, Down, Left, Right,
     W, A, S, D,
     Space, Enter, Escape,
+    // Added for the M3.5 editor (the table in backend_sdl.cpp maps each to a
+    // scancode; new entries "just work" because the pump loops over that table).
+    Num1, Num2, Num3, Num4,
+    Q, E, R, F, G, C, X,
+    Minus, Equals,
+    Tab, Delete, Backspace,
     Count
 };
 

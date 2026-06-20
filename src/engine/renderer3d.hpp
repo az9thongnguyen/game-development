@@ -61,6 +61,11 @@ public:
     // Lines are overlaid (not depth-tested), so draw them before solid meshes.
     void draw_lines(const geo::Mesh& mesh, const math::mat4& model);
 
+    // Draw a TRIANGLE-list mesh as wireframe in one fixed color (e.g. a selection
+    // highlight). Overlaid (not depth-tested); near-clipped. Ignores culling so the
+    // whole outline shows.
+    void draw_wire(const geo::Mesh& mesh, const math::mat4& model, gfx::Color color);
+
 private:
     void raster_triangle(const ClipV v[3], bool gouraud);
 

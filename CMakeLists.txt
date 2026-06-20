@@ -91,9 +91,10 @@ add_executable(demo
   src/games/chess/chess_gui.cpp
   src/games/fps/raycast_scene.cpp
   src/games/viz3d/scene3d.cpp
+  src/games/viz3d/editor_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core)
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:
@@ -123,6 +124,18 @@ add_executable(test_render3d tests/test_render3d.cpp src/engine/renderer2d.cpp)
 target_include_directories(test_render3d PRIVATE src)
 target_link_libraries(test_render3d PRIVATE render3d_core engine_flags)
 add_test(NAME render3d COMMAND test_render3d)
+
+# ---- viz3d sandbox model (M3.5): pure editor logic, testable without SDL -----
+add_library(viz3d_core STATIC
+  src/games/viz3d/editor.cpp
+)
+target_include_directories(viz3d_core PUBLIC src)
+target_link_libraries(viz3d_core PRIVATE engine_flags)
+
+add_executable(test_viz3d tests/test_viz3d.cpp)
+target_include_directories(test_viz3d PRIVATE src)
+target_link_libraries(test_viz3d PRIVATE viz3d_core render3d_core engine_flags)
+add_test(NAME viz3d COMMAND test_viz3d)
 
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).

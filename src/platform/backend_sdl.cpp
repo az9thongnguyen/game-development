@@ -51,6 +51,14 @@ void pump_events() {
         {Key::S, SDL_SCANCODE_S}, {Key::D, SDL_SCANCODE_D},
         {Key::Space, SDL_SCANCODE_SPACE}, {Key::Enter, SDL_SCANCODE_RETURN},
         {Key::Escape, SDL_SCANCODE_ESCAPE},
+        {Key::Num1, SDL_SCANCODE_1}, {Key::Num2, SDL_SCANCODE_2},
+        {Key::Num3, SDL_SCANCODE_3}, {Key::Num4, SDL_SCANCODE_4},
+        {Key::Q, SDL_SCANCODE_Q}, {Key::E, SDL_SCANCODE_E}, {Key::R, SDL_SCANCODE_R},
+        {Key::F, SDL_SCANCODE_F}, {Key::G, SDL_SCANCODE_G}, {Key::C, SDL_SCANCODE_C},
+        {Key::X, SDL_SCANCODE_X},
+        {Key::Minus, SDL_SCANCODE_MINUS}, {Key::Equals, SDL_SCANCODE_EQUALS},
+        {Key::Tab, SDL_SCANCODE_TAB}, {Key::Delete, SDL_SCANCODE_DELETE},
+        {Key::Backspace, SDL_SCANCODE_BACKSPACE},
     };
     for (const KeyMap& m : kmap) {
         const bool now = ks[m.sc] != 0;

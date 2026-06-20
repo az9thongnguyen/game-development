@@ -110,6 +110,40 @@ inline ClipV lerp_clipv(const ClipV& a, const ClipV& b, float t) {
     return r;
 }
 
+// ---- 2D screen-space segment clipping (Cohen-Sutherland) --------------------
+// Clip a line segment to the framebuffer rect [0,w-1] x [0,h-1], updating the
+// endpoints in place. Returns false if the segment is entirely outside.
+//
+// Why: near-plane clipping handles z, but a vertex near the near plane with a
+// large lateral offset can project to a screen coordinate in the hundreds of
+// thousands. Casting that to int is undefined behavior, and a Bresenham line to
+// it would loop hundreds of thousands of times. Clipping first keeps the cast in
+// range, bounds the loop, AND preserves the line's slope (unlike a naive clamp).
+inline bool clip_segment(float& x0, float& y0, float& x1, float& y1, float w, float h) {
+    constexpr int kIn = 0, kL = 1, kR = 2, kB = 4, kT = 8;
+    const float xmin = 0.0f, ymin = 0.0f, xmax = w - 1.0f, ymax = h - 1.0f;
+    auto code = [&](float x, float y) {
+        int c = kIn;
+        if (x < xmin) c |= kL; else if (x > xmax) c |= kR;
+        if (y < ymin) c |= kB; else if (y > ymax) c |= kT;
+        return c;
+    };
+    int c0 = code(x0, y0), c1 = code(x1, y1);
+    for (int it = 0; it < 8; ++it) {
+        if (!(c0 | c1)) return true;    // both endpoints inside
+        if (c0 & c1)    return false;   // both share an outside half-plane → out
+        const int co = c0 ? c0 : c1;    // pick an endpoint that is outside
+        float x = 0.0f, y = 0.0f;
+        if      (co & kT) { x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0); y = ymax; }
+        else if (co & kB) { x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0); y = ymin; }
+        else if (co & kR) { y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0); x = xmax; }
+        else              { y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0); x = xmin; }
+        if (co == c0) { x0 = x; y0 = y; c0 = code(x0, y0); }
+        else          { x1 = x; y1 = y; c1 = code(x1, y1); }
+    }
+    return true;  // bounded-iteration safety net
+}
+
 // Clip a triangle against the single near plane (w + z >= 0). This is the one
 // plane that MUST be clipped: without it, a vertex behind the camera has w <= 0
 // and the perspective divide flips/explodes its screen position, smearing the
