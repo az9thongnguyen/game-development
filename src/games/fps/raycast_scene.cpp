@@ -13,6 +13,17 @@
 
 namespace fps {
 
+namespace {
+// Multiply a color by a brightness factor, clamped to [0,255] per channel.
+gfx::Color shade_color(gfx::Color c, double s) {
+    auto ch = [&](uint8_t v) -> uint8_t {
+        const double r = v * s;
+        return static_cast<uint8_t>(r < 0.0 ? 0.0 : (r > 255.0 ? 255.0 : r));
+    };
+    return gfx::rgb(ch(gfx::r_of(c)), ch(gfx::g_of(c)), ch(gfx::b_of(c)));
+}
+} // namespace
+
 RaycastScene::RaycastScene()
     : map_(default_map()),
       textures_(make_wall_textures()),
@@ -134,9 +145,7 @@ void RaycastScene::render(const engine::Context& ctx) {
             texPos += step;
             if (texY < 0) texY = 0; if (texY >= texH) texY = texH - 1;
             const gfx::Color c = px[static_cast<size_t>(texY) * texW + texX];
-            g.set_pixel(x, y, gfx::rgb(static_cast<uint8_t>(gfx::r_of(c) * shade),
-                                       static_cast<uint8_t>(gfx::g_of(c) * shade),
-                                       static_cast<uint8_t>(gfx::b_of(c) * shade)));
+            g.set_pixel(x, y, shade_color(c, shade));
         }
     }
 
@@ -181,9 +190,7 @@ void RaycastScene::render(const engine::Context& ctx) {
                 if (texY < 0 || texY >= im.h) continue;
                 const gfx::Color col = im.pixels[static_cast<size_t>(texY) * im.w + texX];
                 if (gfx::a_of(col) == 0) continue;  // transparent texel
-                g.set_pixel(stripe, y, gfx::rgb(static_cast<uint8_t>(gfx::r_of(col) * shade),
-                                                static_cast<uint8_t>(gfx::g_of(col) * shade),
-                                                static_cast<uint8_t>(gfx::b_of(col) * shade)));
+                g.set_pixel(stripe, y, shade_color(col, shade));
             }
         }
     }

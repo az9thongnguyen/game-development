@@ -10,8 +10,11 @@
 namespace gfx {
 
 void Renderer2D::clear(Color c) {
-    const int n = fb_.width * fb_.height;
-    for (int i = 0; i < n; ++i) fb_.pixels[i] = c;
+    // Stride by pitch per row — pitch may exceed width for padded framebuffers.
+    for (int y = 0; y < fb_.height; ++y) {
+        Color* row = &fb_.pixels[y * fb_.pitch];
+        for (int x = 0; x < fb_.width; ++x) row[x] = c;
+    }
 }
 
 void Renderer2D::set_pixel(int x, int y, Color c) {
