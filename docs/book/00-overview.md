@@ -109,6 +109,8 @@ checks).
 | 31 | **M4 acceptance**: the isometric farm sim in action |
 | **M5 — WebAssembly port** | |
 | 32 | **The web port** (emscripten_set_main_loop, canvas, preload, why tick paid off) |
+| **Extension — native webserver (§11)** | |
+| 33 | **A native webserver from scratch** (HTTP over sockets, MIME, path-traversal, a leaderboard API — a separate process, no engine code) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -124,6 +126,7 @@ observe → pitfalls → exercises.**
 | **M3.5 ✅** | Interactive 3D sandbox: spawn/select/transform objects, mouse picking |
 | **M4 ✅** | Isometric farm sim: tile map, depth sort, ECS, A* pathfinding, save/load |
 | **M5 ✅** | WebAssembly port — chess + 3D core run in-browser, no engine/game rewrite |
+| **ext ✅** | Native webserver (§11) — hand-written, serves the WASM build + a leaderboard API as a separate process |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
