@@ -26,6 +26,9 @@ enum class Key {
     Q, E, R, F, G, C, X,
     Minus, Equals,
     Tab, Delete, Backspace,
+    // Added for the M4 iso sim: brushes 5..0 and save/load function keys.
+    Num5, Num6, Num7, Num8, Num9, Num0,
+    F5, F9,
     Count
 };
 
