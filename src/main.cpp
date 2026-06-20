@@ -18,6 +18,7 @@
 #include "games/chess/chess_tui.hpp"
 #include "games/fps/raycast_scene.hpp"
 #include "games/viz3d/scene3d.hpp"
+#include "games/viz3d/editor_scene.hpp"
 
 namespace {
 
@@ -91,6 +92,17 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         return run_window(cfg, std::make_unique<viz3d::Scene3D>());
+    }
+
+    if (mode == "--viz3d") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — viz3d sandbox";
+        cfg.fb_width  = 960;
+        cfg.fb_height = 600;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<viz3d::EditorScene>());
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
