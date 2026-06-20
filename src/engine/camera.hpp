@@ -20,6 +20,12 @@
 
 namespace cam {
 
+// A world-space ray (used for mouse picking against the scene).
+struct Ray {
+    math::vec3 origin;
+    math::vec3 dir;   // normalized
+};
+
 // Orbit around `target` at `distance`, parameterized by yaw (around +Y) and
 // pitch (elevation). Pitch is clamped so the camera never flips over the poles.
 class OrbitCamera {
@@ -36,10 +42,18 @@ public:
 
     void orbit(float dyaw, float dpitch);  // add to yaw/pitch (pitch clamped)
     void zoom(float factor);               // distance *= factor (clamped)
+    void pan(float dx, float dy);          // slide the target in the view plane
 
     math::vec3 eye() const;                 // world-space camera position
+    math::vec3 forward() const;             // eye -> target, normalized
+    math::vec3 right() const;               // camera right axis
+    math::vec3 up() const;                  // camera up axis
     math::mat4 view() const;
     math::mat4 proj(float aspect) const;
+
+    // Build a world ray through a normalized screen point (ndc in [-1,+1], y up).
+    // Used for mouse picking; no matrix inverse needed — just the camera basis.
+    Ray ray_through(float ndc_x, float ndc_y, float aspect) const;
 };
 
 // A first-person camera at `pos` looking along yaw/pitch. yaw = 0 looks down -Z.

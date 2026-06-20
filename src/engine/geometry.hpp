@@ -48,6 +48,10 @@ Mesh make_plane(float size, int subdiv, gfx::Color color = gfx::colors::white);
 // segments. Normals are exact (normalized position). stacks*slices*6 indices.
 Mesh make_sphere(float radius, int stacks, int slices, gfx::Color color = gfx::colors::white);
 
+// A cylinder of `radius` and `height`, axis along Y, centered at the origin, with
+// `slices` segments around. Side wall + top/bottom caps. slices*12 indices.
+Mesh make_cylinder(float radius, float height, int slices, gfx::Color color = gfx::colors::white);
+
 // ---- Line primitives (drawn via Renderer3D::draw_lines) ---------------------
 // A ground grid in the y=0 plane: `divisions` cells across `2*half_extent`.
 Mesh make_grid(float half_extent, int divisions, gfx::Color color = gfx::rgb(70, 70, 80));

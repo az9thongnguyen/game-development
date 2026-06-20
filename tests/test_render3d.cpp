@@ -152,6 +152,11 @@ static void test_geometry() {
         CHECK(approx(v.normal.x, nf.x, 1e-3f));
     }
 
+    // Cylinder: side + two caps; slices*12 indices; normals unit length.
+    const geo::Mesh cyl = geo::make_cylinder(0.8f, 1.6f, 24);
+    CHECK(cyl.indices.size() == static_cast<size_t>(24 * 12));
+    for (const auto& v : cyl.vertices) CHECK(approx(math::length(v.normal), 1.0f, 1e-3f));
+
     // Grid + axes are LINE lists (index count divisible by 2).
     const geo::Mesh grid = geo::make_grid(5.0f, 4);
     CHECK(grid.indices.size() == static_cast<size_t>(4 * (4 + 1)));  // 2 lines per division line
