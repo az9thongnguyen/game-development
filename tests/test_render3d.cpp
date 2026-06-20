@@ -235,6 +235,37 @@ static void test_cameras() {
     CHECK(f.pitch < math::radians(90.0f));
 }
 
+// ---- regression: a triangle straddling the near plane, drawn through a real
+//      perspective camera, must clip + raster safely (no UB, bounded writes)
+//      and still produce visible pixels. Exercises the Gouraud color clamp and
+//      the bounding-box clamp on extreme screen coordinates.
+static void test_near_clip_raster() {
+    const int W = 80, H = 80;
+    std::vector<uint32_t> buf(static_cast<size_t>(W * H));
+    platform::Framebuffer fb{buf.data(), W, H, W};
+    gfx::Renderer2D r2(fb);
+    r3d::Renderer3D r3;
+    r3.set_cull(false);
+    r3.set_camera(math::mat4_look_at({0, 0, 0}, {0, 0, -1}, {0, 1, 0}),
+                  math::mat4_perspective(math::radians(70.0f), 1.0f, 0.1f, 100.0f));
+    const r3d::Light light;
+
+    geo::Mesh m;
+    m.vertices = {
+        {{0.0f, 0.0f,  1.0f}, {0, 0, 1}, gfx::colors::white},  // BEHIND the camera
+        {{-1.0f, -1.0f, -2.0f}, {0, 0, 1}, gfx::colors::white},
+        {{ 1.0f, -1.0f, -2.0f}, {0, 0, 1}, gfx::colors::white},
+    };
+    m.indices = {0, 1, 2};
+
+    r3.begin(r2, gfx::colors::black);
+    r3.draw_mesh(m, math::mat4_identity(), r3d::Mode::SolidGouraud, light);  // reaching here = no crash
+
+    int painted = 0;
+    for (uint32_t px : buf) if (px != gfx::colors::black) ++painted;
+    CHECK(painted > 0);  // the front portion clipped to the near plane still renders
+}
+
 int main() {
     test_to_screen();
     test_mvp_projection();
@@ -245,6 +276,7 @@ int main() {
     test_geometry();
     test_rasterizer_depth();
     test_cameras();
+    test_near_clip_raster();
 
     if (g_failures == 0) std::printf("render3d: all tests passed\n");
     else                 std::printf("render3d: %d FAILURE(S)\n", g_failures);

@@ -26,6 +26,12 @@ float lambert(math::vec3 n, const Light& light) {
     const float diffuse = d > 0.0f ? d : 0.0f;
     return light.ambient + (1.0f - light.ambient) * diffuse;
 }
+
+// Clamp a float color channel to a valid byte. Converting an out-of-range float
+// to uint8_t is undefined behavior, so every float->byte path goes through here.
+uint8_t to_u8(float v) {
+    return static_cast<uint8_t>(v < 0.0f ? 0.0f : (v > 255.0f ? 255.0f : v));
+}
 } // namespace
 
 void Renderer3D::begin(gfx::Renderer2D& fb, gfx::Color clear) {
@@ -56,13 +62,17 @@ void Renderer3D::raster_triangle(const ClipV v[3], bool gouraud) {
     if (area == 0.0f) return;             // degenerate: no pixels
     if (cull_ && area > 0.0f) return;     // back face
 
-    // Screen-space bounding box, clamped to the framebuffer.
-    int minx = static_cast<int>(std::floor(std::min({s0.x, s1.x, s2.x})));
-    int maxx = static_cast<int>(std::ceil (std::max({s0.x, s1.x, s2.x})));
-    int miny = static_cast<int>(std::floor(std::min({s0.y, s1.y, s2.y})));
-    int maxy = static_cast<int>(std::ceil (std::max({s0.y, s1.y, s2.y})));
-    minx = std::max(minx, 0);  maxx = std::min(maxx, w_ - 1);
-    miny = std::max(miny, 0);  maxy = std::min(maxy, h_ - 1);
+    // Screen-space bounding box. We CLAMP the float extents to the framebuffer
+    // rect BEFORE the int cast: a vertex with a tiny clip.w (near the near plane)
+    // can produce a huge screen coordinate, and casting an out-of-int-range float
+    // to int is undefined behavior. Clamping first is both safe and correct —
+    // we only ever need to iterate visible pixels.
+    const float fxlo = std::min({s0.x, s1.x, s2.x}), fxhi = std::max({s0.x, s1.x, s2.x});
+    const float fylo = std::min({s0.y, s1.y, s2.y}), fyhi = std::max({s0.y, s1.y, s2.y});
+    const int minx = static_cast<int>(std::floor(math::clampf(fxlo, 0.0f, static_cast<float>(w_ - 1))));
+    const int maxx = static_cast<int>(std::ceil (math::clampf(fxhi, 0.0f, static_cast<float>(w_ - 1))));
+    const int miny = static_cast<int>(std::floor(math::clampf(fylo, 0.0f, static_cast<float>(h_ - 1))));
+    const int maxy = static_cast<int>(std::ceil (math::clampf(fyhi, 0.0f, static_cast<float>(h_ - 1))));
 
     // Pre-unpack vertex colors as floats for perspective-correct interpolation.
     const float r0 = gfx::r_of(v[0].color), g0 = gfx::g_of(v[0].color), b0 = gfx::b_of(v[0].color);
@@ -76,8 +86,10 @@ void Renderer3D::raster_triangle(const ClipV v[3], bool gouraud) {
             // Inside test (tiny epsilon closes seams between adjacent triangles).
             if (bc.x < -1e-5f || bc.y < -1e-5f || bc.z < -1e-5f) continue;
 
-            // Depth is LINEAR in screen space (this is the correct hyperbolic
-            // depth), so a plain barycentric blend is right for the z-buffer.
+            // NDC depth (z_clip/w_clip, here rescaled to [0,1]) is an AFFINE
+            // function of screen x,y, so screen-space-linear (barycentric)
+            // interpolation is EXACT. This is the standard z-buffer depth and,
+            // unlike vertex colors below, it must NOT be 1/w-corrected.
             const float depth = bc.x * s0.depth + bc.y * s1.depth + bc.z * s2.depth;
             const size_t di = static_cast<size_t>(y) * static_cast<size_t>(w_) + static_cast<size_t>(x);
             if (depth >= depth_[di]) continue;  // something nearer already here
@@ -91,9 +103,9 @@ void Renderer3D::raster_triangle(const ClipV v[3], bool gouraud) {
                 const float ws = w0 + w1 + w2;
                 if (ws == 0.0f) continue;
                 const float inv = 1.0f / ws;
-                c = gfx::rgb(static_cast<uint8_t>((w0 * r0 + w1 * r1 + w2 * r2) * inv),
-                             static_cast<uint8_t>((w0 * g0 + w1 * g1 + w2 * g2) * inv),
-                             static_cast<uint8_t>((w0 * b0 + w1 * b1 + w2 * b2) * inv));
+                c = gfx::rgb(to_u8((w0 * r0 + w1 * r1 + w2 * r2) * inv),
+                             to_u8((w0 * g0 + w1 * g1 + w2 * g2) * inv),
+                             to_u8((w0 * b0 + w1 * b1 + w2 * b2) * inv));
             } else {
                 c = v[0].color;  // flat: constant face color
             }
@@ -173,12 +185,19 @@ void Renderer3D::draw_lines(const geo::Mesh& mesh, const math::mat4& model) {
         // endpoints don't wrap across the screen.
         float da = ca.w + ca.z, db = cb.w + cb.z;
         if (da < 0.0f && db < 0.0f) continue;          // both behind: skip
-        if (da < 0.0f) { const float t = da / (da - db); ca = ca + (cb - ca) * t; }
-        else if (db < 0.0f) { const float t = db / (db - da); cb = cb + (ca - cb) * t; }
+        gfx::Color col = va.color;
+        if (da < 0.0f) {                                // start endpoint clipped:
+            const float t = da / (da - db);            // color shifts toward vb
+            ca = ca + (cb - ca) * t;
+            col = lerp_color(va.color, vb.color, t);
+        } else if (db < 0.0f) {
+            const float t = db / (db - da);
+            cb = cb + (ca - cb) * t;
+        }
 
         const Screen sa = to_screen(ca, w_, h_);
         const Screen sb = to_screen(cb, w_, h_);
-        fb_->draw_line(int(sa.x), int(sa.y), int(sb.x), int(sb.y), va.color);
+        fb_->draw_line(int(sa.x), int(sa.y), int(sb.x), int(sb.y), col);
     }
 }
 
