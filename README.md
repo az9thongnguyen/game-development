@@ -23,7 +23,7 @@ material that accompanies the code.
 | M3 | Real 3D core: software rasterizer, z-buffer, perspective, mesh/primitives, orbit + free cameras, flat/Gouraud/wireframe, backface culling | ✅ done |
 | M3.5 | Interactive 3D sandbox: spawn/select/transform objects, mouse picking, orbit/pan/zoom camera | ✅ done |
 | M4 | Isometric farm sim: tile map + depth-sort + small ECS + A* pathfinding + save/load | ✅ done |
-| M5 | Web port via Emscripten (no engine rewrite) | ⬜ planned |
+| M5 | WebAssembly port (Emscripten) — chess + 3D core run in-browser, **no engine/game rewrite** | ✅ done |
 | _future (optional)_ | Native webserver (e.g. **Drogon**) to serve the web build / online features — **separate process, not part of engine core** | 💡 idea |
 
 ## Prerequisites (macOS)
@@ -57,6 +57,24 @@ cmake --build build-asan
 ./build-asan/demo
 ```
 
+### Web build (WebAssembly via Emscripten — M5)
+
+```sh
+# one-time: install the SDK
+git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
+cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
+
+source ~/emsdk/emsdk_env.sh                 # per shell: puts emcc/emcmake on PATH
+emcmake cmake -B build-web
+cmake --build build-web --target demo       # → build-web/demo.{html,js,wasm,data}
+cd build-web && python3 -m http.server 8765 # WASM must be served over http
+# open http://localhost:8765/demo.html
+```
+
+The web build runs the **same** engine/game code; only the platform `run()` loop is
+`#ifdef`'d to `emscripten_set_main_loop`. Pick the scene by editing
+`Module.arguments` in [`web/shell.html`](web/shell.html) (e.g. `['--3d']` or `['--iso']`).
+
 ## Project layout
 
 ```
@@ -67,7 +85,8 @@ src/demo/       the M0 acceptance demo scene
 src/games/      chess (M1), fps raycaster (M2), viz3d 3D showcase + sandbox (M3/M3.5),
                 iso farm sim (M4: tilemap, ecs, pathfind, farm, serialize, render, scene)
 docs/book/      the guidebook — read these chapters alongside the code
-cmake/          toolchain files (Emscripten added at M5)
+web/            shell.html for the WebAssembly build (M5)
+cmake/          Emscripten toolchain hook (used at M5)
 ```
 
 ## Development workflow (git)
