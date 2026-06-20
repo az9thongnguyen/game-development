@@ -19,7 +19,7 @@ material that accompanies the code.
 |----|------|--------|
 | **M0** | Engine foundation: window + software renderer + tick loop + math + input | ✅ done |
 | M1 | Chess (desktop) — **2 chế độ chơi**: Người↔Người & Người↔Máy (AI minimax/alpha-beta); **GUI + TUI** | ✅ done |
-| M2 | FPS raycaster (Wolfenstein-style) | ⬜ planned |
+| M2 | FPS raycaster (Wolfenstein-style) — textured walls, billboard sprites, real audio | ✅ done |
 | M3 | Real 3D core: software rasterizer, z-buffer, perspective, cameras | ⬜ planned |
 | M3.5 | 3D visualization sandbox | ⬜ planned |
 | M4 | Isometric sim (depth-sort + A* + save/load) | ⬜ planned |
