@@ -20,7 +20,7 @@ material that accompanies the code.
 | **M0** | Engine foundation: window + software renderer + tick loop + math + input | ✅ done |
 | M1 | Chess (desktop) — **2 chế độ chơi**: Người↔Người & Người↔Máy (AI minimax/alpha-beta); **GUI + TUI** | ✅ done |
 | M2 | FPS raycaster (Wolfenstein-style) — textured walls, billboard sprites, real audio | ✅ done |
-| M3 | Real 3D core: software rasterizer, z-buffer, perspective, cameras | ⬜ planned |
+| M3 | Real 3D core: software rasterizer, z-buffer, perspective, mesh/primitives, orbit + free cameras, flat/Gouraud/wireframe, backface culling | ✅ done |
 | M3.5 | 3D visualization sandbox | ⬜ planned |
 | M4 | Isometric sim (depth-sort + A* + save/load) | ⬜ planned |
 | M5 | Web port via Emscripten (no engine rewrite) | ⬜ planned |
@@ -39,7 +39,12 @@ brew install cmake sdl2
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
-./build/demo
+./build/demo            # M0 engine demo
+./build/demo --gui      # chess (GUI)     — also: hvh|hvai  easy|medium|hard
+./build/demo --tui      # chess (terminal)
+./build/demo --fps      # M2 raycaster
+./build/demo --3d       # M3 real 3D core (cube + sphere + grid; drag/WASD/ENTER/SPACE/RMB)
+ctest --test-dir build --output-on-failure   # unit tests (math, render3d, chess, fps)
 ```
 
 For a sanitizer build (catches memory + undefined-behavior bugs during dev):
@@ -54,8 +59,10 @@ cmake --build build-asan
 
 ```
 src/platform/   thin platform layer behind a fixed interface (platform.hpp)
-src/engine/     hand-written engine core (math, renderer, input, ...)
+src/engine/     hand-written engine core: math, renderer2d, input, assets,
+                image, and the M3 3D core (pipeline, renderer3d, geometry, camera)
 src/demo/       the M0 acceptance demo scene
+src/games/      chess (M1), fps raycaster (M2), viz3d 3D showcase (M3)
 docs/book/      the guidebook — read these chapters alongside the code
 cmake/          toolchain files (Emscripten added at M5)
 ```
