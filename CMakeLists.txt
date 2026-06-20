@@ -87,6 +87,7 @@ add_executable(demo
   src/engine/assets.cpp
   src/demo/demo_scene.cpp
   src/games/chess/chess_tui.cpp
+  src/games/chess/chess_gui.cpp
 )
 target_include_directories(demo PRIVATE src)
 target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core)
