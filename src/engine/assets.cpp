@@ -36,4 +36,18 @@ std::optional<std::vector<uint8_t>> load_file(const std::string& path) {
     return bytes;
 }
 
+bool write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
+    const std::string full = g_base + "/" + path;
+
+    std::ofstream f(full, std::ios::binary | std::ios::trunc);
+    if (!f) {
+        return false;  // unwritable location (missing dir, permissions, …)
+    }
+    if (!bytes.empty()) {
+        f.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+    }
+    return static_cast<bool>(f);  // false if the stream errored mid-write
+}
+
 } // namespace assets

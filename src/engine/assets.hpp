@@ -23,4 +23,11 @@ void set_base_path(const std::string& base);
 // Read an entire file as raw bytes. Returns std::nullopt if it can't be opened.
 std::optional<std::vector<uint8_t>> load_file(const std::string& path);
 
+// Write raw bytes to a file (truncating any existing content), resolved against
+// the base path exactly like load_file. Returns false if the file can't be
+// opened or the write fails. This is the SAVE half of the I/O seam — keeping it
+// here means the web build (M5) can redirect persistence to IDBFS/localStorage
+// in ONE place, without any caller change.
+bool write_file(const std::string& path, const std::vector<uint8_t>& bytes);
+
 } // namespace assets
