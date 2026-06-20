@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 
 #include "engine/color.hpp"
@@ -20,7 +21,29 @@ RaycastScene::RaycastScene()
       posX_(3.5), posY_(8.5),
       dirX_(1.0), dirY_(0.0),
       planeX_(0.0), planeY_(0.66)
-{}
+{
+    // Generate SFX once (signed 16-bit mono, assume 44.1 kHz device).
+    const int rate = 44100;
+    const int gn = rate * 18 / 100;  // gunshot: ~0.18s noise burst, fast decay
+    gun_.resize(static_cast<size_t>(gn));
+    uint32_t seed = 0x13572468u;
+    for (int i = 0; i < gn; ++i) {
+        seed = seed * 1664525u + 1013904223u;  // LCG noise
+        const double noise = static_cast<double>((seed >> 9) & 0xFFFF) / 32768.0 - 1.0;
+        const double t = i / static_cast<double>(gn);
+        const double env = std::exp(-t * 16.0);
+        gun_[static_cast<size_t>(i)] = static_cast<int16_t>(noise * env * 0.45 * 32767.0);
+    }
+    const int sn = rate * 9 / 100;   // footstep: ~0.09s low thump
+    step_.resize(static_cast<size_t>(sn));
+    for (int i = 0; i < sn; ++i) {
+        const double t = i / static_cast<double>(sn);
+        const double f = 110.0 * (1.0 - 0.4 * t);
+        const double env = std::exp(-t * 22.0);
+        const double s = std::sin(2.0 * 3.14159265 * f * i / rate);
+        step_[static_cast<size_t>(i)] = static_cast<int16_t>(s * env * 0.5 * 32767.0);
+    }
+}
 
 void RaycastScene::try_move(double nx, double ny) {
     const double r = 0.15;
@@ -48,6 +71,26 @@ void RaycastScene::update(double dt, const platform::InputState& in) {
     };
     if (in.down(K::Right)) rotate(-rot);
     if (in.down(K::Left))  rotate(+rot);
+
+    // Shoot on Space (latched: one shot per press).
+    if (in.down(K::Space) && !space_latched_) {
+        space_latched_ = true;
+        platform::play_sound(gun_.data(), static_cast<int>(gun_.size()));
+    }
+    if (!in.down(K::Space)) space_latched_ = false;
+
+    // Footsteps while moving.
+    const bool moving = in.down(K::W) || in.down(K::S) || in.down(K::A) || in.down(K::D) ||
+                        in.down(K::Up) || in.down(K::Down);
+    if (moving) {
+        step_timer_ += dt;
+        if (step_timer_ > 0.45) {
+            platform::play_sound(step_.data(), static_cast<int>(step_.size()));
+            step_timer_ = 0.0;
+        }
+    } else {
+        step_timer_ = 0.0;
+    }
 }
 
 void RaycastScene::render(const engine::Context& ctx) {
@@ -145,7 +188,7 @@ void RaycastScene::render(const engine::Context& ctx) {
         }
     }
 
-    g.draw_text(8, 8, "FPS RAYCASTER  -  WASD move, arrows turn, ESC quit",
+    g.draw_text(8, 8, "FPS RAYCASTER  -  WASD move, arrows turn, SPACE shoot, ESC quit",
                 gfx::colors::white, 1);
 }
 

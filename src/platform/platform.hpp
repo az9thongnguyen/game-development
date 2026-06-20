@@ -63,11 +63,13 @@ void run(const std::function<void(double dt)>& frame);
 // Normalized keyboard/mouse snapshot, refreshed once per frame before frame().
 const InputState& input();
 
-// ---- Audio (seam) ----
-// Brings up the audio device. Real sound playback is implemented at M2 (FPS);
-// for now this is a stub so the interface exists and the architecture stays
-// web-ready. Returns true on success.
+// ---- Audio ----
+// Open the audio device (returns false if unavailable). Audio is signed 16-bit
+// mono at audio_rate() Hz. play_sound queues a one-shot clip (no-op if audio
+// failed to open), so game code never touches SDL audio directly.
 bool init_audio();
+int  audio_rate();
+void play_sound(const int16_t* samples, int count);
 
 // ---- Quit control ----
 bool should_quit();
