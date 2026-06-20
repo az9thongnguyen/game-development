@@ -6,6 +6,7 @@
 // =============================================================================
 #include "games/chess/board.hpp"
 #include "games/chess/fen.hpp"
+#include "games/chess/game.hpp"
 #include "games/chess/movegen.hpp"
 
 #include <cstdio>
@@ -120,12 +121,53 @@ static void test_end_states() {
     }
 }
 
+static void test_game() {
+    Game g;
+    CHECK(g.result() == Result::Ongoing);
+    CHECK(g.legal_moves().size() == 20);
+
+    auto e2e4 = find_move(g.state, "e2e4");
+    CHECK(e2e4.has_value());
+    if (e2e4) {
+        CHECK(g.play(*e2e4));
+        CHECK(g.state.side_to_move == Color::Black);
+    }
+
+    // Notation round-trip for a knight move from the start position.
+    auto start = parse_fen(kStartFEN);
+    CHECK(start.has_value());
+    if (start) {
+        auto nf3 = find_move(*start, "g1f3");
+        CHECK(nf3.has_value());
+        if (nf3) CHECK(move_to_string(*nf3) == "g1f3");
+    }
+
+    // Fool's mate → Checkmate, Black wins.
+    Game m; m.state = *parse_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
+    CHECK(m.result() == Result::Checkmate);
+    CHECK(m.winner() == Color::Black);
+
+    // Stalemate.
+    Game st; st.state = *parse_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
+    CHECK(st.result() == Result::Stalemate);
+
+    // Promotion move parses in coordinate notation.
+    auto promo = parse_fen("8/P7/8/8/8/8/8/k6K w - - 0 1");
+    CHECK(promo.has_value());
+    if (promo) CHECK(find_move(*promo, "a7a8q").has_value());
+
+    // Illegal input is rejected.
+    Game g2;
+    CHECK(!g2.play(Move{ 0, 0, PieceType::None, false, false, false, false }));
+}
+
 int main() {
     test_start_position();
     test_fen_roundtrip();
     test_rejects_garbage();
     test_perft();
     test_end_states();
+    test_game();
 
     if (g_failures == 0) std::printf("chess: all tests passed\n");
     else                 std::printf("chess: %d FAILURE(S)\n", g_failures);
