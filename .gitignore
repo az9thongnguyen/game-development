@@ -24,3 +24,6 @@ compile_commands.json
 # Emscripten (M5)
 *.wasm
 *.wat
+
+# Webserver runtime data (§11)
+scores.json
