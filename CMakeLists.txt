@@ -140,6 +140,17 @@ target_include_directories(test_ecs PRIVATE src)
 target_link_libraries(test_ecs PRIVATE ecs_core engine_flags)
 add_test(NAME ecs COMMAND test_ecs)
 
+# ---- Job system (subsystem C): thread pool on desktop, synchronous on web ---------
+find_package(Threads REQUIRED)
+add_library(jobs_core STATIC src/engine/jobs/job_system.cpp)
+target_include_directories(jobs_core PUBLIC src)
+target_link_libraries(jobs_core PUBLIC Threads::Threads PRIVATE engine_flags)
+
+add_executable(test_jobs tests/test_jobs.cpp)
+target_include_directories(test_jobs PRIVATE src)
+target_link_libraries(test_jobs PRIVATE jobs_core engine_flags)
+add_test(NAME jobs COMMAND test_jobs)
+
 # ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
 # Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
 # by whichever final target links it (the demo exe, or the test below).

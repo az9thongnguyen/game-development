@@ -27,7 +27,8 @@ material that accompanies the code.
 | _extension (§11)_ | Native webserver — **hand-written** (no framework), serves the WASM build + a leaderboard API; **separate process, links no engine code** | ✅ done |
 | **A** | Engine-core memory allocators — arena · stack · pool · freelist · frame (custom, hand-written) | ✅ done |
 | **B** | Engine-core ECS — generic type-erased sparse-set registry, generation-safe handles, views | ✅ done |
-| C–F | job system · asset pipeline + hot reload · physics · editor (engine-core program, in dependency order) | ⬜ planned |
+| **C** | Job system — thread pool + counters + parallel_for (multicore on desktop, synchronous on web) | ✅ done |
+| D–F | asset pipeline + hot reload · physics · editor (engine-core program, in dependency order) | ⬜ planned |
 
 ## Prerequisites (macOS)
 
