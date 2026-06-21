@@ -113,6 +113,23 @@ target_include_directories(test_math PRIVATE src)
 target_link_libraries(test_math PRIVATE engine_flags)
 add_test(NAME math COMMAND test_math)
 
+# ---- Memory allocators (subsystem A): reusable engine-core foundation ----------
+# Five hand-written allocators (arena/stack/pool/freelist/frame). Pure, no SDL.
+add_library(mem_core STATIC
+  src/engine/memory/arena.cpp
+  src/engine/memory/stack_alloc.cpp
+  src/engine/memory/pool.cpp
+  src/engine/memory/freelist.cpp
+  src/engine/memory/frame.cpp
+)
+target_include_directories(mem_core PUBLIC src)
+target_link_libraries(mem_core PRIVATE engine_flags)
+
+add_executable(test_mem tests/test_mem.cpp)
+target_include_directories(test_mem PRIVATE src)
+target_link_libraries(test_mem PRIVATE mem_core engine_flags)
+add_test(NAME mem COMMAND test_mem)
+
 # ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
 # Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
 # by whichever final target links it (the demo exe, or the test below).
