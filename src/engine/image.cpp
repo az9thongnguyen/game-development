@@ -15,11 +15,7 @@ uint32_t read_be32(const uint8_t* p) {
 }
 } // namespace
 
-std::optional<Image> load_image(const std::string& path) {
-    auto bytes = assets::load_file(path);
-    if (!bytes) return std::nullopt;
-    const std::vector<uint8_t>& b = *bytes;
-
+std::optional<Image> decode_hrt(const std::vector<uint8_t>& b) {
     if (b.size() < 12) return std::nullopt;
     if (!(b[0] == 'H' && b[1] == 'R' && b[2] == 'T' && b[3] == '1')) return std::nullopt;
 
@@ -46,6 +42,12 @@ std::optional<Image> load_image(const std::string& path) {
         img.pixels[i] = rgba(r, g, bl, a);  // RGBA bytes -> ARGB8888 Color
     }
     return img;
+}
+
+std::optional<Image> load_image(const std::string& path) {
+    auto bytes = assets::load_file(path);   // I/O via the seam (web-portable)
+    if (!bytes) return std::nullopt;
+    return decode_hrt(*bytes);              // pure bytes->Image (reused by the asset cache)
 }
 
 } // namespace gfx
