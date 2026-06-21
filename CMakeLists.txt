@@ -90,6 +90,7 @@ add_executable(demo
   src/engine/app.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp
+  src/engine/asset_cache.cpp
   src/engine/image.cpp
   src/demo/demo_scene.cpp
   src/games/chess/chess_tui.cpp
@@ -150,6 +151,17 @@ add_executable(test_jobs tests/test_jobs.cpp)
 target_include_directories(test_jobs PRIVATE src)
 target_link_libraries(test_jobs PRIVATE jobs_core engine_flags)
 add_test(NAME jobs COMMAND test_jobs)
+
+# ---- Asset pipeline + hot reload (subsystem D): cache over the I/O seam -----------
+# Compiles assets.cpp + asset_cache.cpp directly (matches the test_iso pattern); the
+# round-trip uses a temp base path, so no SDL and no bundled fixtures are needed.
+add_executable(test_assets tests/test_assets.cpp
+  src/engine/assets.cpp
+  src/engine/asset_cache.cpp
+)
+target_include_directories(test_assets PRIVATE src)
+target_link_libraries(test_assets PRIVATE engine_flags)
+add_test(NAME assets COMMAND test_assets)
 
 # ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
 # Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
