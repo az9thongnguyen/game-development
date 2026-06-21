@@ -64,7 +64,9 @@ inline float signed_area(math::vec2 a, math::vec2 b, math::vec2 c) {
 // degenerate (zero-area) triangle so callers can skip it.
 inline math::vec3 barycentric(math::vec2 a, math::vec2 b, math::vec2 c, math::vec2 p) {
     const float area = edge(a.x, a.y, b.x, b.y, c.x, c.y);
-    if (area == 0.0f) return {-1.0f, -1.0f, -1.0f};
+    // Near-zero (not just exactly zero): a sliver triangle would give 1/area ~ 1e30
+    // and blow weights up to Inf, poisoning the z-buffer. Treat it as degenerate.
+    if (area > -1e-6f && area < 1e-6f) return {-1.0f, -1.0f, -1.0f};
     const float inv = 1.0f / area;
     const float w0 = edge(b.x, b.y, c.x, c.y, p.x, p.y) * inv;  // weight of a
     const float w1 = edge(c.x, c.y, a.x, a.y, p.x, p.y) * inv;  // weight of b
@@ -120,12 +122,12 @@ inline ClipV lerp_clipv(const ClipV& a, const ClipV& b, float t) {
 // it would loop hundreds of thousands of times. Clipping first keeps the cast in
 // range, bounds the loop, AND preserves the line's slope (unlike a naive clamp).
 inline bool clip_segment(float& x0, float& y0, float& x1, float& y1, float w, float h) {
-    constexpr int kIn = 0, kL = 1, kR = 2, kB = 4, kT = 8;
+    constexpr int kIn = 0, kL = 1, kR = 2, kTop = 4, kBot = 8;   // +y is down: top = small y
     const float xmin = 0.0f, ymin = 0.0f, xmax = w - 1.0f, ymax = h - 1.0f;
     auto code = [&](float x, float y) {
         int c = kIn;
-        if (x < xmin) c |= kL; else if (x > xmax) c |= kR;
-        if (y < ymin) c |= kB; else if (y > ymax) c |= kT;
+        if (x < xmin) c |= kL;   else if (x > xmax) c |= kR;
+        if (y < ymin) c |= kTop; else if (y > ymax) c |= kBot;
         return c;
     };
     int c0 = code(x0, y0), c1 = code(x1, y1);
@@ -134,10 +136,10 @@ inline bool clip_segment(float& x0, float& y0, float& x1, float& y1, float w, fl
         if (c0 & c1)    return false;   // both share an outside half-plane → out
         const int co = c0 ? c0 : c1;    // pick an endpoint that is outside
         float x = 0.0f, y = 0.0f;
-        if      (co & kT) { x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0); y = ymax; }
-        else if (co & kB) { x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0); y = ymin; }
-        else if (co & kR) { y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0); x = xmax; }
-        else              { y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0); x = xmin; }
+        if      (co & kBot) { x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0); y = ymax; }
+        else if (co & kTop) { x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0); y = ymin; }
+        else if (co & kR)   { y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0); x = xmax; }
+        else                { y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0); x = xmin; }
         if (co == c0) { x0 = x; y0 = y; c0 = code(x0, y0); }
         else          { x1 = x; y1 = y; c1 = code(x1, y1); }
     }

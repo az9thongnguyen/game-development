@@ -194,7 +194,7 @@ void generate_pseudo_legal(const State& s, std::vector<Move>& out) {
                         } else {
                             add_simple(sq, to, true, out);
                         }
-                    } else if (to == s.en_passant && s.en_passant != -1) {
+                    } else if (s.en_passant != -1 && to == s.en_passant) {
                         Move m; m.from = static_cast<uint8_t>(sq); m.to = static_cast<uint8_t>(to);
                         m.capture = true; m.en_passant = true; out.push_back(m);
                     }

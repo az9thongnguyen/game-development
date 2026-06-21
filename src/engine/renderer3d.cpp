@@ -61,6 +61,7 @@ void Renderer3D::set_camera(const math::mat4& view, const math::mat4& proj) {
 }
 
 void Renderer3D::raster_triangle(const ClipV v[3], bool gouraud) {
+    if (w_ <= 0 || h_ <= 0) return;       // no surface (e.g. before begin() / zero-size)
     const Screen s0 = to_screen(v[0].clip, w_, h_);
     const Screen s1 = to_screen(v[1].clip, w_, h_);
     const Screen s2 = to_screen(v[2].clip, w_, h_);
@@ -68,8 +69,8 @@ void Renderer3D::raster_triangle(const ClipV v[3], bool gouraud) {
     // Backface culling via the signed area of the screen-space triangle. After
     // our y-flip, front faces (CCW in the world) have a NEGATIVE signed area.
     const float area = signed_area({s0.x, s0.y}, {s1.x, s1.y}, {s2.x, s2.y});
-    if (area == 0.0f) return;             // degenerate: no pixels
-    if (cull_ && area > 0.0f) return;     // back face
+    if (area > -1e-5f && area < 1e-5f) return;   // degenerate / sliver: no pixels
+    if (cull_ && area > 0.0f) return;            // back face
 
     // Screen-space bounding box. We CLAMP the float extents to the framebuffer
     // rect BEFORE the int cast: a vertex with a tiny clip.w (near the near plane)
@@ -78,10 +79,12 @@ void Renderer3D::raster_triangle(const ClipV v[3], bool gouraud) {
     // we only ever need to iterate visible pixels.
     const float fxlo = std::min({s0.x, s1.x, s2.x}), fxhi = std::max({s0.x, s1.x, s2.x});
     const float fylo = std::min({s0.y, s1.y, s2.y}), fyhi = std::max({s0.y, s1.y, s2.y});
+    // std::min after the ceil: ceil of a float that equals w_-1 can round to w_,
+    // which would index one past the row end — clamp the resulting int too.
     const int minx = static_cast<int>(std::floor(math::clampf(fxlo, 0.0f, static_cast<float>(w_ - 1))));
-    const int maxx = static_cast<int>(std::ceil (math::clampf(fxhi, 0.0f, static_cast<float>(w_ - 1))));
+    const int maxx = std::min(static_cast<int>(std::ceil(math::clampf(fxhi, 0.0f, static_cast<float>(w_ - 1)))), w_ - 1);
     const int miny = static_cast<int>(std::floor(math::clampf(fylo, 0.0f, static_cast<float>(h_ - 1))));
-    const int maxy = static_cast<int>(std::ceil (math::clampf(fyhi, 0.0f, static_cast<float>(h_ - 1))));
+    const int maxy = std::min(static_cast<int>(std::ceil(math::clampf(fyhi, 0.0f, static_cast<float>(h_ - 1)))), h_ - 1);
 
     // Pre-unpack vertex colors as floats for perspective-correct interpolation.
     const float r0 = gfx::r_of(v[0].color), g0 = gfx::g_of(v[0].color), b0 = gfx::b_of(v[0].color);
