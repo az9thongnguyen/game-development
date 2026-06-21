@@ -45,8 +45,10 @@ int AssetCache::reload_changed() {
         auto bytes = load_file(p.path);
         if (!bytes) continue;                  // I/O hiccup: retry next poll (no mtime bump)
         if (p.reparse(p.data, *bytes)) ++n;    // success → counted
-        entries_[p.key].mtime = p.mtime;       // advance (success or broken parse) so we
+        if (auto it = entries_.find(p.key); it != entries_.end())
+            it->second.mtime = p.mtime;        // advance (success or broken parse) so we
     }                                          // don't re-spam a broken file every frame
+    // (find, not entries_[p.key]: operator[] would insert an empty entry on a miss)
     return n;
 }
 ```

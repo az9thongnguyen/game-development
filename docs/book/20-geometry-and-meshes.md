@@ -134,7 +134,9 @@ normal equals `normalize(pos)`").
 ## 5. Worked example: the sphere's vertex count
 
 `make_sphere(1, stacks=8, slices=12)` builds a grid of `(stacks+1)·(slices+1) = 9·13 =
-117` vertices (the extra row/column duplicate the seam so texture coords could wrap).
+117` vertices (the extra row/column duplicate the seam — needed if you later add
+per-vertex UVs that must wrap; our `Vertex` has none yet, so the duplicates are
+harmless here and keep the grid topology uniform).
 The index count is `stacks·slices·6 = 8·12·6 = 576` — that's `8·12 = 96` quads, each
 two triangles, each triangle 3 indices. `test_geometry` asserts exactly this.
 

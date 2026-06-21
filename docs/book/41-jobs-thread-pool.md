@@ -57,9 +57,12 @@ JobSystem::JobSystem(int worker_count) {
 #ifdef __EMSCRIPTEN__
     worker_count_ = 0;                      // web: synchronous, spawn nothing
 #else
-    worker_count_ = (worker_count < 0)
-        ? std::max(0, (int)std::thread::hardware_concurrency() - 1)  // leave one for main
-        : worker_count;
+    if (worker_count < 0) {
+        const unsigned hw = std::thread::hardware_concurrency();
+        worker_count_ = (hw > 1) ? (int)hw - 1 : 0;   // leave one core for the main thread
+    } else {
+        worker_count_ = worker_count;
+    }
     for (int i = 0; i < worker_count_; ++i)
         workers_.emplace_back([this] { worker_loop(); });
 #endif
