@@ -213,8 +213,10 @@ int audio_rate() { return g_audio_rate; }
 
 void play_sound(const int16_t* samples, int count) {
     if (!g_audio_ok || samples == nullptr || count <= 0) return;
-    // Drop new clips if a lot is already queued (no callback mixer in M2).
-    if (SDL_GetQueuedAudioSize(g_audio_dev) > static_cast<Uint32>(g_audio_rate)) return;
+    // Drop new clips if a lot is already queued (no callback mixer in M2). Guard a
+    // bad/zero reported rate so the cast can't wrap to a huge limit.
+    const Uint32 queue_cap = (g_audio_rate > 0) ? static_cast<Uint32>(g_audio_rate) : 44100u;
+    if (SDL_GetQueuedAudioSize(g_audio_dev) > queue_cap) return;
     SDL_QueueAudio(g_audio_dev, samples, static_cast<Uint32>(count) * sizeof(int16_t));
 }
 

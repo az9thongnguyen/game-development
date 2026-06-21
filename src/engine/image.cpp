@@ -25,7 +25,11 @@ std::optional<Image> load_image(const std::string& path) {
 
     const uint32_t w = read_be32(&b[4]);
     const uint32_t h = read_be32(&b[8]);
-    const size_t   need = 12 + static_cast<size_t>(w) * h * 4;
+    // Bound the dimensions BEFORE computing the byte count: on a 32-bit target
+    // (wasm32) `size_t(w)*h*4` could overflow and wrap the size check, and a huge w/h
+    // would also cast to a negative int. 16384 is a generous texture cap.
+    if (w == 0 || h == 0 || w > 16384 || h > 16384) return std::nullopt;
+    const size_t   need = 12 + static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
     if (b.size() < need) return std::nullopt;
 
     Image img;

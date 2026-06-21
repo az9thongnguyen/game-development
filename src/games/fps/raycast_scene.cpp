@@ -120,7 +120,10 @@ void RaycastScene::render(const engine::Context& ctx) {
         const Hit h = cast_ray(map_, posX_, posY_, rayDirX, rayDirY);
         zbuf_[x] = h.perp_dist;
 
-        const int lineH    = static_cast<int>(H / h.perp_dist);
+        // Defensive floor: casting H/perp_dist to int is UB if perp_dist were ever 0
+        // (cast_ray already floors it, but don't rely on the producer's invariant).
+        const double perp  = h.perp_dist > 0.001 ? h.perp_dist : 0.001;
+        const int lineH    = static_cast<int>(H / perp);
         const int rawStart = -lineH / 2 + H / 2;
         int start = rawStart < 0 ? 0 : rawStart;
         int end   = lineH / 2 + H / 2; if (end >= H) end = H - 1;

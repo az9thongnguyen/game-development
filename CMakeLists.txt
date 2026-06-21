@@ -159,6 +159,7 @@ add_test(NAME jobs COMMAND test_jobs)
 add_executable(test_assets tests/test_assets.cpp
   src/engine/assets.cpp
   src/engine/asset_cache.cpp
+  src/engine/image.cpp
 )
 target_include_directories(test_assets PRIVATE src)
 target_link_libraries(test_assets PRIVATE engine_flags)
