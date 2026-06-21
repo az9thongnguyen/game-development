@@ -111,6 +111,11 @@ checks).
 | 32 | **The web port** (emscripten_set_main_loop, canvas, preload, why tick paid off) |
 | **Extension — native webserver (§11)** | |
 | 33 | **A native webserver from scratch** (HTTP over sockets, MIME, path-traversal, a leaderboard API — a separate process, no engine code) |
+| **Engine-core program — A: memory allocators** | |
+| 34 | **Why custom allocators** + the common foundation (alignment, ownership, stats) |
+| 35 | The **linear family**: Arena & Stack (bump, mark/rewind, LIFO) |
+| 36 | The **free-list family**: Pool & FreeList (intrusive list, split + coalescing) |
+| 37 | The **FrameAllocator** (double-buffering) + how subsystems B–F adopt all five |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -127,6 +132,8 @@ observe → pitfalls → exercises.**
 | **M4 ✅** | Isometric farm sim: tile map, depth sort, ECS, A* pathfinding, save/load |
 | **M5 ✅** | WebAssembly port — chess + 3D core run in-browser, no engine/game rewrite |
 | **ext ✅** | Native webserver (§11) — hand-written, serves the WASM build + a leaderboard API as a separate process |
+| **A ✅** | Memory allocators — arena/stack/pool/freelist/frame (engine-core foundation) |
+| B–F | ECS · job system · asset pipeline + hot reload · physics · editor (planned, in order) |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
