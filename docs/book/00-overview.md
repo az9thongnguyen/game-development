@@ -126,6 +126,10 @@ checks).
 | **Engine-core program — D: asset pipeline** | |
 | 43 | **The asset cache** (per-type loaders, (type,path) keys, type erasure, the mtime seam) |
 | 44 | **Hot reload** (in-place content swap, mtime polling, reentrancy, the web no-op) |
+| **Engine-core program — E: 2D physics** | |
+| 45 | **Bodies & integration** (rigid bodies, inverse mass, semi-implicit Euler) |
+| 46 | **Collision detection** (circle/box manifolds, normals, penetration, edge cases) |
+| 47 | **Impulse resolution & the world step** (restitution, positional correction) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -146,7 +150,8 @@ observe → pitfalls → exercises.**
 | **B ✅** | Engine-core ECS — type-erased sparse-set registry, generation handles, views |
 | **C ✅** | Job system — thread pool + counters + parallel_for; synchronous on web |
 | **D ✅** | Asset pipeline — cache + per-type loaders + in-place hot reload |
-| E–F | physics · editor (planned, in order) |
+| **E ✅** | 2D physics — rigid bodies, circle/box collision, impulse resolution |
+| F | editor support (planned, last) |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
