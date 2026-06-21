@@ -130,6 +130,16 @@ target_include_directories(test_mem PRIVATE src)
 target_link_libraries(test_mem PRIVATE mem_core engine_flags)
 add_test(NAME mem COMMAND test_mem)
 
+# ---- Engine-core ECS (subsystem B): generic type-erased sparse-set registry -----
+add_library(ecs_core STATIC src/engine/ecs/registry.cpp)
+target_include_directories(ecs_core PUBLIC src)
+target_link_libraries(ecs_core PRIVATE engine_flags)
+
+add_executable(test_ecs tests/test_ecs.cpp)
+target_include_directories(test_ecs PRIVATE src)
+target_link_libraries(test_ecs PRIVATE ecs_core engine_flags)
+add_test(NAME ecs COMMAND test_ecs)
+
 # ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
 # Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
 # by whichever final target links it (the demo exe, or the test below).

@@ -26,7 +26,8 @@ material that accompanies the code.
 | M5 | WebAssembly port (Emscripten) — chess + 3D core run in-browser, **no engine/game rewrite** | ✅ done |
 | _extension (§11)_ | Native webserver — **hand-written** (no framework), serves the WASM build + a leaderboard API; **separate process, links no engine code** | ✅ done |
 | **A** | Engine-core memory allocators — arena · stack · pool · freelist · frame (custom, hand-written) | ✅ done |
-| B–F | ECS · job system · asset pipeline + hot reload · physics · editor (engine-core program, in dependency order) | ⬜ planned |
+| **B** | Engine-core ECS — generic type-erased sparse-set registry, generation-safe handles, views | ✅ done |
+| C–F | job system · asset pipeline + hot reload · physics · editor (engine-core program, in dependency order) | ⬜ planned |
 
 ## Prerequisites (macOS)
 
