@@ -130,6 +130,9 @@ checks).
 | 45 | **Bodies & integration** (rigid bodies, inverse mass, semi-implicit Euler) |
 | 46 | **Collision detection** (circle/box manifolds, normals, penetration, edge cases) |
 | 47 | **Impulse resolution & the world step** (restitution, positional correction) |
+| **Engine-core program — F: editor / GUI** | |
+| 48 | **Immediate-mode GUI: the idea & the core** (retained vs immediate, hot/active, ids) |
+| 49 | **Widgets, the editor scene & the whole project** (the `--editor` capstone + recap) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -151,7 +154,7 @@ observe → pitfalls → exercises.**
 | **C ✅** | Job system — thread pool + counters + parallel_for; synchronous on web |
 | **D ✅** | Asset pipeline — cache + per-type loaders + in-place hot reload |
 | **E ✅** | 2D physics — rigid bodies, circle/box collision, impulse resolution |
-| F | editor support (planned, last) |
+| **F ✅** | Editor support — hand-written immediate-mode GUI + a physics sandbox |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

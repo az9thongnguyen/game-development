@@ -20,6 +20,7 @@
 #include "games/viz3d/scene3d.hpp"
 #include "games/viz3d/editor_scene.hpp"
 #include "games/iso/iso_scene.hpp"
+#include "games/editor/editor_scene.hpp"
 
 namespace {
 
@@ -115,6 +116,17 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         return run_window(cfg, std::make_unique<iso::IsoScene>());
+    }
+
+    if (mode == "--editor") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — editor (UI + physics)";
+        cfg.fb_width  = 960;
+        cfg.fb_height = 600;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<editor::EditorScene>());
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
