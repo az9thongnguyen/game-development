@@ -3,6 +3,7 @@
 // =============================================================================
 #include "engine/assets.hpp"
 
+#include <filesystem>
 #include <fstream>
 
 namespace assets {
@@ -48,6 +49,17 @@ bool write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
                 static_cast<std::streamsize>(bytes.size()));
     }
     return static_cast<bool>(f);  // false if the stream errored mid-write
+}
+
+std::int64_t mtime(const std::string& path) {
+    const std::string full = g_base + "/" + path;
+    std::error_code   ec;
+    const auto        t = std::filesystem::last_write_time(full, ec);  // no-throw overload
+    if (ec) return 0;                                                  // missing / unsupported
+    // NOTE: file_time_type's tick type can be wider than int64_t (libc++ uses a
+    // 128-bit rep); narrowing to int64_t is safe for real file times (nanoseconds fit
+    // until year 2262) and we only ever compare values for equality.
+    return static_cast<std::int64_t>(t.time_since_epoch().count());
 }
 
 } // namespace assets
