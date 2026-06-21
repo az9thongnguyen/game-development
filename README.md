@@ -30,7 +30,7 @@ material that accompanies the code.
 | **C** | Job system — thread pool + counters + parallel_for (multicore on desktop, synchronous on web) | ✅ done |
 | **D** | Asset pipeline + hot reload — cache, per-type loaders, in-place reload on file change | ✅ done |
 | **E** | 2D physics — rigid bodies, circle/box collision, impulse resolution + positional correction | ✅ done |
-| F | editor support (engine-core program, last) | ⬜ planned |
+| **F** | Editor support — hand-written immediate-mode GUI + a UI-driven physics sandbox | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -52,6 +52,7 @@ cmake --build build
 ./build/demo --3d       # M3 real 3D core (cube + sphere + grid; drag/WASD/ENTER/SPACE/RMB)
 ./build/demo --viz3d    # M3.5 interactive sandbox (1-4 spawn, click select, drag move, ...)
 ./build/demo --iso      # M4 isometric farm sim (1-0 brushes, LMB paint, RMB walk farmer, F5/F9 save/load)
+./build/demo --editor   # F editor: immediate-mode GUI + physics sandbox (click to drop bodies)
 ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps, iso)
 ```
 

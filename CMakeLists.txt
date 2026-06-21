@@ -100,9 +100,10 @@ add_executable(demo
   src/games/viz3d/editor_scene.cpp
   src/games/iso/iso_render.cpp
   src/games/iso/iso_scene.cpp
+  src/games/editor/editor_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core iso_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core iso_core ui_core physics_core)
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:
@@ -175,6 +176,17 @@ add_executable(test_physics tests/test_physics.cpp)
 target_include_directories(test_physics PRIVATE src)
 target_link_libraries(test_physics PRIVATE physics_core engine_flags)
 add_test(NAME physics COMMAND test_physics)
+
+# ---- Immediate-mode GUI (subsystem F): editor support -----------------------------
+# Draws via Renderer2D (symbols provided by the linking target); logic runs headless.
+add_library(ui_core STATIC src/engine/ui/ui.cpp)
+target_include_directories(ui_core PUBLIC src)
+target_link_libraries(ui_core PRIVATE engine_flags)
+
+add_executable(test_ui tests/test_ui.cpp src/engine/renderer2d.cpp)
+target_include_directories(test_ui PRIVATE src)
+target_link_libraries(test_ui PRIVATE ui_core engine_flags)
+add_test(NAME ui COMMAND test_ui)
 
 # ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
 # Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
