@@ -24,7 +24,11 @@ struct Image {
     std::vector<Color> pixels;  // ARGB8888, row-major (w*h)
 };
 
-// Load an .hrt image via the asset seam. Returns nullopt if missing/malformed.
+// Decode raw .hrt bytes into an Image (nullopt if malformed). Pure — no I/O — so it
+// composes with the asset cache (which reads the bytes itself) and is unit-testable.
+std::optional<Image> decode_hrt(const std::vector<uint8_t>& bytes);
+
+// Load an .hrt image via the asset seam (reads the file, then decode_hrt).
 std::optional<Image> load_image(const std::string& path);
 
 } // namespace gfx

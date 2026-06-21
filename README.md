@@ -31,6 +31,7 @@ material that accompanies the code.
 | **D** | Asset pipeline + hot reload — cache, per-type loaders, in-place reload on file change | ✅ done |
 | **E** | 2D physics — rigid bodies, circle/box collision, impulse resolution + positional correction | ✅ done |
 | **F** | Editor support — hand-written immediate-mode GUI + a UI-driven physics sandbox | ✅ done |
+| **integration** | Colony sim — a game standing on the engine core (ECS + jobs + frame allocator + asset cache + GUI) | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -53,6 +54,7 @@ cmake --build build
 ./build/demo --viz3d    # M3.5 interactive sandbox (1-4 spawn, click select, drag move, ...)
 ./build/demo --iso      # M4 isometric farm sim (1-0 brushes, LMB paint, RMB walk farmer, F5/F9 save/load)
 ./build/demo --editor   # F editor: immediate-mode GUI + physics sandbox (click to drop bodies)
+./build/demo --colony   # integration: iso agent sim on ECS + jobs + frame alloc + asset cache + GUI
 ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps, iso)
 ```
 

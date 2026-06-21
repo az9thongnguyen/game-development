@@ -27,3 +27,6 @@ compile_commands.json
 
 # Webserver runtime data (§11)
 scores.json
+
+# Colony's runtime-generated agent sprite
+assets/colony_agent.hrt
