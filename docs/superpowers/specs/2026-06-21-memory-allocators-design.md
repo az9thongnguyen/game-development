@@ -142,12 +142,23 @@ Provide the module standalone and **do not refactor existing systems** in this s
 pools over a Pool/Arena, physics contacts in a FrameAllocator, asset loads into an
 Arena, etc. A later subsystem may migrate a hot path as part of *its* spec.
 
-## 9. Guidebook
+## 9. Guidebook (split into several small, focused chapters)
 
-Chapter 34 — "Custom Memory Allocators": why custom allocation (fragmentation, cache,
-churn), the five allocators (concept → code → diagram → pitfalls), alignment, the
-intrusive-free-list and coalescing tricks, and the adoption plan. Update overview +
-README.
+Per the user's preference, the docs are **not one giant chapter** but four short,
+easy-to-follow ones:
+
+- **34 — Why custom allocators + the common foundation:** fragmentation/cache/churn
+  motivation, alignment (`align_up`, power-of-two), ownership (own vs borrow), stats,
+  the return-`nullptr`-on-OOM convention, "storage not containers" rule.
+- **35 — The linear family: Arena & Stack:** bump allocation, mark/rewind, the
+  `Scope` RAII, LIFO discipline. Concept → code → diagram → pitfalls → exercises.
+- **36 — The free-list family: Pool & FreeList:** intrusive free list (Pool),
+  variable-size first-fit + split + coalescing (FreeList).
+- **37 — The FrameAllocator + adoption plan:** double-buffering for per-frame scratch,
+  and how subsystems B–F will use each allocator.
+
+Each chapter keeps the house shape (concept → code walkthrough → diagram → worked
+example → pitfalls → glossary → exercises). Update `00-overview` reading order + README.
 
 ## 10. Risks / decisions
 
