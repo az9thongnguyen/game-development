@@ -1,8 +1,9 @@
 // =============================================================================
 //  engine/image.hpp  —  hand-written loader for our tiny ".hrt" raster format
 // =============================================================================
-//  Loads images WITHOUT SDL_image (per the project's thin-shim rule). The .hrt
-//  format is produced offline by scripts/fetch_pieces.py:
+//  Loads images without any third-party image library (we hand-parse the bytes),
+//  per the project's thin-shim rule. The .hrt format is produced offline by
+//  scripts/fetch_pieces.py:
 //      magic "HRT1" | uint32 BE width | uint32 BE height | RGBA8 rows
 //  We parse those bytes ourselves and hand back ARGB8888 pixels the renderer
 //  can blit directly.
