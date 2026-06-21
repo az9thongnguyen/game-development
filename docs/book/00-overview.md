@@ -116,6 +116,10 @@ checks).
 | 35 | The **linear family**: Arena & Stack (bump, mark/rewind, LIFO) |
 | 36 | The **free-list family**: Pool & FreeList (intrusive list, split + coalescing) |
 | 37 | The **FrameAllocator** (double-buffering) + how subsystems B–F adopt all five |
+| **Engine-core program — B: ECS** | |
+| 38 | **Entities & safe handles** (index + generation, recycling, ABA-safe retirement) |
+| 39 | **Sparse-set storage & type erasure** (`SparseSet<T>`, `IPool`, `type_id<T>`) |
+| 40 | **Views, systems & acceptance** (component queries, fold expressions, systems) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -133,7 +137,8 @@ observe → pitfalls → exercises.**
 | **M5 ✅** | WebAssembly port — chess + 3D core run in-browser, no engine/game rewrite |
 | **ext ✅** | Native webserver (§11) — hand-written, serves the WASM build + a leaderboard API as a separate process |
 | **A ✅** | Memory allocators — arena/stack/pool/freelist/frame (engine-core foundation) |
-| B–F | ECS · job system · asset pipeline + hot reload · physics · editor (planned, in order) |
+| **B ✅** | Engine-core ECS — type-erased sparse-set registry, generation handles, views |
+| C–F | job system · asset pipeline + hot reload · physics · editor (planned, in order) |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
