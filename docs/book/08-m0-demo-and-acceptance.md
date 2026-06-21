@@ -69,7 +69,7 @@ M0's bar (from `requirements.md` §7 & §10) and the exact checks:
 | **Math** correctness | `ctest` (`test_math`) | 100% passed |
 | **No leaks** | `HAND_ENGINE_FRAMES=120 leaks --atExit -- ./build/demo` | 0 leaks |
 | **No UB / memory errors** | `-DENGINE_SANITIZE=ON` build + run | build clean + drawing is bounds-checked; the ASan **run** is inconclusive in the CI sandbox (aborts inside SDL's Metal path under instrumentation) — verify on a normal desktop |
-| **Seam: no SDL above platform** | `grep -rn "SDL_" src/engine src/demo` | none |
+| **Seam: no SDL above platform** | `grep -rEn 'SDL_[A-Za-z]' src/engine src/demo` | none (a plain `"SDL"` matches a comment) |
 | **Seam: no blocking loop** | loop only in `platform::run`; engine uses `tick(dt)` | holds |
 | **Web-ready structure** | `cmake/emscripten.toolchain.cmake` present (built at M5) | staged |
 

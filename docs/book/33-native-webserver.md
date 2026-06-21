@@ -160,12 +160,12 @@ serializer — no JSON library):
 
 Two safety habits worth copying:
 
-- **Sanitize input you'll emit.** `sanitize_name` keeps only printable ASCII and
-  drops `"` and `\`, so a crafted name can't break out of the JSON string or inject
-  fields — the response is always well-formed.
-- **Validate numbers.** The score parse checks `errno == ERANGE`, so
-  `{"score":99999999999999999999}` is rejected (400) instead of silently becoming
-  `LONG_MAX` at the top of the board.
+- **Sanitize input you'll emit.** `sanitize_name` keeps only printable ASCII, drops
+  `"` and `\`, and caps the length (24 chars), so a crafted name can't break out of the
+  JSON string, inject fields, or be unbounded — the response is always well-formed.
+- **Validate numbers.** The score parse rejects overflow (`errno == ERANGE`) *and*
+  clamps the range (`|v| ≤ 1e9`), so `{"score":99999999999999999999}` (and merely absurd
+  values) are rejected (400) instead of landing `LONG_MAX` at the top of the board.
 
 ## 8. Run & observe
 

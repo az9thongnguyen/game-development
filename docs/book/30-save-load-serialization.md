@@ -34,9 +34,9 @@ be detected instead of silently misread.
 FARM 1
 SIZE 16 16
 TILES
-................          ← h lines, each exactly w chars
+................          ← h lines, each exactly w chars (NO spaces in a row)
 ........#.......            '.'=grass  ':'=soil  '~'=water  '#'=path
-::::: ..........
+:::::...........
 ...
 OBJECTS 23
 T 10 2                    ← <kindChar> <x> <y>;  T R H F W

@@ -27,11 +27,17 @@ The cache doesn't know how to parse anything — you teach it, per type, with a
 
 ```cpp
 AssetCache cache;
-cache.register_loader<gfx::Image>([](const std::vector<uint8_t>& bytes) {
-    auto img = gfx::load_image_from_bytes(bytes);     // the .hrt parser (ch14)
-    return img ? std::make_shared<gfx::Image>(std::move(*img)) : nullptr;
+cache.register_loader<gfx::Image>([](const std::vector<uint8_t>& bytes) -> std::shared_ptr<gfx::Image> {
+    gfx::Image img;
+    if (!parse_hrt(bytes, img)) return nullptr;       // a bytes→Image .hrt parser you write
+    return std::make_shared<gfx::Image>(std::move(img));
 });
 ```
+
+> The engine's actual `.hrt` loader is `gfx::load_image(path)` (ch14) — it takes a
+> *path*, not bytes. To plug it into the cache you'd factor its parsing into a
+> bytes-based helper (`parse_hrt` above) the loader can call; the cache already did the
+> file read via `assets::load_file`.
 
 Now `cache.load<gfx::Image>("hero.hrt")` works. Register a different loader for a
 different type (a level file, a sound) and the same cache holds them all.

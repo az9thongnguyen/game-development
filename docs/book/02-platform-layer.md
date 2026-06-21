@@ -97,8 +97,9 @@ Why pay for this discipline now? Because at M5 we add a *second* backend for the
 browser. If the seam is clean, the browser backend is a new file and **nothing in
 the engine or games changes**. "Port to web without a rewrite" is only realistic
 if the seam exists from day one — retrofitting it later means touching everything.
-You can even check the rule mechanically: `grep -rl "SDL" src/engine src/games`
-should print nothing.
+You can even check the rule mechanically: `grep -rEn 'SDL_[A-Za-z]' src/engine src/games`
+should print nothing. (A plain `"SDL"` search also turns up a few *comments* that mention
+SDL — e.g. "loads images WITHOUT SDL_image" — so match real `SDL_` usage, not the word.)
 
 ---
 

@@ -39,7 +39,8 @@
 Dependencies only point **down**. The rules that keep the web port a drop-in:
 
 1. **Only a platform backend includes SDL.** No SDL type appears above
-   `src/platform/`. (Check: `grep -rn "SDL_" src/engine src/demo` → nothing.)
+   `src/platform/`. (Check: `grep -rEn 'SDL_[A-Za-z]' src/engine src/demo` → nothing;
+   the broader `"SDL"` also matches a couple of comments, so match real usage.)
 2. **No blocking loop above the platform.** The loop lives in `platform::run`;
    engine/game code only provides a `tick(dt)` callback. (Browsers can't block.)
 3. **All file I/O goes through `assets::`** — one place to adapt to the web's

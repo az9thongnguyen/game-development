@@ -175,8 +175,10 @@ cd build-web && python3 -m http.server 8765
 # open http://localhost:8765/demo.html
 ```
 
-You should see the chess board render in the canvas, "White to move" in the HUD, and
-the document title become "hand-engine — chess". Switch `Module.arguments` to `['--3d']`
+You should see the chess board render in the canvas and "White to move" in the HUD. (The
+page `<title>` stays "hand-engine — WebAssembly" — that's the shell's static title;
+`cfg.title` only names the *native* SDL window, not the browser tab.) Switch
+`Module.arguments` to `['--3d']`
 and reload: the hand-written software rasterizer spins a flat-shaded cube and a UV
 sphere over a grid — **the 3D pillar, running in a browser, every pixel still drawn by
 our code into a CPU framebuffer that we blit to the canvas.**

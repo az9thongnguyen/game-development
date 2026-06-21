@@ -59,7 +59,9 @@ void EditorScene::render(const Context& ctx) {
     draw_all_bodies(ctx.gfx);
     ui_.begin(&ctx.gfx, adapt(ctx.input));
     ui_.panel({12,12,210,220}, "EDITOR");
+    ui_.label("bodies: N   fps: M");
     if (ui_.button("Spawn Circle")) spawn(Circle);
+    if (ui_.button("Spawn Box"))    spawn(Box);
     ui_.checkbox("gravity", gravity_on_);
     ui_.slider("restitution", restitution_, 0, 1);
     if (ui_.button("Reset")) reset_world();
