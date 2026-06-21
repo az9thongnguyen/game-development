@@ -163,6 +163,19 @@ target_include_directories(test_assets PRIVATE src)
 target_link_libraries(test_assets PRIVATE engine_flags)
 add_test(NAME assets COMMAND test_assets)
 
+# ---- 2D physics (subsystem E): rigid bodies, collision, impulse resolution --------
+add_library(physics_core STATIC
+  src/engine/physics/collision.cpp
+  src/engine/physics/world.cpp
+)
+target_include_directories(physics_core PUBLIC src)
+target_link_libraries(physics_core PRIVATE engine_flags)
+
+add_executable(test_physics tests/test_physics.cpp)
+target_include_directories(test_physics PRIVATE src)
+target_link_libraries(test_physics PRIVATE physics_core engine_flags)
+add_test(NAME physics COMMAND test_physics)
+
 # ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
 # Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided
 # by whichever final target links it (the demo exe, or the test below).
