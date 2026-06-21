@@ -120,6 +120,9 @@ checks).
 | 38 | **Entities & safe handles** (index + generation, recycling, ABA-safe retirement) |
 | 39 | **Sparse-set storage & type erasure** (`SparseSet<T>`, `IPool`, `type_id<T>`) |
 | 40 | **Views, systems & acceptance** (component queries, fold expressions, systems) |
+| **Engine-core program — C: job system** | |
+| 41 | **Threads, the pool & the queue** (mutex/condvar work queue, data races, shutdown) |
+| 42 | **Counters, wait-and-help & parallel_for** (the API + the synchronous web fallback) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -138,7 +141,8 @@ observe → pitfalls → exercises.**
 | **ext ✅** | Native webserver (§11) — hand-written, serves the WASM build + a leaderboard API as a separate process |
 | **A ✅** | Memory allocators — arena/stack/pool/freelist/frame (engine-core foundation) |
 | **B ✅** | Engine-core ECS — type-erased sparse-set registry, generation handles, views |
-| C–F | job system · asset pipeline + hot reload · physics · editor (planned, in order) |
+| **C ✅** | Job system — thread pool + counters + parallel_for; synchronous on web |
+| D–F | asset pipeline + hot reload · physics · editor (planned, in order) |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
