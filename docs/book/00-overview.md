@@ -123,6 +123,9 @@ checks).
 | **Engine-core program — C: job system** | |
 | 41 | **Threads, the pool & the queue** (mutex/condvar work queue, data races, shutdown) |
 | 42 | **Counters, wait-and-help & parallel_for** (the API + the synchronous web fallback) |
+| **Engine-core program — D: asset pipeline** | |
+| 43 | **The asset cache** (per-type loaders, (type,path) keys, type erasure, the mtime seam) |
+| 44 | **Hot reload** (in-place content swap, mtime polling, reentrancy, the web no-op) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -142,7 +145,8 @@ observe → pitfalls → exercises.**
 | **A ✅** | Memory allocators — arena/stack/pool/freelist/frame (engine-core foundation) |
 | **B ✅** | Engine-core ECS — type-erased sparse-set registry, generation handles, views |
 | **C ✅** | Job system — thread pool + counters + parallel_for; synchronous on web |
-| D–F | asset pipeline + hot reload · physics · editor (planned, in order) |
+| **D ✅** | Asset pipeline — cache + per-type loaders + in-place hot reload |
+| E–F | physics · editor (planned, in order) |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
