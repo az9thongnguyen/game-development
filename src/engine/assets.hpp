@@ -30,4 +30,9 @@ std::optional<std::vector<uint8_t>> load_file(const std::string& path);
 // in ONE place, without any caller change.
 bool write_file(const std::string& path, const std::vector<uint8_t>& bytes);
 
+// Last-modified time as implementation-defined ticks (for hot-reload change
+// detection), or 0 if the file is missing or the platform can't report it (e.g. the
+// web has no filesystem watch). Only meaningful when compared against a prior value.
+std::int64_t mtime(const std::string& path);
+
 } // namespace assets
