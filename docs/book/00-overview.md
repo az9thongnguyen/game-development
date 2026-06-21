@@ -134,6 +134,8 @@ checks).
 | **Engine-core program — F: editor / GUI** | |
 | 48 | **Immediate-mode GUI: the idea & the core** (retained vs immediate, hot/active, ids) |
 | 49 | **Widgets, the editor scene & the whole project** (the `--editor` capstone + recap) |
+| **Integration** | |
+| 50 | **Engine-core integration: the colony sim** (a game on A+B+C+D+F: ECS, jobs, frame alloc, asset cache, GUI) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -156,6 +158,7 @@ observe → pitfalls → exercises.**
 | **D ✅** | Asset pipeline — cache + per-type loaders + in-place hot reload |
 | **E ✅** | 2D physics — rigid bodies, circle/box collision, impulse resolution |
 | **F ✅** | Editor support — hand-written immediate-mode GUI + a physics sandbox |
+| **integration ✅** | Colony sim (`--colony`) — a game built on A+B+C+D+F (ECS, jobs, frame alloc, asset cache, GUI) |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

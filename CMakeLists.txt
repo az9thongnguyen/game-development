@@ -101,9 +101,11 @@ add_executable(demo
   src/games/iso/iso_render.cpp
   src/games/iso/iso_scene.cpp
   src/games/editor/editor_scene.cpp
+  src/games/colony/colony_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core iso_core ui_core physics_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core physics_core colony_core mem_core)
+# (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:
@@ -188,6 +190,18 @@ add_executable(test_ui tests/test_ui.cpp src/engine/renderer2d.cpp)
 target_include_directories(test_ui PRIVATE src)
 target_link_libraries(test_ui PRIVATE ui_core engine_flags)
 add_test(NAME ui COMMAND test_ui)
+
+# ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
+# The "integration" deliverable — a game standing on the engine-core libs (B + C here;
+# A + D + F are used by its scene). Reuses iso_core's A*/TileMap (generic algorithms).
+add_library(colony_core STATIC src/games/colony/colony.cpp)
+target_include_directories(colony_core PUBLIC src)
+target_link_libraries(colony_core PUBLIC ecs_core jobs_core iso_core PRIVATE engine_flags)
+
+add_executable(test_colony tests/test_colony.cpp)
+target_include_directories(test_colony PRIVATE src)
+target_link_libraries(test_colony PRIVATE colony_core engine_flags)
+add_test(NAME colony COMMAND test_colony)
 
 # ---- 3D core (M3): reusable software renderer3d + geometry + cameras ---------
 # Pure of SDL. renderer3d.cpp references Renderer2D, whose symbols are provided

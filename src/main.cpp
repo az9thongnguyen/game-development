@@ -21,6 +21,7 @@
 #include "games/viz3d/editor_scene.hpp"
 #include "games/iso/iso_scene.hpp"
 #include "games/editor/editor_scene.hpp"
+#include "games/colony/colony_scene.hpp"
 
 namespace {
 
@@ -127,6 +128,17 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         return run_window(cfg, std::make_unique<editor::EditorScene>());
+    }
+
+    if (mode == "--colony") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — colony (ECS + jobs + UI)";
+        cfg.fb_width  = 960;
+        cfg.fb_height = 600;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<colony::ColonyScene>());
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
