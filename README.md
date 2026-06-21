@@ -28,7 +28,8 @@ material that accompanies the code.
 | **A** | Engine-core memory allocators — arena · stack · pool · freelist · frame (custom, hand-written) | ✅ done |
 | **B** | Engine-core ECS — generic type-erased sparse-set registry, generation-safe handles, views | ✅ done |
 | **C** | Job system — thread pool + counters + parallel_for (multicore on desktop, synchronous on web) | ✅ done |
-| D–F | asset pipeline + hot reload · physics · editor (engine-core program, in dependency order) | ⬜ planned |
+| **D** | Asset pipeline + hot reload — cache, per-type loaders, in-place reload on file change | ✅ done |
+| E–F | physics · editor (engine-core program, in dependency order) | ⬜ planned |
 
 ## Prerequisites (macOS)
 
