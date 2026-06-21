@@ -29,7 +29,8 @@ material that accompanies the code.
 | **B** | Engine-core ECS — generic type-erased sparse-set registry, generation-safe handles, views | ✅ done |
 | **C** | Job system — thread pool + counters + parallel_for (multicore on desktop, synchronous on web) | ✅ done |
 | **D** | Asset pipeline + hot reload — cache, per-type loaders, in-place reload on file change | ✅ done |
-| E–F | physics · editor (engine-core program, in dependency order) | ⬜ planned |
+| **E** | 2D physics — rigid bodies, circle/box collision, impulse resolution + positional correction | ✅ done |
+| F | editor support (engine-core program, last) | ⬜ planned |
 
 ## Prerequisites (macOS)
 
