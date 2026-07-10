@@ -18,7 +18,9 @@
 #include <string>
 
 #include <drogon/drogon.h>
+#include <sodium.h>
 
+#include "baas/app_config.h"
 #include "baas/app_setup.h"
 #include "baas/db/db.h"
 
@@ -27,18 +29,38 @@ int main(int argc, char** argv) {
     int         port   = 8080;
     std::string db_url = "sqlite://baas.db";
     bool        do_seed = false;
+    std::string jwt_secret;   // else BAAS_JWT_SECRET env, else an insecure dev default
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&](const char* def) {
             return (i + 1 < argc) ? std::string(argv[++i]) : std::string(def);
         };
-        if      (a == "--host") host   = next("127.0.0.1");
-        else if (a == "--port") port   = std::atoi(next("8080").c_str());
-        else if (a == "--db")   db_url = next("sqlite://baas.db");
-        else if (a == "--seed") do_seed = true;
+        if      (a == "--host")       host       = next("127.0.0.1");
+        else if (a == "--port")       port       = std::atoi(next("8080").c_str());
+        else if (a == "--db")         db_url     = next("sqlite://baas.db");
+        else if (a == "--jwt-secret") jwt_secret = next("");
+        else if (a == "--seed")       do_seed    = true;
         else { std::fprintf(stderr, "unknown arg: %s\n", a.c_str()); return 2; }
     }
+
+    // ---- crypto + config ----
+    if (sodium_init() < 0) {
+        std::fprintf(stderr, "libsodium init failed\n");
+        return 1;
+    }
+    web::AppConfig cfg;
+    const char*    env_secret = std::getenv("BAAS_JWT_SECRET");
+    cfg.jwt_secret = !jwt_secret.empty()
+                         ? jwt_secret
+                         : (env_secret ? std::string(env_secret) : std::string());
+    if (cfg.jwt_secret.empty()) {
+        std::fprintf(stderr,
+                     "WARNING: no --jwt-secret / BAAS_JWT_SECRET set; "
+                     "using an INSECURE dev secret\n");
+        cfg.jwt_secret = "dev-insecure-secret-change-me";
+    }
+    web::set_config(cfg);
 
     // ---- database: connect + migrate (+ optional seed) ----
     try {
