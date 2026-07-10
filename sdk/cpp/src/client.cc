@@ -168,6 +168,50 @@ void Client::Saves::remove(const std::string& slot, std::function<void(Result<bo
                       std::move(cb));
 }
 
+// -------- Replays --------
+void Client::Replays::save(const std::string& name, const std::string& data,
+                           std::function<void(Result<ReplayMeta>)> cb) {
+    const std::string body =
+        "{\"name\":\"" + json::escape(name) + "\",\"data\":\"" + json::escape(data) + "\"}";
+    c_->request<ReplayMeta>(
+        "POST", "/v1/replays", body,
+        [](const json::Value& j) {
+            return ReplayMeta{j["id"].as_int(), j["name"].as_string(), j["size"].as_int(),
+                              j["created_at"].as_string()};
+        },
+        std::move(cb));
+}
+
+void Client::Replays::list(std::function<void(Result<std::vector<ReplayMeta>>)> cb) {
+    c_->request<std::vector<ReplayMeta>>(
+        "GET", "/v1/replays", "",
+        [](const json::Value& j) {
+            std::vector<ReplayMeta> out;
+            const auto&             arr = j["replays"];
+            for (std::size_t k = 0; k < arr.size(); ++k)
+                out.push_back({arr[k]["id"].as_int(), arr[k]["name"].as_string(),
+                               arr[k]["size"].as_int(), arr[k]["created_at"].as_string()});
+            return out;
+        },
+        std::move(cb));
+}
+
+void Client::Replays::get(long long id, std::function<void(Result<Replay>)> cb) {
+    c_->request<Replay>(
+        "GET", "/v1/replays/" + std::to_string(id), "",
+        [](const json::Value& j) {
+            return Replay{j["id"].as_int(), j["name"].as_string(), j["data"].as_string(),
+                          j["created_at"].as_string()};
+        },
+        std::move(cb));
+}
+
+void Client::Replays::remove(long long id, std::function<void(Result<bool>)> cb) {
+    c_->request<bool>("DELETE", "/v1/replays/" + std::to_string(id), "",
+                      [](const json::Value& j) { return j["deleted"].as_bool(); },
+                      std::move(cb));
+}
+
 // -------- Inventory --------
 namespace {
 Item extract_item(const json::Value& j) { return Item{j["item"].as_string(), j["qty"].as_int()}; }

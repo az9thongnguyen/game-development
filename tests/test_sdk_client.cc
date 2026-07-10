@@ -177,6 +177,39 @@ int main() {
     c.update();
     CHECK(le && le->size() == 1 && (*le)[0].name == "Double Wood");
 
+    // --- replays (create / list / get / remove) ---
+    gbaas::Result<gbaas::ReplayMeta> rp{};
+    c.replays().save("run1", R"(cmd:"spawn")", [&](gbaas::Result<gbaas::ReplayMeta> r) { rp = r; });
+    CHECK(fake->last_method == "POST" && fake->last_url == "http://x/v1/replays");
+    CHECK(fake->last_body.find(R"("name":"run1")") != std::string::npos);
+    CHECK(fake->last_body.find(R"(\"spawn\")") != std::string::npos);   // data escaped
+    fake->reply(200, R"({"id":42,"name":"run1","size":11})");
+    c.update();
+    CHECK(rp && rp->id == 42 && rp->name == "run1" && rp->size == 11);
+
+    gbaas::Result<std::vector<gbaas::ReplayMeta>> rl{};
+    c.replays().list([&](gbaas::Result<std::vector<gbaas::ReplayMeta>> r) { rl = r; });
+    CHECK(fake->last_method == "GET" && fake->last_url == "http://x/v1/replays");
+    fake->reply(200,
+                R"({"replays":[{"id":42,"name":"run1","size":11,"created_at":"t1"},)"
+                R"({"id":41,"name":"run0","size":5,"created_at":"t0"}]})");
+    c.update();
+    CHECK(rl && rl->size() == 2 && (*rl)[0].id == 42 && (*rl)[1].name == "run0");
+
+    gbaas::Result<gbaas::Replay> rg{};
+    c.replays().get(42, [&](gbaas::Result<gbaas::Replay> r) { rg = r; });
+    CHECK(fake->last_method == "GET" && fake->last_url == "http://x/v1/replays/42");
+    fake->reply(200, R"({"id":42,"name":"run1","data":"cmd:spawn","created_at":"t1"})");
+    c.update();
+    CHECK(rg && rg->id == 42 && rg->data == "cmd:spawn");
+
+    gbaas::Result<bool> rd{};
+    c.replays().remove(42, [&](gbaas::Result<bool> r) { rd = r; });
+    CHECK(fake->last_method == "DELETE" && fake->last_url == "http://x/v1/replays/42");
+    fake->reply(200, R"({"deleted":true})");
+    c.update();
+    CHECK(rd && *rd);
+
     // --- JSON parser hardening (adversarial input must fail, not crash) ---
     {
         const std::string deep(5000, '[');                        // deeply nested → depth-capped
