@@ -139,6 +139,22 @@ int main() {
     c.update();
     CHECK(rm && *rm == true);
 
+    // --- inventory ---
+    gbaas::Result<gbaas::Item> iv{};
+    c.inventory().grant("wood", 5, [&](gbaas::Result<gbaas::Item> r) { iv = r; });
+    CHECK(fake->last_method == "POST");
+    CHECK(fake->last_url == "http://x/v1/inventory/wood/grant");
+    CHECK(fake->last_body == R"({"amount":5})");
+    fake->reply(200, R"({"item":"wood","qty":8})");
+    c.update();
+    CHECK(iv && iv->qty == 8 && iv->item == "wood");
+
+    gbaas::Result<std::vector<gbaas::Item>> il{};
+    c.inventory().list([&](gbaas::Result<std::vector<gbaas::Item>> r) { il = r; });
+    fake->reply(200, R"({"items":[{"item":"wood","qty":8},{"item":"gold","qty":2}]})");
+    c.update();
+    CHECK(il && il->size() == 2 && (*il)[1].item == "gold" && (*il)[1].qty == 2);
+
     // --- JSON parser hardening (adversarial input must fail, not crash) ---
     {
         const std::string deep(5000, '[');                        // deeply nested → depth-capped

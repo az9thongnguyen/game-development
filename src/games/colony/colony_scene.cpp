@@ -96,7 +96,7 @@ std::string ColonyScene::default_base_url() {
 void ColonyScene::login() {
     status_ = "connecting...";
     client_.auth().guest([this](gbaas::Result<gbaas::Session> r) {
-        if (r) { online_ = true; status_ = "signed in: " + r->display_name; }
+        if (r) { online_ = true; status_ = "signed in: " + r->display_name; refresh_wood(); }
         else   { online_ = false; status_ = "login failed"; }
     });
 }
@@ -153,6 +153,12 @@ void ColonyScene::cloud_load() {
             else                       sim_.spawn_prop(x, y, c);
         }
         status_ = "cloud loaded v" + std::to_string(r->version);
+    });
+}
+
+void ColonyScene::refresh_wood() {
+    client_.inventory().get("wood", [this](gbaas::Result<gbaas::Item> r) {
+        if (r) wood_ = r->qty;
     });
 }
 
@@ -226,7 +232,7 @@ void ColonyScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
 
     ui_.begin(&g, in);
-    ui_.panel(ui::Rect{12, 12, 210, 372}, "COLONY");
+    ui_.panel(ui::Rect{12, 12, 210, 452}, "COLONY");
     char line[64];
     std::snprintf(line, sizeof(line), "agents: %d   fps: %d", sim_.agent_count(), static_cast<int>(fps_ + 0.5));
     ui_.label(line);
@@ -248,6 +254,19 @@ void ColonyScene::render(const engine::Context& ctx) {
         }
         if (ui_.button("Cloud Save")) cloud_save();
         if (ui_.button("Load"))       cloud_load();
+
+        char wl[48];
+        std::snprintf(wl, sizeof(wl), "wood: %lld", wood_);
+        ui_.label(wl);
+        if (ui_.button("Gather +5 wood"))
+            client_.inventory().grant("wood", 5, [this](gbaas::Result<gbaas::Item> r) {
+                if (r) wood_ = r->qty;
+            });
+        if (ui_.button("Build -10 wood"))
+            client_.inventory().consume("wood", 10, [this](gbaas::Result<gbaas::Item> r) {
+                if (r) { wood_ = r->qty; status_ = "built!"; }
+                else   { status_ = "not enough wood"; }
+            });
     } else {
         if (ui_.button("Login (guest)")) login();
     }

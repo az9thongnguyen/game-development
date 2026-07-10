@@ -107,6 +107,18 @@ int main() {
         CHECK(pump(c, done));
         CHECK(sv && sv->data == R"({"hp":7})");
 
+        // inventory grant/consume (real transport)
+        gbaas::Result<gbaas::Item> ig;
+        done = false;
+        c.inventory().grant("wood", 10, [&](gbaas::Result<gbaas::Item> r) { ig = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(ig && ig->qty == 10);
+        gbaas::Result<gbaas::Item> ic;
+        done = false;
+        c.inventory().consume("wood", 4, [&](gbaas::Result<gbaas::Item> r) { ic = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(ic && ic->qty == 6);
+
         drogon::app().quit();
     });
 
