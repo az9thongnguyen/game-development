@@ -30,17 +30,19 @@ int main(int argc, char** argv) {
     std::string db_url = "sqlite://baas.db";
     bool        do_seed = false;
     std::string jwt_secret;   // else BAAS_JWT_SECRET env, else an insecure dev default
+    std::string static_root;  // optional: serve the WASM bundle from here (same-origin → no CORS)
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&](const char* def) {
             return (i + 1 < argc) ? std::string(argv[++i]) : std::string(def);
         };
-        if      (a == "--host")       host       = next("127.0.0.1");
-        else if (a == "--port")       port       = std::atoi(next("8080").c_str());
-        else if (a == "--db")         db_url     = next("sqlite://baas.db");
-        else if (a == "--jwt-secret") jwt_secret = next("");
-        else if (a == "--seed")       do_seed    = true;
+        if      (a == "--host")       host        = next("127.0.0.1");
+        else if (a == "--port")       port        = std::atoi(next("8080").c_str());
+        else if (a == "--db")         db_url      = next("sqlite://baas.db");
+        else if (a == "--jwt-secret") jwt_secret  = next("");
+        else if (a == "--static")     static_root = next("");
+        else if (a == "--seed")       do_seed     = true;
         else { std::fprintf(stderr, "unknown arg: %s\n", a.c_str()); return 2; }
     }
 
@@ -78,6 +80,20 @@ int main(int argc, char** argv) {
     }
 
     web::register_routes();
+
+    // Optionally serve the WASM bundle so the page and the API share one origin
+    // (no CORS needed). Our /v1 and /healthz handlers take precedence; anything
+    // else falls back to a static file under static_root.
+    if (!static_root.empty()) {
+        drogon::app().setDocumentRoot(static_root);
+        // Drogon serves only an allowlist of extensions; add the WASM bundle's,
+        // and register the MIME types browsers require (application/wasm enables
+        // streaming compilation).
+        drogon::app().setFileTypes({"html", "js", "wasm", "data", "css", "png", "ico", "json", "txt"});
+        drogon::app().registerCustomExtensionMime("wasm", "application/wasm");
+        drogon::app().registerCustomExtensionMime("data", "application/octet-stream");
+        LOG_INFO << "serving static files from " << static_root;
+    }
 
     LOG_INFO << "baas listening on " << host << ":" << port;
     drogon::app().addListener(host, port).run();
