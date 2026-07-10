@@ -200,7 +200,7 @@ void ColonyScene::render(const engine::Context& ctx) {
     // ---- BaaS: online controls ----
     ui_.label(status_.c_str());
     char sc[64];
-    std::snprintf(sc, sizeof(sc), "score: %ld   rank: %d", my_score_, my_rank_);
+    std::snprintf(sc, sizeof(sc), "score: %lld   rank: %d", my_score_, my_rank_);
     ui_.label(sc);
     if (online_) {
         if (ui_.button("Submit score")) submit_score();
@@ -227,7 +227,7 @@ void ColonyScene::render(const engine::Context& ctx) {
         }
         for (const auto& e : board_.entries) {
             char row[80];
-            std::snprintf(row, sizeof(row), "%2d. %-12.12s %ld", e.rank, e.display_name.c_str(), e.value);
+            std::snprintf(row, sizeof(row), "%2d. %-12.12s %lld", e.rank, e.display_name.c_str(), e.value);
             g.draw_text(bx + 8, yy, row, gfx::rgb(200, 210, 225), 1);
             yy += 14;
         }

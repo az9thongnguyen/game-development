@@ -21,7 +21,7 @@ struct Value {
     enum class T { Null, Bool, Int, Dbl, Str, Arr, Obj };
     T                                       t = T::Null;
     bool                                    b = false;
-    long                                    i = 0;
+    long long                               i = 0;   // 64-bit: wasm32/Windows have 32-bit long
     double                                  d = 0.0;
     std::string                             s;
     std::vector<Value>                      arr;
@@ -50,8 +50,8 @@ struct Value {
         return idx < arr.size() ? arr[idx] : null();
     }
     std::string as_string(const std::string& def = "") const { return t == T::Str ? s : def; }
-    long        as_int(long def = 0) const {
-        return t == T::Int ? i : (t == T::Dbl ? static_cast<long>(d) : def);
+    long long   as_int(long long def = 0) const {
+        return t == T::Int ? i : (t == T::Dbl ? static_cast<long long>(d) : def);
     }
     bool as_bool(bool def = false) const { return t == T::Bool ? b : def; }
 };
@@ -77,8 +77,10 @@ inline void append_utf8(std::string& out, unsigned long cp) {
 }
 
 struct Parser {
-    const char* p;
-    const char* end;
+    const char*          p;
+    const char*          end;
+    int                  depth = 0;         // guards against stack-overflow on nested input
+    static constexpr int kMaxDepth = 64;
 
     void skip_ws() {
         while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) ++p;
@@ -116,12 +118,16 @@ struct Parser {
                 case 'u': {
                     unsigned long cp = 0;
                     if (!parse_hex4(cp)) return false;
-                    // Combine a UTF-16 surrogate pair if present.
-                    if (cp >= 0xD800 && cp <= 0xDBFF && end - p >= 2 && p[0] == '\\' && p[1] == 'u') {
+                    if (cp >= 0xD800 && cp <= 0xDBFF) {
+                        // High surrogate: MUST be followed by a valid low surrogate.
+                        if (end - p < 2 || p[0] != '\\' || p[1] != 'u') return false;
                         p += 2;
                         unsigned long lo = 0;
                         if (!parse_hex4(lo)) return false;
+                        if (lo < 0xDC00 || lo > 0xDFFF) return false;   // not a low surrogate
                         cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                    } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                        return false;   // lone low surrogate → malformed
                     }
                     append_utf8(out, cp);
                     break;
@@ -164,14 +170,15 @@ struct Parser {
         if (p == start) return false;
         const std::string tok(start, p);
         if (is_dbl) { v.t = Value::T::Dbl; v.d = std::strtod(tok.c_str(), nullptr); }
-        else        { v.t = Value::T::Int; v.i = std::strtol(tok.c_str(), nullptr, 10); }
+        else        { v.t = Value::T::Int; v.i = std::strtoll(tok.c_str(), nullptr, 10); }
         return true;
     }
     bool parse_array(Value& v) {
+        if (++depth > kMaxDepth) return false;   // bound recursion (failure aborts the whole parse)
         v.t = Value::T::Arr;
         ++p;  // [
         skip_ws();
-        if (p < end && *p == ']') { ++p; return true; }
+        if (p < end && *p == ']') { ++p; --depth; return true; }
         while (true) {
             Value item;
             if (!parse_value(item)) return false;
@@ -179,15 +186,16 @@ struct Parser {
             skip_ws();
             if (p >= end) return false;
             if (*p == ',') { ++p; continue; }
-            if (*p == ']') { ++p; return true; }
+            if (*p == ']') { ++p; --depth; return true; }
             return false;
         }
     }
     bool parse_object(Value& v) {
+        if (++depth > kMaxDepth) return false;   // bound recursion (failure aborts the whole parse)
         v.t = Value::T::Obj;
         ++p;  // {
         skip_ws();
-        if (p < end && *p == '}') { ++p; return true; }
+        if (p < end && *p == '}') { ++p; --depth; return true; }
         while (true) {
             skip_ws();
             std::string key;
@@ -201,7 +209,7 @@ struct Parser {
             skip_ws();
             if (p >= end) return false;
             if (*p == ',') { ++p; continue; }
-            if (*p == '}') { ++p; return true; }
+            if (*p == '}') { ++p; --depth; return true; }
             return false;
         }
     }
