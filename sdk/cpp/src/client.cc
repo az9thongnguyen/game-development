@@ -122,4 +122,45 @@ void Client::Leaderboard::me(std::function<void(Result<Rank>)> cb) {
                       std::move(cb));
 }
 
+// -------- Saves (cloud save) --------
+void Client::Saves::put(const std::string& slot, const std::string& data,
+                        std::function<void(Result<SaveMeta>)> cb) {
+    const std::string body = "{\"data\":\"" + json::escape(data) + "\"}";
+    c_->request<SaveMeta>("PUT", "/v1/saves/" + slot, body,
+                          [](const json::Value& j) {
+                              return SaveMeta{j["slot"].as_string(), j["version"].as_int(),
+                                              j["size"].as_int()};
+                          },
+                          std::move(cb));
+}
+
+void Client::Saves::get(const std::string& slot, std::function<void(Result<Save>)> cb) {
+    c_->request<Save>("GET", "/v1/saves/" + slot, "",
+                      [](const json::Value& j) {
+                          return Save{j["slot"].as_string(), j["version"].as_int(),
+                                      j["data"].as_string()};
+                      },
+                      std::move(cb));
+}
+
+void Client::Saves::list(std::function<void(Result<std::vector<SaveMeta>>)> cb) {
+    c_->request<std::vector<SaveMeta>>(
+        "GET", "/v1/saves", "",
+        [](const json::Value& j) {
+            std::vector<SaveMeta> out;
+            const auto&           arr = j["saves"];
+            for (std::size_t k = 0; k < arr.size(); ++k)
+                out.push_back({arr[k]["slot"].as_string(), arr[k]["version"].as_int(),
+                               arr[k]["size"].as_int()});
+            return out;
+        },
+        std::move(cb));
+}
+
+void Client::Saves::remove(const std::string& slot, std::function<void(Result<bool>)> cb) {
+    c_->request<bool>("DELETE", "/v1/saves/" + slot, "",
+                      [](const json::Value& j) { return j["deleted"].as_bool(); },
+                      std::move(cb));
+}
+
 }  // namespace gbaas

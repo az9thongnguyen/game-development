@@ -51,6 +51,18 @@ struct Board {
     std::vector<Entry> entries;
 };
 
+struct SaveMeta {
+    std::string slot;
+    long long   version = 0;
+    long long   size    = 0;
+};
+
+struct Save {
+    std::string slot;
+    long long   version = 0;
+    std::string data;
+};
+
 class Client {
 public:
     // Native default transport (libcurl). Provide a transport explicitly for the
@@ -95,8 +107,22 @@ public:
         std::string key_;
     };
 
+    class Saves {
+    public:
+        void put(const std::string& slot, const std::string& data,
+                 std::function<void(Result<SaveMeta>)> cb);
+        void get(const std::string& slot, std::function<void(Result<Save>)> cb);
+        void list(std::function<void(Result<std::vector<SaveMeta>>)> cb);
+        void remove(const std::string& slot, std::function<void(Result<bool>)> cb);
+    private:
+        friend class Client;
+        explicit Saves(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
     Auth        auth() { return Auth(this); }
     Leaderboard leaderboard(std::string key) { return Leaderboard(this, std::move(key)); }
+    Saves       saves() { return Saves(this); }
 
 private:
     // Build headers, send, and route the response into a Result<T> via `extract`.

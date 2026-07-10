@@ -109,6 +109,36 @@ int main() {
     c.update();
     CHECK(!mr && mr.error && mr.error->status == -1);
 
+    // --- saves (cloud save) ---
+    gbaas::Result<gbaas::SaveMeta> sm{};
+    c.saves().put("slot1", R"(hello "world")", [&](gbaas::Result<gbaas::SaveMeta> r) { sm = r; });
+    CHECK(fake->last_method == "PUT");
+    CHECK(fake->last_url == "http://x/v1/saves/slot1");
+    CHECK(fake->last_body.find(R"(\"world\")") != std::string::npos);   // payload escaped
+    fake->reply(200, R"({"slot":"slot1","version":3,"size":13})");
+    c.update();
+    CHECK(sm && sm->version == 3 && sm->size == 13);
+
+    gbaas::Result<gbaas::Save> sv{};
+    c.saves().get("slot1", [&](gbaas::Result<gbaas::Save> r) { sv = r; });
+    CHECK(fake->last_method == "GET");
+    fake->reply(200, R"({"slot":"slot1","version":3,"data":"hello"})");
+    c.update();
+    CHECK(sv && sv->data == "hello" && sv->version == 3);
+
+    gbaas::Result<std::vector<gbaas::SaveMeta>> sl{};
+    c.saves().list([&](gbaas::Result<std::vector<gbaas::SaveMeta>> r) { sl = r; });
+    fake->reply(200, R"({"saves":[{"slot":"a","version":1,"size":2},{"slot":"b","version":5,"size":9}]})");
+    c.update();
+    CHECK(sl && sl->size() == 2 && (*sl)[1].version == 5);
+
+    gbaas::Result<bool> rm{};
+    c.saves().remove("slot1", [&](gbaas::Result<bool> r) { rm = r; });
+    CHECK(fake->last_method == "DELETE");
+    fake->reply(200, R"({"deleted":true})");
+    c.update();
+    CHECK(rm && *rm == true);
+
     // --- JSON parser hardening (adversarial input must fail, not crash) ---
     {
         const std::string deep(5000, '[');                        // deeply nested → depth-capped
