@@ -36,6 +36,7 @@ material that accompanies the code.
 | **BaaS S2** | Cloud Save — versioned per-user/per-slot game state with optimistic concurrency (If-Match); `client.saves()` in the SDK; colony Cloud Save/Load native + web | ✅ done |
 | **BaaS S3** | Inventory — per-user item quantities, grant/consume with server-enforced non-negative spend; `client.inventory()`; colony wood economy native + web | ✅ done |
 | **BaaS S4** | Remote Config + Analytics + Live Events — client-facing read/ingest L1 services (`client.config()/analytics()/events()`); admin write/query deferred to the L3 dashboard | ✅ done |
+| **BaaS S5** | Dashboard (L3) — admin API with two-level auth (platform `X-Admin-Secret` + per-project `X-Secret-Key`): create/list projects, config & live-event writes, analytics summary, users; a hand-written web dashboard at `/dashboard` | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -110,10 +111,11 @@ colony game uses — native (libcurl) and web (emscripten_fetch). The backend li
 ```sh
 brew install drogon libsodium                          # one-time backend deps
 cmake --build build --target baas
-./build/baas --db sqlite://baas.db --seed              # create the demo project
-BAAS_JWT_SECRET=change-me ./build/baas --db sqlite://baas.db --static build-web
-# native:  ./build/demo --colony            (with baas running on :8080)
-# web:     http://localhost:8080/demo.html?mode=colony
+./build/baas --db sqlite://baas.db --seed              # create the demo project (prints keys)
+BAAS_JWT_SECRET=change-me BAAS_ADMIN_SECRET=admin-me ./build/baas --db sqlite://baas.db --static build-web
+# native:     ./build/demo --colony         (with baas running on :8080)
+# web:        http://localhost:8080/demo.html?mode=colony
+# dashboard:  http://localhost:8080/dashboard   (operator UI; admin secret + the seeded sk_ key)
 ```
 
 See guidebook chapters 51–58 for the design.

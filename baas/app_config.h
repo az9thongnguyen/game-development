@@ -14,6 +14,7 @@ namespace web {
 struct AppConfig {
     std::string jwt_secret;              // HS256 signing key (from BAAS_JWT_SECRET)
     int         jwt_ttl_seconds = 3600;  // access-token lifetime
+    std::string admin_secret = {};       // platform-admin secret (from BAAS_ADMIN_SECRET)
 };
 
 void             set_config(AppConfig cfg);
