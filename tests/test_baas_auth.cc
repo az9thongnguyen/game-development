@@ -20,9 +20,14 @@
 #include <thread>
 #include <vector>
 
+#include <memory>
+
 #include <curl/curl.h>
 #include <drogon/drogon.h>
+#include <json/json.h>
+#include <sodium.h>
 
+#include "baas/app_config.h"
 #include "baas/app_setup.h"
 #include "baas/db/db.h"
 
@@ -88,8 +93,19 @@ static void cleanup_db(const std::string& path) {
         std::remove((path + suffix).c_str());
 }
 
+static Json::Value parse(const std::string& body) {
+    Json::Value                             j;
+    Json::CharReaderBuilder                 rb;
+    std::string                             e;
+    const std::unique_ptr<Json::CharReader> r(rb.newCharReader());
+    r->parse(body.data(), body.data() + body.size(), &j, &e);
+    return j;
+}
+
 int main() {
     curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (sodium_init() < 0) { std::printf("FAIL: libsodium init\n"); return 1; }
+    web::set_config(web::AppConfig{"integration-test-secret", 3600});
     const std::string db_path = "test_baas_auth.db";
     cleanup_db(db_path);
 
@@ -119,6 +135,46 @@ int main() {
         const Resp ok = http("GET", base + "/v1/ping", {"X-Api-Key: " + pk});
         CHECK(ok.status == 200);                                                   // valid key
         CHECK(ok.body.find("project_id") != std::string::npos);                    // project resolved
+
+        // --- auth: register / login / guest (all behind the api-key) ---
+        const std::string key = "X-Api-Key: " + pk;
+
+        const Resp reg = http("POST", base + "/v1/auth/register", {key},
+                              R"({"email":"a@b.com","password":"secret1","display_name":"Ann"})");
+        CHECK(reg.status == 200);
+        CHECK(!parse(reg.body)["access_token"].asString().empty());
+        CHECK(parse(reg.body)["user"]["is_guest"].asBool() == false);
+
+        // duplicate email -> 409
+        CHECK(http("POST", base + "/v1/auth/register", {key},
+                   R"({"email":"a@b.com","password":"secret1","display_name":"A2"})")
+                  .status == 409);
+        // password too short -> 400
+        CHECK(http("POST", base + "/v1/auth/register", {key},
+                   R"({"email":"c@d.com","password":"x","display_name":"C"})")
+                  .status == 400);
+
+        // login OK -> 200 + token
+        const Resp login = http("POST", base + "/v1/auth/login", {key},
+                                R"({"email":"a@b.com","password":"secret1"})");
+        CHECK(login.status == 200);
+        CHECK(!parse(login.body)["access_token"].asString().empty());
+
+        // wrong password and unknown email give the SAME 401 (no enumeration)
+        const Resp bad_pw = http("POST", base + "/v1/auth/login", {key},
+                                 R"({"email":"a@b.com","password":"nope"})");
+        const Resp no_user = http("POST", base + "/v1/auth/login", {key},
+                                  R"({"email":"zz@zz.com","password":"whatever"})");
+        CHECK(bad_pw.status == 401);
+        CHECK(no_user.status == 401);
+        CHECK(parse(bad_pw.body)["error"]["code"].asString() ==
+              parse(no_user.body)["error"]["code"].asString());
+
+        // guest -> 200, is_guest true, token present
+        const Resp guest = http("POST", base + "/v1/auth/guest", {key}, R"({"display_name":"G"})");
+        CHECK(guest.status == 200);
+        CHECK(parse(guest.body)["user"]["is_guest"].asBool() == true);
+        CHECK(!parse(guest.body)["access_token"].asString().empty());
 
         drogon::app().quit();
     });
