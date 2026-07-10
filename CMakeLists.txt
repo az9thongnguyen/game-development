@@ -319,6 +319,12 @@ add_executable(test_sdk_client tests/test_sdk_client.cc)
 target_link_libraries(test_sdk_client PRIVATE gbaas_sdk engine_flags)
 add_test(NAME sdk_client COMMAND test_sdk_client)
 
+# Realtime handle: driven by a FAKE WebSocket transport (no socket) — proves op
+# framing + server-event parsing/dispatch deterministically.
+add_executable(test_sdk_realtime tests/test_sdk_realtime.cc)
+target_link_libraries(test_sdk_realtime PRIVATE gbaas_sdk engine_flags)
+add_test(NAME sdk_realtime COMMAND test_sdk_realtime)
+
 # ---- Game BaaS backend (Slice #1, requirements.md §11): SEPARATE process --------
 # Drogon-based platform (auth + leaderboard + ...). Links NONE of the engine/game
 # code — the engine core never depends on Drogon. Desktop only (never the web

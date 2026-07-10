@@ -37,6 +37,7 @@ material that accompanies the code.
 | **BaaS S3** | Inventory — per-user item quantities, grant/consume with server-enforced non-negative spend; `client.inventory()`; colony wood economy native + web | ✅ done |
 | **BaaS S4** | Remote Config + Analytics + Live Events — client-facing read/ingest L1 services (`client.config()/analytics()/events()`); admin write/query deferred to the L3 dashboard | ✅ done |
 | **BaaS S5** | Dashboard (L3) — admin API with two-level auth (platform `X-Admin-Secret` + per-project `X-Secret-Key`): create/list projects, config & live-event writes, analytics summary, users; a hand-written web dashboard at `/dashboard` | ✅ done |
+| **BaaS S6** | Realtime (L2) — Lobby + Matchmaking over WebSocket (`/v1/ws`): mutex-guarded in-memory hub, auth-on-upgrade, tenant-scoped rooms/queue; `client.realtime()` in the SDK (native `ws://` via libcurl, web via the browser WebSocket) + a live dashboard Realtime console. Last hand-buildable tier (L4 needs real cloud/3rd-party infra). | ✅ done |
 
 ## Prerequisites (macOS)
 
