@@ -87,7 +87,7 @@ void Client::Auth::registerUser(const std::string& email, const std::string& pas
 }
 
 // -------- Leaderboard --------
-void Client::Leaderboard::submit(long value, std::function<void(Result<Rank>)> cb) {
+void Client::Leaderboard::submit(long long value, std::function<void(Result<Rank>)> cb) {
     const std::string body = "{\"value\":" + std::to_string(value) + "}";
     c_->request<Rank>("POST", "/v1/leaderboards/" + key_ + "/scores", body,
                       [](const json::Value& j) {

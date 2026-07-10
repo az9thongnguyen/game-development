@@ -55,7 +55,7 @@ private:
     bool          online_     = false;
     bool          board_open_ = false;
     std::string   status_     = "connecting...";
-    long          my_score_   = 0;
+    long long     my_score_   = 0;
     int           my_rank_    = 0;
     gbaas::Board  board_;
 

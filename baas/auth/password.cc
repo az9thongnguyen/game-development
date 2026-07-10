@@ -16,7 +16,9 @@ std::string hash(const std::string& password) {
                           crypto_pwhash_MEMLIMIT_INTERACTIVE) != 0) {
         throw std::runtime_error("password hashing failed (out of memory?)");
     }
-    return std::string(out);   // NUL-terminated encoded string
+    std::string result(out);   // NUL-terminated encoded string
+    sodium_memzero(out, sizeof(out));
+    return result;
 }
 
 bool verify(const std::string& password, const std::string& encoded_hash) {

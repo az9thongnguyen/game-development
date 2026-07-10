@@ -29,22 +29,22 @@ struct Config {
 };
 
 struct Session {
-    long        user_id = 0;
+    long long   user_id = 0;   // 64-bit: wasm32/Windows have 32-bit long
     std::string display_name;
     bool        is_guest = false;
 };
 
 struct Rank {
-    long value   = 0;
-    int  rank    = 0;
-    bool updated = false;
+    long long value   = 0;
+    int       rank    = 0;
+    bool      updated = false;
 };
 
 struct Entry {
     int         rank = 0;
-    long        user_id = 0;
+    long long   user_id = 0;
     std::string display_name;
-    long        value = 0;
+    long long   value = 0;
 };
 
 struct Board {
@@ -85,7 +85,7 @@ public:
 
     class Leaderboard {
     public:
-        void submit(long value, std::function<void(Result<Rank>)> cb);
+        void submit(long long value, std::function<void(Result<Rank>)> cb);
         void top(int limit, std::function<void(Result<Board>)> cb);
         void me(std::function<void(Result<Rank>)> cb);
     private:

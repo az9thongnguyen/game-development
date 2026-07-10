@@ -16,9 +16,14 @@
 namespace gbaas {
 namespace {
 
+constexpr std::size_t kMaxBodyBytes = 8 * 1024 * 1024;   // cap response size (memory-DoS guard)
+
 std::size_t write_cb(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
-    static_cast<std::string*>(userdata)->append(ptr, size * nmemb);
-    return size * nmemb;
+    auto*             body = static_cast<std::string*>(userdata);
+    const std::size_t n    = size * nmemb;
+    if (body->size() + n > kMaxBodyBytes) return 0;   // returning < n aborts the transfer
+    body->append(ptr, n);
+    return n;
 }
 
 // One in-flight request; heap-owned so its addresses stay stable for libcurl.
@@ -47,6 +52,14 @@ public:
         p->easy     = curl_easy_init();
         p->reqbody  = body;
         p->done     = std::move(done);
+
+        if (!p->easy || !multi_) {   // OOM / init failure → report a transport error, don't crash
+            HttpDone d = std::move(p->done);
+            if (p->easy) curl_easy_cleanup(p->easy);
+            delete p;
+            if (d) d(HttpResponse{-1, ""});
+            return;
+        }
 
         curl_easy_setopt(p->easy, CURLOPT_URL, url.c_str());
         curl_easy_setopt(p->easy, CURLOPT_CUSTOMREQUEST, method.c_str());

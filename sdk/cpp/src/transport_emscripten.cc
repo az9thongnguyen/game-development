@@ -29,12 +29,16 @@ struct FetchCtx {
     HttpDone                 done;
 };
 
+constexpr std::size_t kMaxBodyBytes = 8 * 1024 * 1024;   // cap response size (memory-DoS guard)
+
 void finish(emscripten_fetch_t* fetch, int status) {
     auto* ctx = static_cast<FetchCtx*>(fetch->userData);
     HttpResponse r;
     r.status = status;
-    if (fetch->data && fetch->numBytes > 0)
-        r.body.assign(fetch->data, static_cast<std::size_t>(fetch->numBytes));
+    if (fetch->data && fetch->numBytes > 0) {
+        if (static_cast<std::size_t>(fetch->numBytes) > kMaxBodyBytes) r.status = -1;
+        else r.body.assign(fetch->data, static_cast<std::size_t>(fetch->numBytes));
+    }
     HttpDone done = std::move(ctx->done);
     delete ctx;
     emscripten_fetch_close(fetch);

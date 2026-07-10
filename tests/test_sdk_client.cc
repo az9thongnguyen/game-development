@@ -109,6 +109,16 @@ int main() {
     c.update();
     CHECK(!mr && mr.error && mr.error->status == -1);
 
+    // --- JSON parser hardening (adversarial input must fail, not crash) ---
+    {
+        const std::string deep(5000, '[');                        // deeply nested → depth-capped
+        CHECK(!gbaas::json::parse(deep).has_value());
+        CHECK(!gbaas::json::parse(R"("\uD800A")").has_value());  // high surrogate, bad low
+        CHECK(!gbaas::json::parse(R"("\uDC00")").has_value());        // lone low surrogate
+        const auto big = gbaas::json::parse(R"({"n":9007199254740993})");  // 2^53+1 (64-bit)
+        CHECK(big && (*big)["n"].as_int() == 9007199254740993LL);          // no truncation
+    }
+
     if (g_failures == 0) std::printf("sdk_client: all tests passed\n");
     else                 std::printf("sdk_client: %d FAILURE(S)\n", g_failures);
     return g_failures;
