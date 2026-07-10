@@ -6,31 +6,53 @@
 //  connection handling, and routing; our modules (gateway/auth/leaderboard) plug
 //  in as filters + controllers. The engine core never sees Drogon.
 //
-//  S1.0 is intentionally the smallest thing that proves Drogon builds and boots:
-//  a single `GET /healthz`. Config, DB, gateway, auth, and leaderboard land in the
-//  following sub-milestones.
+//  Config, gateway, auth, and leaderboard land in the following sub-milestones.
 //
-//  Usage (S1.0):  baas [--host 127.0.0.1] [--port 8080]
+//  Usage:  baas [--host IP] [--port N] [--db URL] [--seed]
+//    --db    sqlite://PATH (default sqlite://baas.db) or postgres://... (needs libpq)
+//    --seed  create the demo project + colony_high leaderboard, print the key, exit
 // =============================================================================
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <functional>
 #include <string>
 
 #include <drogon/drogon.h>
 
+#include "baas/db/db.h"
+
 int main(int argc, char** argv) {
-    std::string host = "127.0.0.1";   // local only by default (not LAN-exposed)
-    int         port = 8080;
+    std::string host   = "127.0.0.1";   // local only by default (not LAN-exposed)
+    int         port   = 8080;
+    std::string db_url = "sqlite://baas.db";
+    bool        do_seed = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&](const char* def) {
             return (i + 1 < argc) ? std::string(argv[++i]) : std::string(def);
         };
-        if      (a == "--host") host = next("127.0.0.1");
-        else if (a == "--port") port = std::atoi(next("8080").c_str());
+        if      (a == "--host") host   = next("127.0.0.1");
+        else if (a == "--port") port   = std::atoi(next("8080").c_str());
+        else if (a == "--db")   db_url = next("sqlite://baas.db");
+        else if (a == "--seed") do_seed = true;
         else { std::fprintf(stderr, "unknown arg: %s\n", a.c_str()); return 2; }
+    }
+
+    // ---- database: connect + migrate (+ optional seed) ----
+    try {
+        auto db = web::db::make_db_client(db_url);
+        web::db::set_client(db);
+        web::db::run_migrations(db);
+        if (do_seed) {
+            const std::string pk = web::db::seed(db);
+            std::printf("seeded. project public_key = %s\n", pk.c_str());
+            return 0;
+        }
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "db init failed: %s\n", e.what());
+        return 1;
     }
 
     // Liveness probe: cheap, dependency-free, used by tests and orchestration.
