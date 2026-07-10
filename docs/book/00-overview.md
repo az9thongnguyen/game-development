@@ -136,6 +136,14 @@ checks).
 | 49 | **Widgets, the editor scene & the whole project** (the `--editor` capstone + recap) |
 | **Integration** | |
 | 50 | **Engine-core integration: the colony sim** (a game on A+B+C+D+F: ECS, jobs, frame alloc, asset cache, GUI) |
+| 51 | **Game BaaS: overview & architecture** (slices, modular monolith, the transport seam) |
+| 52 | **Drogon & the gateway** (filter chain, api-key→project, error envelope, OBJECT-lib registration) |
+| 53 | **Authentication** (argon2id, HS256 JWT over libsodium, guest accounts, threat model) |
+| 54 | **Persistence & the data model** (DbClient, schema, migration/seed, the tenancy rule) |
+| 55 | **The leaderboard service** (ranking, best-keep, anti-spoof, tenant isolation) |
+| 56 | **The unified C++ SDK** (non-blocking client, native/web transport seam) |
+| 57 | **Colony online** (integrating the SDK; native + web; same-origin serving) |
+| 58 | **Game BaaS Slice #1 acceptance** (end-to-end, security checklist, tests) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -159,6 +167,7 @@ observe → pitfalls → exercises.**
 | **E ✅** | 2D physics — rigid bodies, circle/box collision, impulse resolution |
 | **F ✅** | Editor support — hand-written immediate-mode GUI + a physics sandbox |
 | **integration ✅** | Colony sim (`--colony`) — a game built on A+B+C+D+F (ECS, jobs, frame alloc, asset cache, GUI) |
+| **BaaS S1 ✅** | Game Backend-as-a-Service, Slice #1 — auth (argon2id + JWT) + leaderboard on Drogon, multi-tenant projects, a unified non-blocking C++ SDK; colony online native + web |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
