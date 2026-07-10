@@ -104,7 +104,7 @@ add_executable(demo
   src/games/colony/colony_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core physics_core colony_core mem_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core physics_core colony_core mem_core gbaas_sdk)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
 # ---- Tests (CTest) -----------------------------------------------------------
@@ -309,3 +309,37 @@ add_executable(test_server tests/test_server.cpp
 target_include_directories(test_server PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(test_server PRIVATE engine_flags)
 add_test(NAME server COMMAND test_server)
+
+# ---- Game BaaS C++ SDK (gbaas_sdk): game-facing client, native + web -----------
+# NOT gated on Drogon: the SDK links no server code. Only libcurl (native) or
+# emscripten_fetch (web). The colony game links this to talk to the backend.
+add_subdirectory(sdk/cpp)
+
+add_executable(test_sdk_client tests/test_sdk_client.cc)
+target_link_libraries(test_sdk_client PRIVATE gbaas_sdk engine_flags)
+add_test(NAME sdk_client COMMAND test_sdk_client)
+
+# ---- Game BaaS backend (Slice #1, requirements.md §11): SEPARATE process --------
+# Drogon-based platform (auth + leaderboard + ...). Links NONE of the engine/game
+# code — the engine core never depends on Drogon. Desktop only (never the web
+# build). GUARDED on Drogon being installed so the ordinary engine build never
+# hard-depends on it: run `brew install drogon libsodium` to enable the 'baas'
+# target. On macOS the Homebrew prefix is added so find_package locates Drogon.
+if(NOT EMSCRIPTEN)
+  if(APPLE AND BREW_EXECUTABLE)
+    execute_process(
+      COMMAND ${BREW_EXECUTABLE} --prefix
+      OUTPUT_VARIABLE HOMEBREW_PREFIX
+      OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(HOMEBREW_PREFIX)
+      list(PREPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}")
+    endif()
+  endif()
+  find_package(Drogon CONFIG QUIET)
+  if(Drogon_FOUND)
+    message(STATUS "Drogon: found (${Drogon_DIR}) — building 'baas' backend")
+    add_subdirectory(baas)
+  else()
+    message(STATUS "Drogon not found — skipping 'baas' backend (brew install drogon)")
+  endif()
+endif()

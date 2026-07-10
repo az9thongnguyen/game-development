@@ -67,7 +67,9 @@ std::vector<uint8_t> gen_agent_sprite() {
 }
 } // namespace
 
-ColonyScene::ColonyScene() : sim_(14, 14), frame_(64 * 1024) {
+ColonyScene::ColonyScene()
+    : sim_(14, 14), frame_(64 * 1024),
+      client_(gbaas::Config{default_base_url(), "pk_demo_colony"}) {
     sim_.reset_default();
 
     // D: ensure the sprite exists, register a bytes→Image loader, load via the cache.
@@ -77,6 +79,42 @@ ColonyScene::ColonyScene() : sim_(14, 14), frame_(64 * 1024) {
         return img ? std::make_shared<gfx::Image>(std::move(*img)) : nullptr;
     });
     sprite_ = cache_.load<gfx::Image>(kSpritePath);
+
+    login();   // BaaS: guest sign-in (async; completes over the next few frames)
+}
+
+// Native talks to a local baas; the web build is served BY the baas (same origin),
+// so a relative base ("") resolves API calls against the page.
+std::string ColonyScene::default_base_url() {
+#ifdef __EMSCRIPTEN__
+    return "";
+#else
+    return "http://127.0.0.1:8080";
+#endif
+}
+
+void ColonyScene::login() {
+    status_ = "connecting...";
+    client_.auth().guest([this](gbaas::Result<gbaas::Session> r) {
+        if (r) { online_ = true; status_ = "signed in: " + r->display_name; }
+        else   { online_ = false; status_ = "login failed"; }
+    });
+}
+
+void ColonyScene::submit_score() {
+    // The colony's "score" is how many colonists it is managing.
+    client_.leaderboard("colony_high").submit(sim_.agent_count(),
+        [this](gbaas::Result<gbaas::Rank> r) {
+            if (r) { my_score_ = r->value; my_rank_ = r->rank; status_ = "score submitted"; refresh_board(); }
+            else   { status_ = "submit failed"; }
+        });
+}
+
+void ColonyScene::refresh_board() {
+    board_open_ = true;
+    client_.leaderboard("colony_high").top(10, [this](gbaas::Result<gbaas::Board> r) {
+        if (r) board_ = *r;
+    });
 }
 
 iso::Vec2i ColonyScene::hovered_cell(const platform::InputState& in) const {
@@ -84,6 +122,7 @@ iso::Vec2i ColonyScene::hovered_cell(const platform::InputState& in) const {
 }
 
 void ColonyScene::update(double dt, const platform::InputState& /*in*/) {
+    client_.update();   // BaaS: pump async responses → fire callbacks (even while paused)
     if (!running_) return;
     // Apply the UI speed to every agent, then advance (parallel inside the Sim).
     sim_.registry().view<Agent>([&](ecs::Entity, Agent& a) { a.speed = speed_; });
@@ -148,7 +187,7 @@ void ColonyScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
 
     ui_.begin(&g, in);
-    ui_.panel(ui::Rect{12, 12, 200, 188}, "COLONY");
+    ui_.panel(ui::Rect{12, 12, 210, 300}, "COLONY");
     char line[64];
     std::snprintf(line, sizeof(line), "agents: %d   fps: %d", sim_.agent_count(), static_cast<int>(fps_ + 0.5));
     ui_.label(line);
@@ -157,15 +196,50 @@ void ColonyScene::render(const engine::Context& ctx) {
     ui_.checkbox("running", running_);
     ui_.slider("speed", speed_, 0.5f, 8.0f);
     if (ui_.button("Reset")) { sim_.reset_default(); running_ = true; }
+
+    // ---- BaaS: online controls ----
+    ui_.label(status_.c_str());
+    char sc[64];
+    std::snprintf(sc, sizeof(sc), "score: %lld   rank: %d", my_score_, my_rank_);
+    ui_.label(sc);
+    if (online_) {
+        if (ui_.button("Submit score")) submit_score();
+        if (ui_.button(board_open_ ? "Hide leaderboard" : "Leaderboard")) {
+            if (board_open_) board_open_ = false; else refresh_board();
+        }
+    } else {
+        if (ui_.button("Login (guest)")) login();
+    }
     ui_.end();
 
+    // ---- BaaS: the leaderboard panel (raw-drawn, read-only) ----
+    const int  bx = 240, by = 12, bw = 264;
+    const int  rows = board_.entries.empty() ? 1 : static_cast<int>(board_.entries.size());
+    const int  bh = 30 + rows * 14 + 8;
+    const bool over_board = board_open_ && ctx.input.mouse_x >= bx && ctx.input.mouse_x < bx + bw &&
+                            ctx.input.mouse_y >= by && ctx.input.mouse_y < by + bh;
+    if (board_open_) {
+        g.fill_rect(bx, by, bw, bh, gfx::rgb(20, 24, 34));
+        g.draw_text(bx + 8, by + 8, "LEADERBOARD  colony_high", gfx::rgb(220, 220, 120), 1);
+        int yy = by + 26;
+        if (board_.entries.empty()) {
+            g.draw_text(bx + 8, yy, "no scores yet", gfx::rgb(150, 160, 180), 1);
+        }
+        for (const auto& e : board_.entries) {
+            char row[80];
+            std::snprintf(row, sizeof(row), "%2d. %-12.12s %lld", e.rank, e.display_name.c_str(), e.value);
+            g.draw_text(bx + 8, yy, row, gfx::rgb(200, 210, 225), 1);
+            yy += 14;
+        }
+    }
+
     // ---- click the world to send every agent to the cursor (A*) ----
-    if (ctx.input.pressed(MouseButton::Left) && !ui_.hovering_ui() &&
+    if (ctx.input.pressed(MouseButton::Left) && !ui_.hovering_ui() && !over_board &&
         hovered_.x >= 0 && hovered_.y >= 0 && hovered_.x < sim_.width() && hovered_.y < sim_.height())
         sim_.set_goal(hovered_.x, hovered_.y);
 
     g.draw_text(12, h_ - 16,
-                "click the world: send agents there (A*)   -   B:ECS  C:jobs  A:frame  D:asset  F:ui   ESC:quit",
+                "click: send agents (A*)  -  B:ECS C:jobs A:frame D:asset F:ui  +  BaaS: auth/leaderboard  -  ESC:quit",
                 gfx::rgb(150, 160, 180), 1);
 }
 
