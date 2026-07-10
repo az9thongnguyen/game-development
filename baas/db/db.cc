@@ -71,6 +71,32 @@ CREATE TABLE IF NOT EXISTS inventory (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(project_id, user_id, item)
 );
+CREATE TABLE IF NOT EXISTS config (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, key)
+);
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  user_id INTEGER,
+  name TEXT NOT NULL,
+  props TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS live_events (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  payload TEXT NOT NULL DEFAULT '{}',
+  UNIQUE(project_id, key)
+);
 )SQL";
 
 bool is_blank(const std::string& s) {
@@ -131,6 +157,16 @@ std::string seed(const DbClientPtr& db) {
             "INSERT INTO leaderboards(project_id, key, name, sort) VALUES(?,?,?,?)",
             static_cast<long>(pid), std::string("colony_high"),
             std::string("Colony High Scores"), std::string("desc"));
+        // Default remote config + a demo live event (always active) for the colony demo.
+        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+                        static_cast<long>(pid), std::string("motd"), std::string("Welcome to Colony!"));
+        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+                        static_cast<long>(pid), std::string("max_agents"), std::string("50"));
+        db->execSqlSync(
+            "INSERT INTO live_events(project_id, key, name, starts_at, ends_at, payload) VALUES(?,?,?,?,?,?)",
+            static_cast<long>(pid), std::string("double_wood"), std::string("Double Wood Weekend"),
+            std::string("2000-01-01 00:00:00"), std::string("2999-01-01 00:00:00"),
+            std::string("{\"wood_mult\":2}"));
     }
     return public_key;
 }
