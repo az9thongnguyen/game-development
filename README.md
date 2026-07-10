@@ -32,6 +32,7 @@ material that accompanies the code.
 | **E** | 2D physics — rigid bodies, circle/box collision, impulse resolution + positional correction | ✅ done |
 | **F** | Editor support — hand-written immediate-mode GUI + a UI-driven physics sandbox | ✅ done |
 | **integration** | Colony sim — a game standing on the engine core (ECS + jobs + frame allocator + asset cache + GUI) | ✅ done |
+| **BaaS S1** | Game Backend-as-a-Service, Slice #1 — auth (argon2id + JWT) + leaderboard on Drogon, multi-tenant projects, unified non-blocking C++ SDK (native libcurl / web emscripten_fetch); colony online native + web | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -96,6 +97,24 @@ cmake --build build --target webserver
 # API: GET/POST http://localhost:8080/api/scores  ({"name":"..","score":N})
 ```
 
+### Game BaaS — Slice #1 (auth + leaderboard, separate process)
+
+A Drogon-based backend (`baas/`) with accounts (argon2id passwords + HS256 JWT) and a
+multi-tenant leaderboard, plus a unified **non-blocking C++ SDK** (`sdk/cpp/`) the
+colony game uses — native (libcurl) and web (emscripten_fetch). The backend links
+**no** engine code; the engine core gains **no** dependency (only the SDK does).
+
+```sh
+brew install drogon libsodium                          # one-time backend deps
+cmake --build build --target baas
+./build/baas --db sqlite://baas.db --seed              # create the demo project
+BAAS_JWT_SECRET=change-me ./build/baas --db sqlite://baas.db --static build-web
+# native:  ./build/demo --colony            (with baas running on :8080)
+# web:     http://localhost:8080/demo.html?mode=colony
+```
+
+See guidebook chapters 51–58 for the design.
+
 ## Project layout
 
 ```
@@ -108,6 +127,8 @@ src/games/      chess (M1), fps raycaster (M2), viz3d 3D showcase + sandbox (M3/
 docs/book/      the guidebook — read these chapters alongside the code
 web/            shell.html for the WebAssembly build (M5)
 server/         hand-written native webserver (§11) — separate process, no engine code
+baas/           Game BaaS backend (Drogon) — gateway + auth + leaderboard; separate process
+sdk/cpp/        unified non-blocking C++ SDK (gbaas) — native (libcurl) + web (emscripten_fetch)
 cmake/          Emscripten toolchain hook (used at M5)
 ```
 
