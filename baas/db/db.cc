@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS scores (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(leaderboard_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS saves (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  slot TEXT NOT NULL,
+  data TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, user_id, slot)
+);
 )SQL";
 
 bool is_blank(const std::string& s) {

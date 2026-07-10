@@ -43,6 +43,8 @@ private:
     void               login();
     void               submit_score();
     void               refresh_board();
+    void               cloud_save();   // serialize the sim → saves().put("colony", …)
+    void               cloud_load();   // saves().get("colony") → rebuild the sim
 
     Sim                          sim_;
     ui::Context                  ui_;

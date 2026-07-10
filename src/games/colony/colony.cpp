@@ -73,6 +73,11 @@ void Sim::update(double dt) {
     }, 64);
 }
 
+void Sim::clear() {
+    reg_ = ecs::Registry{};            // wipe all entities (move-assign a fresh one)
+    agent_count_ = 0;
+}
+
 void Sim::reset_default() {
     reg_ = ecs::Registry{};            // wipe all entities (move-assign a fresh one)
     agent_count_ = 0;

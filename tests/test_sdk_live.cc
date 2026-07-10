@@ -95,6 +95,18 @@ int main() {
         CHECK(pump(c, done));
         CHECK(me && me->value == 4200 && me->rank == 1);
 
+        // cloud save round-trip (real transport)
+        gbaas::Result<gbaas::SaveMeta> sm;
+        done = false;
+        c.saves().put("colony", R"({"hp":7})", [&](gbaas::Result<gbaas::SaveMeta> r) { sm = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(sm && sm->version == 1);
+        gbaas::Result<gbaas::Save> sv;
+        done = false;
+        c.saves().get("colony", [&](gbaas::Result<gbaas::Save> r) { sv = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(sv && sv->data == R"({"hp":7})");
+
         drogon::app().quit();
     });
 
