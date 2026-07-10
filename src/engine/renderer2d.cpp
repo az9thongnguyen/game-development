@@ -11,9 +11,17 @@
 #include "engine/font8x8.hpp"
 #include "engine/text/font.hpp"
 
-#include <cstdlib>  // std::abs
+#include <algorithm>  // std::swap
+#include <cmath>      // std::floor, std::round
+#include <cstdlib>    // std::abs
 
 namespace gfx {
+namespace {
+inline float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+inline std::uint8_t cov_of(float b) { return static_cast<std::uint8_t>(clamp01(b) * 255.0f + 0.5f); }
+inline float fpart(float x)  { return x - std::floor(x); }
+inline float rfpart(float x) { return 1.0f - fpart(x); }
+} // namespace
 
 // ---- physical sinks (no scaling) --------------------------------------------
 void Renderer2D::fill_phys(int x, int y, int w, int h, Color c) {
@@ -81,6 +89,53 @@ void Renderer2D::draw_line(int x0, int y0, int x1, int y1, Color c) {
         int e2 = 2 * err;
         if (e2 >= dy) { err += dy; x0 += sx; }
         if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+void Renderer2D::draw_line_aa(int lx0, int ly0, int lx1, int ly1, Color c) {
+    // Xiaolin Wu in PHYSICAL space (endpoints scaled by ss_). Each step blends the
+    // two pixels straddling the true line, weighted by distance → smooth edges.
+    float x0 = lx0 * float(ss_), y0 = ly0 * float(ss_);
+    float x1 = lx1 * float(ss_), y1 = ly1 * float(ss_);
+
+    const bool steep = std::abs(y1 - y0) > std::abs(x1 - x0);
+    if (steep) { std::swap(x0, y0); std::swap(x1, y1); }   // fold to a shallow line
+    if (x0 > x1) { std::swap(x0, x1); std::swap(y0, y1); } // and left-to-right
+
+    const float dx = x1 - x0;
+    const float dy = y1 - y0;
+    const float grad = (dx == 0.0f) ? 1.0f : dy / dx;
+
+    // steep swapped x/y, so un-swap when writing: minor axis is `a`, major is `b`.
+    auto plot = [&](int b, int a, float bright) {
+        if (steep) blend_cov(a, b, c, cov_of(bright));     // (x,y) = (a,b)
+        else       blend_cov(b, a, c, cov_of(bright));     // (x,y) = (b,a)
+    };
+
+    // Endpoint 1
+    float xend  = std::round(x0);
+    float yend  = y0 + grad * (xend - x0);
+    float xgap  = rfpart(x0 + 0.5f);
+    const int xpxl1 = int(xend);
+    const int ypxl1 = int(std::floor(yend));
+    plot(xpxl1, ypxl1,     rfpart(yend) * xgap);
+    plot(xpxl1, ypxl1 + 1, fpart(yend)  * xgap);
+    float intery = yend + grad;
+
+    // Endpoint 2
+    xend = std::round(x1);
+    yend = y1 + grad * (xend - x1);
+    xgap = fpart(x1 + 0.5f);
+    const int xpxl2 = int(xend);
+    const int ypxl2 = int(std::floor(yend));
+    plot(xpxl2, ypxl2,     rfpart(yend) * xgap);
+    plot(xpxl2, ypxl2 + 1, fpart(yend)  * xgap);
+
+    // Main span
+    for (int x = xpxl1 + 1; x < xpxl2; ++x) {
+        plot(x, int(std::floor(intery)),     rfpart(intery));
+        plot(x, int(std::floor(intery)) + 1, fpart(intery));
+        intery += grad;
     }
 }
 
