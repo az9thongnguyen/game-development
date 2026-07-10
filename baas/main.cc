@@ -77,6 +77,12 @@ int main(int argc, char** argv) {
                      "using an INSECURE dev admin secret\n");
         cfg.admin_secret = "dev-insecure-admin-change-me";
     }
+    // Rate limiting: on by default (a per-api-key/IP token bucket on /v1/*).
+    // Override the burst/refill or disable it (BAAS_RATE_CAPACITY=0) via env.
+    cfg.rate_capacity       = 120;   // burst size
+    cfg.rate_refill_per_sec = 60;    // sustained requests/sec per caller
+    if (const char* c = std::getenv("BAAS_RATE_CAPACITY")) cfg.rate_capacity = std::atof(c);
+    if (const char* r = std::getenv("BAAS_RATE_REFILL"))   cfg.rate_refill_per_sec = std::atof(r);
     web::set_config(cfg);
 
     // ---- database: connect + migrate (+ optional seed) ----

@@ -31,6 +31,7 @@ add_library(baas_core OBJECT
   common/errors.cc
   gateway/api_key_filter.cc
   gateway/auth_filter.cc
+  gateway/rate_limiter.cc
   auth/password.cc
   auth/jwt.cc
   auth/auth_service.cc
@@ -70,6 +71,11 @@ add_executable(test_baas_jwt ${CMAKE_SOURCE_DIR}/tests/test_baas_jwt.cc)
 target_link_libraries(test_baas_jwt PRIVATE baas_core engine_flags)
 add_test(NAME baas_jwt COMMAND test_baas_jwt)
 
+# Rate limiter: pure token-bucket logic, deterministic (injected time) — no server.
+add_executable(test_rate_limiter ${CMAKE_SOURCE_DIR}/tests/test_rate_limiter.cc)
+target_link_libraries(test_rate_limiter PRIVATE baas_core engine_flags)
+add_test(NAME rate_limiter COMMAND test_rate_limiter)
+
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
@@ -86,7 +92,7 @@ add_executable(test_baas_inventory ${CMAKE_SOURCE_DIR}/tests/test_baas_inventory
 target_link_libraries(test_baas_inventory PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_inventory COMMAND test_baas_inventory)
 
-foreach(svc config analytics events admin replays)
+foreach(svc config analytics events admin replays ratelimit)
   add_executable(test_baas_${svc} ${CMAKE_SOURCE_DIR}/tests/test_baas_${svc}.cc)
   target_link_libraries(test_baas_${svc} PRIVATE baas_core CURL::libcurl engine_flags)
   add_test(NAME baas_${svc} COMMAND test_baas_${svc})

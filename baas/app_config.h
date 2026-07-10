@@ -15,6 +15,11 @@ struct AppConfig {
     std::string jwt_secret;              // HS256 signing key (from BAAS_JWT_SECRET)
     int         jwt_ttl_seconds = 3600;  // access-token lifetime
     std::string admin_secret = {};       // platform-admin secret (from BAAS_ADMIN_SECRET)
+
+    // Per-caller (api-key, else IP) token-bucket rate limit on /v1/* routes.
+    // rate_capacity <= 0 disables rate limiting entirely.
+    double      rate_capacity      = 0;   // burst size (tokens)
+    double      rate_refill_per_sec = 0;  // sustained refill rate
 };
 
 void             set_config(AppConfig cfg);
