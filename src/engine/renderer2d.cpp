@@ -4,6 +4,7 @@
 #include "engine/renderer2d.hpp"
 
 #include "engine/font8x8.hpp"
+#include "engine/text/font.hpp"
 
 #include <cstdlib>  // std::abs
 
@@ -26,6 +27,16 @@ void Renderer2D::blend_pixel(int x, int y, Color c) {
     if (x < 0 || y < 0 || x >= fb_.width || y >= fb_.height) return;
     Color& dst = fb_.pixels[y * fb_.pitch + x];
     dst = blend(dst, c);
+}
+
+// Blend `c` with an extra coverage multiplier (0..255) folded into its alpha.
+// This is the shared entry for anti-aliased output — font glyphs (below) and the
+// AA primitives (Wu lines, coverage shapes) all deposit partial coverage here.
+void Renderer2D::blend_pixel(int x, int y, Color c, std::uint8_t coverage) {
+    if (coverage == 0) return;
+    const std::uint32_t a = static_cast<std::uint32_t>(a_of(c)) * coverage / 255u;
+    if (a == 0) return;
+    blend_pixel(x, y, (c & 0x00FFFFFFu) | (a << 24));
 }
 
 void Renderer2D::fill_rect(int x, int y, int w, int h, Color c) {
@@ -108,6 +119,41 @@ void Renderer2D::draw_text(int x, int y, const char* s, Color c, int scale) {
         if (*s == '\n') { y += 8 * scale; cx = x; continue; }
         draw_char(cx, y, *s, c, scale);
         cx += 8 * scale;   // fixed-width font: 8px advance per glyph
+    }
+}
+
+// ---- font-backed (anti-aliased) text ----------------------------------------
+void Renderer2D::set_font(text::Font* f, int px) { font_ = f; font_px_ = px; }
+void Renderer2D::set_font_size(int px)           { font_px_ = px; }
+
+int Renderer2D::text_width(const char* s) const {
+    if (font_ && font_px_ > 0) return font_->text_width(font_px_, s);
+    int n = 0; for (const char* p = s; p && *p; ++p) ++n;   // 8x8 fallback: 8px/char
+    return n * 8;
+}
+
+void Renderer2D::draw_text(int x, int y, const char* s, Color c) {
+    if (!s) return;
+    if (!font_ || font_px_ <= 0) { draw_text(x, y, s, c, 1); return; }  // 8x8 fallback
+
+    const int lh   = font_->line_height(font_px_);
+    const int asc  = font_->ascent(font_px_);
+    int       base = y + asc;    // baseline of the current line (y is the line top)
+    int       pen  = x;
+    for (; *s; ++s) {
+        if (*s == '\n') { base += lh; pen = x; continue; }
+        const text::Glyph* g = font_->glyph(font_px_, *s);
+        if (!g) continue;
+        if (g->cov) {
+            const int gx = pen + g->bearing_x;
+            const int gy = base + g->top;                 // g->top is offset from baseline (y down)
+            for (int ry = 0; ry < g->h; ++ry) {
+                const std::uint8_t* row = g->cov + static_cast<std::size_t>(ry) * g->w;
+                for (int rx = 0; rx < g->w; ++rx)
+                    blend_pixel(gx + rx, gy + ry, c, row[rx]);
+            }
+        }
+        pen += g->advance;
     }
 }
 
