@@ -39,6 +39,8 @@ add_library(baas_core OBJECT
   leaderboard/lb_controller.cc
   cloud_save/save_service.cc
   cloud_save/save_controller.cc
+  inventory/inv_service.cc
+  inventory/inv_controller.cc
   app_setup.cc
 )
 target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
@@ -66,6 +68,10 @@ add_test(NAME baas_leaderboard COMMAND test_baas_leaderboard)
 add_executable(test_baas_cloudsave ${CMAKE_SOURCE_DIR}/tests/test_baas_cloudsave.cc)
 target_link_libraries(test_baas_cloudsave PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_cloudsave COMMAND test_baas_cloudsave)
+
+add_executable(test_baas_inventory ${CMAKE_SOURCE_DIR}/tests/test_baas_inventory.cc)
+target_link_libraries(test_baas_inventory PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_inventory COMMAND test_baas_inventory)
 
 # End-to-end: the real SDK (libcurl transport) against a live server. Links the
 # SDK + the server + curl (for the healthz probe in the harness).

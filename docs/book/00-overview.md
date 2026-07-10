@@ -145,6 +145,7 @@ checks).
 | 57 | **Colony online** (integrating the SDK; native + web; same-origin serving) |
 | 58 | **Game BaaS Slice #1 acceptance** (end-to-end, security checklist, tests) |
 | 59 | **Cloud Save** (versioned per-user/per-slot saves, optimistic concurrency, colony save/load) |
+| 60 | **Inventory** (per-user item quantities, grant/consume, server-enforced non-negative spend) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -170,6 +171,7 @@ observe → pitfalls → exercises.**
 | **integration ✅** | Colony sim (`--colony`) — a game built on A+B+C+D+F (ECS, jobs, frame alloc, asset cache, GUI) |
 | **BaaS S1 ✅** | Game Backend-as-a-Service, Slice #1 — auth (argon2id + JWT) + leaderboard on Drogon, multi-tenant projects, a unified non-blocking C++ SDK; colony online native + web |
 | **BaaS S2 ✅** | Cloud Save — versioned per-user/per-slot saves with optimistic concurrency (If-Match); colony state round-trips to the cloud, native + web |
+| **BaaS S3 ✅** | Inventory — per-user item quantities (grant/consume, server-enforced non-negative spend); colony wood economy, native + web |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

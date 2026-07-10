@@ -163,4 +163,38 @@ void Client::Saves::remove(const std::string& slot, std::function<void(Result<bo
                       std::move(cb));
 }
 
+// -------- Inventory --------
+namespace {
+Item extract_item(const json::Value& j) { return Item{j["item"].as_string(), j["qty"].as_int()}; }
+}
+
+void Client::Inventory::grant(const std::string& item, long long amount,
+                              std::function<void(Result<Item>)> cb) {
+    c_->request<Item>("POST", "/v1/inventory/" + item + "/grant",
+                      "{\"amount\":" + std::to_string(amount) + "}", extract_item, std::move(cb));
+}
+
+void Client::Inventory::consume(const std::string& item, long long amount,
+                                std::function<void(Result<Item>)> cb) {
+    c_->request<Item>("POST", "/v1/inventory/" + item + "/consume",
+                      "{\"amount\":" + std::to_string(amount) + "}", extract_item, std::move(cb));
+}
+
+void Client::Inventory::get(const std::string& item, std::function<void(Result<Item>)> cb) {
+    c_->request<Item>("GET", "/v1/inventory/" + item, "", extract_item, std::move(cb));
+}
+
+void Client::Inventory::list(std::function<void(Result<std::vector<Item>>)> cb) {
+    c_->request<std::vector<Item>>(
+        "GET", "/v1/inventory", "",
+        [](const json::Value& j) {
+            std::vector<Item> out;
+            const auto&       arr = j["items"];
+            for (std::size_t k = 0; k < arr.size(); ++k)
+                out.push_back({arr[k]["item"].as_string(), arr[k]["qty"].as_int()});
+            return out;
+        },
+        std::move(cb));
+}
+
 }  // namespace gbaas

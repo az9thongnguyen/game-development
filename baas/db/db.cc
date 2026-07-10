@@ -62,6 +62,15 @@ CREATE TABLE IF NOT EXISTS saves (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(project_id, user_id, slot)
 );
+CREATE TABLE IF NOT EXISTS inventory (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  item TEXT NOT NULL,
+  qty BIGINT NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, user_id, item)
+);
 )SQL";
 
 bool is_blank(const std::string& s) {
