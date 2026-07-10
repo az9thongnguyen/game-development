@@ -187,7 +187,7 @@ add_library(text_core STATIC src/engine/text/font.cpp)
 target_include_directories(text_core PUBLIC src PRIVATE third_party)
 target_link_libraries(text_core PRIVATE engine_flags)
 
-add_executable(test_font tests/test_font.cpp src/engine/assets.cpp)
+add_executable(test_font tests/test_font.cpp src/engine/assets.cpp src/engine/renderer2d.cpp)
 target_include_directories(test_font PRIVATE src)
 target_compile_definitions(test_font PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_font PRIVATE text_core engine_flags)

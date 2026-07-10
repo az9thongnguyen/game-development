@@ -10,8 +10,12 @@
 // =============================================================================
 #pragma once
 
+#include <cstdint>
+
 #include "engine/color.hpp"
 #include "platform/platform.hpp"
+
+namespace text { class Font; }   // fwd (full include lives in renderer2d.cpp)
 
 namespace gfx {
 
@@ -33,6 +37,7 @@ public:
 
     void set_pixel(int x, int y, Color c);    // opaque write, clipped
     void blend_pixel(int x, int y, Color c);  // alpha blend, clipped
+    void blend_pixel(int x, int y, Color c, std::uint8_t coverage);  // + AA coverage (0..255)
 
     void fill_rect(int x, int y, int w, int h, Color c);
     void draw_rect(int x, int y, int w, int h, Color c);   // 1px outline
@@ -40,12 +45,21 @@ public:
 
     void blit(const Sprite& s, int x, int y);  // alpha-blended sprite
 
-    // 8x8 bitmap text. `scale` draws each font pixel as a scale*scale block.
+    // Text. With a font set (set_font), draw_text renders anti-aliased glyphs;
+    // otherwise it falls back to the embedded 8x8 bitmap font at scale 1. `y` is
+    // the top of the line in both cases.
+    void set_font(text::Font* f, int px);
+    int  text_width(const char* s) const;                  // px width of s in the current font (or 8x8)
+    void draw_text(int x, int y, const char* s, Color c);  // font-backed (or 8x8 fallback)
+
+    // Legacy 8x8 bitmap text (retro look / no-font paths). `scale` blocks each px.
     void draw_char(int x, int y, char ch, Color c, int scale = 1);
-    void draw_text(int x, int y, const char* s, Color c, int scale = 1);
+    void draw_text(int x, int y, const char* s, Color c, int scale);  // explicit 8x8
 
 private:
     platform::Framebuffer fb_;
+    text::Font*           font_    = nullptr;
+    int                   font_px_ = 0;
 };
 
 } // namespace gfx

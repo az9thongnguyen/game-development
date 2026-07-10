@@ -5,9 +5,12 @@
 //  root via the ASSET_ROOT compile definition), then checks parse success/failure,
 //  monotonic metrics, and that a rasterized glyph actually has coverage.
 // =============================================================================
+#include <cstdint>
 #include <cstdio>
+#include <vector>
 
 #include "engine/assets.hpp"
+#include "engine/renderer2d.hpp"
 #include "engine/text/font.hpp"
 
 #ifndef ASSET_ROOT
@@ -60,6 +63,36 @@ int main() {
     // --- space is a valid, blank, positive-advance glyph ---
     const text::Glyph* sp = font->glyph(24, ' ');
     CHECK(sp != nullptr && sp->cov == nullptr && sp->advance > 0);
+
+    // --- Renderer2D text: 8x8 fallback still works; font path is anti-aliased ---
+    {
+        constexpr int W = 80, H = 28;
+        constexpr std::uint32_t BG = 0xFF000000;   // opaque black
+        std::vector<std::uint32_t> buf(static_cast<std::size_t>(W) * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        gfx::Renderer2D r(fb);
+
+        // No font set → legacy 8x8 path must still draw (regression guard).
+        r.draw_text(1, 1, "Hi", 0xFFFFFFFF);
+        int lit_fb = 0;
+        for (auto p : buf) if (p != BG) ++lit_fb;
+        CHECK(lit_fb > 0);
+
+        // Font set → AA glyphs: white-on-black must yield intermediate greys.
+        for (auto& p : buf) p = BG;
+        r.set_font(font.get(), 18);
+        CHECK(r.text_width("Hi") > 0);
+        r.draw_text(1, 1, "Hi", 0xFFFFFFFF);
+        int lit = 0, grey = 0;
+        for (auto p : buf) {
+            if (p == BG) continue;
+            ++lit;
+            const std::uint32_t rr = (p >> 16) & 0xFF;
+            if (rr > 0 && rr < 255) ++grey;
+        }
+        CHECK(lit > 0);
+        CHECK(grey > 0);   // anti-aliasing produced partial-coverage pixels
+    }
 
     if (g_failures == 0) std::printf("font: all tests passed\n");
     else                 std::printf("font: %d FAILURE(S)\n", g_failures);
