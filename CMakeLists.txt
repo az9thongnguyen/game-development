@@ -233,7 +233,7 @@ target_link_libraries(render3d_core PRIVATE engine_flags)
 # Renderer2D, so it compiles renderer2d.cpp directly — no window needed.
 add_executable(test_render3d tests/test_render3d.cpp src/engine/renderer2d.cpp)
 target_include_directories(test_render3d PRIVATE src)
-target_link_libraries(test_render3d PRIVATE render3d_core engine_flags)
+target_link_libraries(test_render3d PRIVATE render3d_core text_core engine_flags)
 add_test(NAME render3d COMMAND test_render3d)
 
 # ---- viz3d sandbox model (M3.5): pure editor logic, testable without SDL -----

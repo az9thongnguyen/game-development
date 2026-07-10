@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "engine/scene.hpp"
+#include "engine/text/font.hpp"
 
 namespace engine {
 
@@ -24,7 +25,8 @@ public:
     static constexpr double kFixedDt = 1.0 / 60.0;
 
 private:
-    std::unique_ptr<Scene> scene_;
+    std::unique_ptr<Scene>      scene_;
+    std::unique_ptr<text::Font> ui_font_;    // shared UI face, loaded once at startup
     double accumulator_ = 0.0;   // unspent real time waiting to become fixed steps
     double time_        = 0.0;   // total simulated time
 };

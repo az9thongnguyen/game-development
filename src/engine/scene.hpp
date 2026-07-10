@@ -26,6 +26,8 @@ struct Context {
     double                      dt;     // real seconds since the last rendered frame
     double                      time;   // total simulated seconds (sum of fixed steps)
     double                      alpha;  // [0,1): fraction into the next fixed step
+    text::Font*                 font;   // shared UI face (may be null → 8x8 fallback);
+                                        // a scene opts in with gfx.set_font(font, px)
 };
 
 class Scene {

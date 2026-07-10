@@ -49,6 +49,7 @@ public:
     // otherwise it falls back to the embedded 8x8 bitmap font at scale 1. `y` is
     // the top of the line in both cases.
     void set_font(text::Font* f, int px);
+    void set_font_size(int px);                            // keep current font, change size
     int  text_width(const char* s) const;                  // px width of s in the current font (or 8x8)
     void draw_text(int x, int y, const char* s, Color c);  // font-backed (or 8x8 fallback)
 
