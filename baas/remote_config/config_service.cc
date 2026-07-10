@@ -23,4 +23,23 @@ std::optional<std::string> get(long project_id, const std::string& key) {
     return rows[0]["value"].as<std::string>();
 }
 
+void set(long project_id, const std::string& key, const std::string& value) {
+    auto       db = db::client();
+    const auto ex = db->execSqlSync(
+        "SELECT id FROM config WHERE project_id=? AND key=?", project_id, key);
+    if (ex.empty())
+        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+                        project_id, key, value);
+    else
+        db->execSqlSync(
+            "UPDATE config SET value=?, updated_at=CURRENT_TIMESTAMP WHERE project_id=? AND key=?",
+            value, project_id, key);
+}
+
+bool remove(long project_id, const std::string& key) {
+    const auto r = db::client()->execSqlSync(
+        "DELETE FROM config WHERE project_id=? AND key=?", project_id, key);
+    return r.affectedRows() > 0;
+}
+
 }  // namespace web::cfg

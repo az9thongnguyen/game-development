@@ -47,6 +47,9 @@ add_library(baas_core OBJECT
   analytics/analytics_controller.cc
   live_events/events_service.cc
   live_events/events_controller.cc
+  gateway/admin_filters.cc
+  admin/admin_service.cc
+  admin/admin_controller.cc
   app_setup.cc
 )
 target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
@@ -79,7 +82,7 @@ add_executable(test_baas_inventory ${CMAKE_SOURCE_DIR}/tests/test_baas_inventory
 target_link_libraries(test_baas_inventory PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_inventory COMMAND test_baas_inventory)
 
-foreach(svc config analytics events)
+foreach(svc config analytics events admin)
   add_executable(test_baas_${svc} ${CMAKE_SOURCE_DIR}/tests/test_baas_${svc}.cc)
   target_link_libraries(test_baas_${svc} PRIVATE baas_core CURL::libcurl engine_flags)
   add_test(NAME baas_${svc} COMMAND test_baas_${svc})
