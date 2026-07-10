@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <functional>
 #include <string>
 
 #include <drogon/drogon.h>
@@ -30,19 +31,23 @@ int main(int argc, char** argv) {
     std::string db_url = "sqlite://baas.db";
     bool        do_seed = false;
     std::string jwt_secret;   // else BAAS_JWT_SECRET env, else an insecure dev default
+    std::string admin_secret; // else BAAS_ADMIN_SECRET env, else an insecure dev default
     std::string static_root;  // optional: serve the WASM bundle from here (same-origin → no CORS)
+    std::string dashboard = "baas/web/dashboard.html";   // --dashboard: the admin UI file
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&](const char* def) {
             return (i + 1 < argc) ? std::string(argv[++i]) : std::string(def);
         };
-        if      (a == "--host")       host        = next("127.0.0.1");
-        else if (a == "--port")       port        = std::atoi(next("8080").c_str());
-        else if (a == "--db")         db_url      = next("sqlite://baas.db");
-        else if (a == "--jwt-secret") jwt_secret  = next("");
-        else if (a == "--static")     static_root = next("");
-        else if (a == "--seed")       do_seed     = true;
+        if      (a == "--host")         host         = next("127.0.0.1");
+        else if (a == "--port")         port         = std::atoi(next("8080").c_str());
+        else if (a == "--db")           db_url       = next("sqlite://baas.db");
+        else if (a == "--jwt-secret")   jwt_secret   = next("");
+        else if (a == "--admin-secret") admin_secret = next("");
+        else if (a == "--static")       static_root  = next("");
+        else if (a == "--dashboard")    dashboard    = next("baas/web/dashboard.html");
+        else if (a == "--seed")         do_seed      = true;
         else { std::fprintf(stderr, "unknown arg: %s\n", a.c_str()); return 2; }
     }
 
@@ -62,6 +67,16 @@ int main(int argc, char** argv) {
                      "using an INSECURE dev secret\n");
         cfg.jwt_secret = "dev-insecure-secret-change-me";
     }
+    const char* env_admin = std::getenv("BAAS_ADMIN_SECRET");
+    cfg.admin_secret      = !admin_secret.empty()
+                                ? admin_secret
+                                : (env_admin ? std::string(env_admin) : std::string());
+    if (cfg.admin_secret.empty()) {
+        std::fprintf(stderr,
+                     "WARNING: no --admin-secret / BAAS_ADMIN_SECRET set; "
+                     "using an INSECURE dev admin secret\n");
+        cfg.admin_secret = "dev-insecure-admin-change-me";
+    }
     web::set_config(cfg);
 
     // ---- database: connect + migrate (+ optional seed) ----
@@ -71,7 +86,8 @@ int main(int argc, char** argv) {
         web::db::run_migrations(db);
         if (do_seed) {
             const std::string pk = web::db::seed(db);
-            std::printf("seeded. project public_key = %s\n", pk.c_str());
+            std::printf("seeded. project public_key = %s   secret_key = sk_demo_colony\n",
+                        pk.c_str());
             return 0;
         }
     } catch (const std::exception& e) {
@@ -94,6 +110,15 @@ int main(int argc, char** argv) {
         drogon::app().registerCustomExtensionMime("data", "application/octet-stream");
         LOG_INFO << "serving static files from " << static_root;
     }
+
+    // Dashboard (admin UI): one hand-written page served at /dashboard.
+    drogon::app().registerHandler(
+        "/dashboard",
+        [dashboard](const drogon::HttpRequestPtr&,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            cb(drogon::HttpResponse::newFileResponse(dashboard, "", drogon::CT_TEXT_HTML));
+        },
+        {drogon::Get});
 
     LOG_INFO << "baas listening on " << host << ":" << port;
     drogon::app().addListener(host, port).run();

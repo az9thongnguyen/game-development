@@ -20,4 +20,8 @@ struct Event {
 
 std::vector<Event> active(long project_id);   // starts_at <= now <= ends_at
 
+// admin (dashboard): schedule/replace an event.
+void create(long project_id, const std::string& key, const std::string& name,
+            const std::string& starts_at, const std::string& ends_at, const std::string& payload);
+
 }  // namespace web::live

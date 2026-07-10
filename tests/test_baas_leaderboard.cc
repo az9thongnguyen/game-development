@@ -127,8 +127,8 @@ int main() {
 
         // --- tenant isolation: B's score is invisible to A and vice-versa ---
         CHECK(http("POST", board + "/scores", {keyB, bearer(tokB)}, R"({"value":500})").status == 200);
-        Resp topA = http("GET", board + "/top?limit=10", {keyA});
-        for (const auto& e : parse(topA.body)["entries"])
+        const auto topAj = parse(http("GET", board + "/top?limit=10", {keyA}).body);
+        for (const auto& e : topAj["entries"])
             CHECK(e["user_id"].asInt64() != idB);             // A never sees B's user
         Resp topB = http("GET", board + "/top?limit=10", {keyB});
         CHECK(parse(topB.body)["entries"].size() == 1);
