@@ -55,6 +55,7 @@ add_library(baas_core OBJECT
   realtime/ws_controller.cc
   replays/replay_service.cc
   replays/replay_controller.cc
+  observability/metrics.cc
   app_setup.cc
 )
 target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
@@ -76,6 +77,11 @@ add_executable(test_rate_limiter ${CMAKE_SOURCE_DIR}/tests/test_rate_limiter.cc)
 target_link_libraries(test_rate_limiter PRIVATE baas_core engine_flags)
 add_test(NAME rate_limiter COMMAND test_rate_limiter)
 
+# Metrics: pure counter logic (record → snapshot, path normalization) — no server.
+add_executable(test_metrics ${CMAKE_SOURCE_DIR}/tests/test_metrics.cc)
+target_link_libraries(test_metrics PRIVATE baas_core engine_flags)
+add_test(NAME metrics COMMAND test_metrics)
+
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
@@ -92,7 +98,7 @@ add_executable(test_baas_inventory ${CMAKE_SOURCE_DIR}/tests/test_baas_inventory
 target_link_libraries(test_baas_inventory PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_inventory COMMAND test_baas_inventory)
 
-foreach(svc config analytics events admin replays ratelimit)
+foreach(svc config analytics events admin replays ratelimit metrics)
   add_executable(test_baas_${svc} ${CMAKE_SOURCE_DIR}/tests/test_baas_${svc}.cc)
   target_link_libraries(test_baas_${svc} PRIVATE baas_core CURL::libcurl engine_flags)
   add_test(NAME baas_${svc} COMMAND test_baas_${svc})

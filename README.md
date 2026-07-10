@@ -41,6 +41,7 @@ material that accompanies the code.
 | **BaaS S7** | Realtime end-to-end in the game — native `ws://` transport proven live (`sdk_realtime_live`: lobby, broadcast, matchmaking, tenant isolation, auth rejection); colony **presence** panel via `client.realtime()` (native + web, browser-verified). | ✅ done |
 | **BaaS S8** | Replay System — per-user immutable named recordings (`/v1/replays`, project+user scoped, 512 KiB cap); `client.replays()` in the SDK (over the existing HTTP transport); colony records its command stream → cloud → command-stream playback. | ✅ done |
 | **BaaS S9** | Production hardening — thread-safe token-bucket **rate limiter** + Drogon pre-routing advice on `/v1/*` (per api-key/IP, 429 on excess, `/healthz` & static exempt); on by default (burst 120, 60/s, env-tunable). Unit + integration tested. | ✅ done |
+| **BaaS S10** | Observability — pre-sending advice counts every response (total, by status-class, by normalized route) + structured access log with latency; admin-gated `GET /metrics` (JSON). Unit + integration tested. | ✅ done |
 
 ## Prerequisites (macOS)
 
