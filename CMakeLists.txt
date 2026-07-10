@@ -104,7 +104,7 @@ add_executable(demo
   src/games/colony/colony_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core physics_core colony_core mem_core gbaas_sdk)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
 # ---- Tests (CTest) -----------------------------------------------------------
@@ -180,15 +180,29 @@ target_include_directories(test_physics PRIVATE src)
 target_link_libraries(test_physics PRIVATE physics_core engine_flags)
 add_test(NAME physics COMMAND test_physics)
 
+# ---- Text: anti-aliased fonts (stb_truetype) --------------------------------------
+# PURE core: no I/O, no SDL. stb_truetype is confined to font.cpp (impl macro there),
+# so `third_party` is a PRIVATE include — consumers just see engine/text/font.hpp.
+add_library(text_core STATIC src/engine/text/font.cpp)
+target_include_directories(text_core PUBLIC src PRIVATE third_party)
+target_link_libraries(text_core PRIVATE engine_flags)
+
+add_executable(test_font tests/test_font.cpp src/engine/assets.cpp src/engine/renderer2d.cpp)
+target_include_directories(test_font PRIVATE src)
+target_compile_definitions(test_font PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_font PRIVATE text_core engine_flags)
+add_test(NAME font COMMAND test_font)
+
 # ---- Immediate-mode GUI (subsystem F): editor support -----------------------------
 # Draws via Renderer2D (symbols provided by the linking target); logic runs headless.
 add_library(ui_core STATIC src/engine/ui/ui.cpp)
 target_include_directories(ui_core PUBLIC src)
 target_link_libraries(ui_core PRIVATE engine_flags)
 
+# renderer2d.cpp (compiled in here) uses the font module → link text_core.
 add_executable(test_ui tests/test_ui.cpp src/engine/renderer2d.cpp)
 target_include_directories(test_ui PRIVATE src)
-target_link_libraries(test_ui PRIVATE ui_core engine_flags)
+target_link_libraries(test_ui PRIVATE ui_core text_core engine_flags)
 add_test(NAME ui COMMAND test_ui)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
@@ -219,7 +233,7 @@ target_link_libraries(render3d_core PRIVATE engine_flags)
 # Renderer2D, so it compiles renderer2d.cpp directly — no window needed.
 add_executable(test_render3d tests/test_render3d.cpp src/engine/renderer2d.cpp)
 target_include_directories(test_render3d PRIVATE src)
-target_link_libraries(test_render3d PRIVATE render3d_core engine_flags)
+target_link_libraries(test_render3d PRIVATE render3d_core text_core engine_flags)
 add_test(NAME render3d COMMAND test_render3d)
 
 # ---- viz3d sandbox model (M3.5): pure editor logic, testable without SDL -----
