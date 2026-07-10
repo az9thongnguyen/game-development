@@ -107,11 +107,47 @@ void ColonyScene::login() {
             client_.events().active([this](gbaas::Result<std::vector<gbaas::LiveEvent>> er) {
                 if (er && !er->empty()) event_name_ = (*er)[0].name;
             });
+            connect_realtime();   // open the realtime channel + join the shared room
         } else {
             online_ = false;
             status_ = "login failed";
         }
     });
+}
+
+// Open the persistent WebSocket channel and join a shared "colony" room, so every
+// online player sees the others' presence. Native uses libcurl ws://; the web build
+// uses the browser WebSocket — same call. Fails gracefully (rt_line_ says so).
+void ColonyScene::connect_realtime() {
+    if (client_.realtime().connect()) {
+        client_.realtime().join("colony");
+        rt_line_ = "realtime: connecting...";
+    } else {
+        rt_line_ = "realtime: unavailable";   // e.g. SDK built without a ws-capable curl
+    }
+}
+
+// Drain realtime events each frame → keep the presence count + last message fresh.
+void ColonyScene::poll_realtime() {
+    gbaas::RtEvent e;
+    while (client_.realtime().poll(e)) {
+        if (e.ev == "connected") {
+            rt_on_ = true;
+        } else if (e.ev == "joined") {
+            peers_ = static_cast<int>(e.members.size());
+        } else if (e.ev == "peer_joined") {
+            ++peers_;
+        } else if (e.ev == "peer_left") {
+            if (peers_ > 0) --peers_;
+        } else if (e.ev == "msg") {
+            last_msg_ = e.name + ": " + e.data;
+        } else if (e.ev == "disconnected") {
+            rt_on_ = false;
+            peers_ = 0;
+        }
+        if (rt_on_) rt_line_ = "realtime: on (" + std::to_string(peers_) + " here)";
+        else if (rt_line_ != "realtime: unavailable") rt_line_ = "realtime: off";
+    }
 }
 
 void ColonyScene::submit_score() {
@@ -182,6 +218,7 @@ iso::Vec2i ColonyScene::hovered_cell(const platform::InputState& in) const {
 
 void ColonyScene::update(double dt, const platform::InputState& /*in*/) {
     client_.update();   // BaaS: pump async responses → fire callbacks (even while paused)
+    poll_realtime();    // drain realtime (Lobby) events → presence state
     if (!running_) return;
     // Apply the UI speed to every agent, then advance (parallel inside the Sim).
     sim_.registry().view<Agent>([&](ecs::Entity, Agent& a) { a.speed = speed_; });
@@ -246,7 +283,7 @@ void ColonyScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
 
     ui_.begin(&g, in);
-    ui_.panel(ui::Rect{12, 12, 210, 452}, "COLONY");
+    ui_.panel(ui::Rect{12, 12, 210, 512}, "COLONY");
     char line[64];
     std::snprintf(line, sizeof(line), "agents: %d   fps: %d", sim_.agent_count(), static_cast<int>(fps_ + 0.5));
     ui_.label(line);
@@ -281,6 +318,11 @@ void ColonyScene::render(const engine::Context& ctx) {
                 if (r) { wood_ = r->qty; status_ = "built!"; }
                 else   { status_ = "not enough wood"; }
             });
+
+        // ---- realtime (Lobby) presence ----
+        ui_.label(rt_line_.c_str());
+        if (rt_on_ && ui_.button("Ping room")) client_.realtime().send("ping");
+        if (!last_msg_.empty()) ui_.label(last_msg_.c_str());
     } else {
         if (ui_.button("Login (guest)")) login();
     }

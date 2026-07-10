@@ -81,6 +81,7 @@ private:
     Client*                       client_;
     std::unique_ptr<IWsTransport> ws_;
     std::deque<RtEvent>           events_;
+    std::vector<std::string>      outbox_;   // ops sent before the socket opened (web: async connect)
     bool                          opened_        = false;
     bool                          was_connected_ = false;
 };

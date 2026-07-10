@@ -310,6 +310,17 @@ target_include_directories(test_server PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(test_server PRIVATE engine_flags)
 add_test(NAME server COMMAND test_server)
 
+# ---- Prefer a WebSocket-capable libcurl across the WHOLE build -----------------
+# macOS's system libcurl lacks ws://; Homebrew's (keg-only) has it. If we let some
+# targets find the system curl and others the Homebrew one, a test binary can end
+# up linking BOTH — and the system curl then wins symbol resolution, so ws:// fails
+# with "Unsupported protocol". Pinning CURL_ROOT here makes every find_package(CURL)
+# resolve to the one ws-capable libcurl, so no binary links two. (Native, non-web.)
+if(APPLE AND NOT EMSCRIPTEN AND EXISTS /opt/homebrew/opt/curl/include/curl/websockets.h)
+  set(CURL_ROOT /opt/homebrew/opt/curl)
+  list(PREPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/curl)
+endif()
+
 # ---- Game BaaS C++ SDK (gbaas_sdk): game-facing client, native + web -----------
 # NOT gated on Drogon: the SDK links no server code. Only libcurl (native) or
 # emscripten_fetch (web). The colony game links this to talk to the backend.

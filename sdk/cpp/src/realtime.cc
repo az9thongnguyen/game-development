@@ -67,12 +67,21 @@ void Realtime::disconnect() {
     if (ws_) ws_->close();
     opened_        = false;
     was_connected_ = false;
+    outbox_.clear();
 }
 
 bool Realtime::connected() const { return ws_ && ws_->connected(); }
 
 void Realtime::send_op(const std::string& frame) {
-    if (ws_) ws_->send_text(frame);
+    // On web, connect() is async: the socket isn't open yet when a game calls join()
+    // right after connect(). Queue such ops and flush them once the socket opens
+    // (see update()). On native the handshake is done in connect(), so this sends
+    // immediately and the outbox stays empty.
+    if (ws_ && ws_->connected()) {
+        ws_->send_text(frame);
+    } else if (outbox_.size() < 256) {   // ponytail: bounded so a never-open socket can't grow it
+        outbox_.push_back(frame);
+    }
 }
 
 void Realtime::join(const std::string& room) {
@@ -89,6 +98,8 @@ void Realtime::update() {
     if (!ws_ || !opened_) return;
     if (!was_connected_ && ws_->connected()) {
         was_connected_ = true;
+        for (auto& f : outbox_) ws_->send_text(f);   // flush ops queued before open
+        outbox_.clear();
         RtEvent e;
         e.ev = "connected";
         events_.push_back(std::move(e));
@@ -99,6 +110,7 @@ void Realtime::update() {
     if (!alive) {
         opened_        = false;
         was_connected_ = false;
+        outbox_.clear();
         RtEvent e;
         e.ev = "disconnected";
         events_.push_back(std::move(e));

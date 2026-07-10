@@ -179,6 +179,7 @@ observe → pitfalls → exercises.**
 | **BaaS S4 ✅** | Remote Config + Analytics + Live Events — the read/ingest L1 services (admin write/query deferred to the L3 dashboard); colony reads motd + live events, sends analytics |
 | **BaaS S5 ✅** | Dashboard (L3) — admin API (two-level auth: platform secret + per-project secret key) for project provisioning, config/events write, analytics/users; a hand-written web dashboard served by the baas |
 | **BaaS S6 ✅** | Realtime (L2) — Lobby + Matchmaking over WebSocket: a mutex-guarded in-memory hub, auth-on-upgrade, tenant-scoped rooms/queue; SDK realtime channel (native `ws://` + web browser WebSocket) and a live dashboard console. **Last hand-buildable tier — L4 needs real cloud/3rd-party infra.** |
+| **BaaS S7 ✅** | Realtime end-to-end in the game — native `ws://` transport proven against a live server (`sdk_realtime_live`: lobby, broadcast, matchmaking, tenant isolation, auth rejection); colony gains a **presence** panel via `client.realtime()` (native + web, browser-verified). Fixes found by the live test: project-wide ws-capable libcurl (no dual-curl), async-connect op buffering, and same-origin ws URL resolution on web. |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

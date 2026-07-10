@@ -241,10 +241,31 @@ frames on `poll()`. It proves:
 - `client.realtime()` is lazily created and returns the *same* instance each call.
 
 This is the ponytail "one runnable check" for non-trivial logic — fast, offline,
-and it exercises every branch of the parser. The *server* behavior (that these
-frames mean what we think) is proven separately by `test_baas_realtime` over a real
-WebSocket (ch.63 §9), and by the browser smoke below. Together: SDK logic verified
-without a socket; protocol verified with one.
+and it exercises every branch of the parser. The *server* behavior AND the real
+native transport are proven together by `sdk_realtime_live` (ch.63 §9), which drives
+this very SDK over libcurl ws:// against a live server. Together: SDK logic verified
+without a socket; the whole path verified with one.
+
+### The async-connect bug the live test caught
+
+The fake-transport test reports `connected()` true the instant `open()` returns, so
+it never exercises the case that matters on the web: **`connect()` is asynchronous
+there.** The browser opens the socket over the next event-loop turn, so `connected()`
+is *false* for a moment after `connect()`. A game that does the natural thing —
+
+```cpp
+rt.connect();
+rt.join("lobby");   // called immediately, while the socket is still opening
+```
+
+would have its `join` frame **dropped**, because `send_text` refuses to send on a
+not-yet-open socket. `sdk_realtime_live` passed (native `connect()` blocks, so the
+socket *is* open), but colony-in-the-browser silently never joined its room. The fix
+is in the SDK, not every caller: `Realtime` now **queues ops sent before the socket
+opens and flushes them on the `connected` transition** (`outbox_`). Native stays
+zero-overhead (the outbox is always empty); web just works. Lesson: a fake that
+resolves synchronously can hide an asynchronous-transport bug — cover the async path
+with a real (or realistically-async) transport somewhere.
 
 ---
 
@@ -277,6 +298,45 @@ A sends "hello from A"
 
 That is the whole tier — auth-on-upgrade, presence, broadcast, tenant scoping —
 demonstrated in a real browser against the real server.
+
+---
+
+## 7b. Realtime in the flagship game: colony presence
+
+The dashboard proves the tier with the *browser's* WebSocket. To prove the **SDK**
+in a real game, colony gains a small **presence** feature: on guest login it calls
+`client_.realtime().connect()` + `join("colony")`, and each frame `poll_realtime()`
+turns realtime events into a panel line — `realtime: on (N here)` — plus a **Ping
+room** button and the last message received. It degrades gracefully: if realtime is
+unavailable the line says so, and the game plays on. Native uses libcurl ws://; the
+web build uses the browser WebSocket — the *same three calls*.
+
+Getting colony's web build to actually connect surfaced two environment lessons
+worth keeping:
+
+- **Two libcurls in one binary.** macOS's system libcurl lacks ws://; Homebrew's has
+  it. When some targets found one and some the other, a test binary linked *both*,
+  and the system curl won symbol resolution → `ws://` failed with "Unsupported
+  protocol". Fix: **pin the whole native build to the ws-capable curl** (`CURL_ROOT`
+  in the root CMake) so no binary links two. One libcurl, everywhere.
+- **A scheme-less URL on the web.** A same-origin game passes an empty `base_url`
+  (great for `emscripten_fetch`, which takes relative paths), so `Realtime` built
+  `"/v1/ws?…"` — no scheme, which `emscripten_websocket_new` can't use. The web
+  transport now resolves a relative URL against `location.origin` (http→ws) via a
+  one-line `EM_JS` helper. The native side is unaffected (its `base_url` is absolute).
+
+### Verified live
+
+Serving the WASM build from the baas and opening `demo.html?mode=colony`: colony
+logged in (`POST /v1/auth/guest → 200`), then a probe socket joining the `"colony"`
+room saw **two** members — the probe *and colony's WASM* — confirming colony's
+`emscripten_websocket` connected and joined at runtime:
+
+```
+{"ev":"joined","members":[{"name":"Guest","user_id":4},{"name":"Guest","user_id":5}],"room":"colony"}
+```
+
+Native and web, the same `client.realtime()` API — the SDK's whole point.
 
 ---
 
