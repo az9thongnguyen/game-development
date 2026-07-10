@@ -30,3 +30,10 @@ scores.json
 
 # Colony's runtime-generated agent sprite
 assets/colony_agent.hrt
+
+# BaaS backend (Slice #1): local secrets + dev databases
+baas/config.json
+*.db
+*.db-journal
+*.db-wal
+.env

@@ -35,9 +35,21 @@
   <script>
     var statusEl = document.getElementById('status');
     var logEl    = document.getElementById('log');
+    // Pick the scene from ?mode=… so one WASM build can run any demo without a
+    // recompile (default: chess, the M5 acceptance scene). ?mode=colony runs the
+    // BaaS integration demo (online leaderboard).
+    var argsByMode = {
+      gui:    ['--gui', 'hvai', 'medium'],
+      colony: ['--colony'],
+      iso:    ['--iso'],
+      '3d':   ['--3d'],
+      viz3d:  ['--viz3d'],
+      fps:    ['--fps'],
+      demo:   []
+    };
+    var mode = new URLSearchParams(location.search).get('mode') || 'gui';
     var Module = {
-      // argv[1..] for main.cpp — chess is the M5 acceptance scene.
-      arguments: ['--gui', 'hvai', 'medium'],
+      arguments: argsByMode[mode] || argsByMode.gui,
       canvas: document.getElementById('canvas'),
       setStatus: function (t) { statusEl.textContent = t; },
       print:    function (t) { logEl.textContent += t + "\n"; logEl.scrollTop = logEl.scrollHeight; },
