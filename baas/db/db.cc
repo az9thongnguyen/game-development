@@ -6,6 +6,8 @@
 #include <cctype>
 #include <stdexcept>
 
+#include "baas/auth/password.h"
+
 namespace web::db {
 namespace {
 
@@ -149,9 +151,10 @@ std::string seed(const DbClientPtr& db) {
     if (existing.empty()) {
         // secret_key is for future server-to-server / admin use (unused in Slice #1);
         // stored as a placeholder here and hashed for real when the admin API lands.
+        // Demo project's secret key is "sk_demo_colony" (stored hashed). main prints it.
         const auto ins = db->execSqlSync(
             "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
-            std::string("Colony Demo"), public_key, std::string("unset"));
+            std::string("Colony Demo"), public_key, pw::hash("sk_demo_colony"));
         const auto pid = ins.insertId();
         db->execSqlSync(
             "INSERT INTO leaderboards(project_id, key, name, sort) VALUES(?,?,?,?)",

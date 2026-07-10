@@ -147,6 +147,7 @@ checks).
 | 59 | **Cloud Save** (versioned per-user/per-slot saves, optimistic concurrency, colony save/load) |
 | 60 | **Inventory** (per-user item quantities, grant/consume, server-enforced non-negative spend) |
 | 61 | **Remote Config, Analytics & Live Events** (the read/ingest L1 services; L1-vs-L3 split) |
+| 62 | **The Dashboard & Admin API** (operator half: two-level admin auth, project provisioning, a hand-written SPA) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -174,6 +175,7 @@ observe → pitfalls → exercises.**
 | **BaaS S2 ✅** | Cloud Save — versioned per-user/per-slot saves with optimistic concurrency (If-Match); colony state round-trips to the cloud, native + web |
 | **BaaS S3 ✅** | Inventory — per-user item quantities (grant/consume, server-enforced non-negative spend); colony wood economy, native + web |
 | **BaaS S4 ✅** | Remote Config + Analytics + Live Events — the read/ingest L1 services (admin write/query deferred to the L3 dashboard); colony reads motd + live events, sends analytics |
+| **BaaS S5 ✅** | Dashboard (L3) — admin API (two-level auth: platform secret + per-project secret key) for project provisioning, config/events write, analytics/users; a hand-written web dashboard served by the baas |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

@@ -1,0 +1,175 @@
+<!doctype html>
+<!-- =========================================================================
+     baas/web/dashboard.html  —  the Game BaaS operator dashboard (Slice #5)
+     -------------------------------------------------------------------------
+     A single hand-written page (vanilla JS, no framework, no external assets),
+     served by the baas at /dashboard. It drives the admin API:
+       • Platform: create/list projects (X-Admin-Secret).
+       • Project console: config, live events, analytics, users, leaderboard
+         (X-Api-Key + X-Secret-Key). Keys live only in localStorage; never logged.
+     Same-origin with the API (served by the baas) so no CORS.
+     ========================================================================= -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game BaaS — Dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #12141a; color: #d4dae6;
+         font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  header { padding: 14px 20px; background: #1a1e28; border-bottom: 1px solid #2a3040; }
+  h1 { margin: 0; font-size: 16px; color: #9fc1ff; }
+  main { max-width: 960px; margin: 0 auto; padding: 20px; }
+  section { background: #171a22; border: 1px solid #262c3a; border-radius: 8px;
+            padding: 16px; margin: 0 0 18px; }
+  h2 { margin: 0 0 12px; font-size: 14px; color: #8fb0e8; }
+  label { display: inline-block; min-width: 90px; color: #8b93a7; }
+  input { background: #0e1016; color: #d4dae6; border: 1px solid #2a3040;
+          border-radius: 5px; padding: 6px 8px; margin: 3px 0; font: inherit; }
+  input[type=text] { width: 260px; }
+  button { background: #2b60c9; color: #fff; border: 0; border-radius: 5px;
+           padding: 6px 12px; margin: 3px 4px 3px 0; cursor: pointer; font: inherit; }
+  button.sec { background: #2a3040; }
+  button:hover { filter: brightness(1.12); }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #232936; font-size: 13px; }
+  th { color: #7f8aa3; font-weight: 600; }
+  .tabs button { background: #2a3040; }
+  .tabs button.active { background: #2b60c9; }
+  .muted { color: #7f8aa3; }
+  .keys { font-size: 12px; color: #7bd88f; word-break: break-all; }
+  #toast { position: fixed; bottom: 16px; right: 16px; background: #22304a;
+           border: 1px solid #34507e; padding: 10px 14px; border-radius: 6px;
+           opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header><h1>Game BaaS — Dashboard</h1></header>
+<main>
+  <section>
+    <h2>Platform admin</h2>
+    <div><label>Admin secret</label><input id="adminSecret" type="password" placeholder="X-Admin-Secret"></div>
+    <div><label>New project</label><input id="projName" type="text" placeholder="name">
+      <button onclick="createProject()">Create</button>
+      <button class="sec" onclick="listProjects()">List projects</button></div>
+    <div id="projOut"></div>
+  </section>
+
+  <section>
+    <h2>Project console</h2>
+    <div><label>Base URL</label><input id="baseUrl" type="text" placeholder="(same origin)"></div>
+    <div><label>Public key</label><input id="pubKey" type="text" placeholder="X-Api-Key"></div>
+    <div><label>Secret key</label><input id="secKey" type="password" placeholder="X-Secret-Key">
+      <button onclick="saveKeys()">Save</button></div>
+    <div class="tabs" style="margin-top:10px">
+      <button data-tab="config" class="active" onclick="tab('config')">Config</button>
+      <button data-tab="events" onclick="tab('events')">Live Events</button>
+      <button data-tab="analytics" onclick="tab('analytics')">Analytics</button>
+      <button data-tab="users" onclick="tab('users')">Users</button>
+      <button data-tab="board" onclick="tab('board')">Leaderboard</button>
+    </div>
+    <div id="panel" style="margin-top:12px"></div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const base = () => ($("baseUrl").value || "").replace(/\/$/, "");
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// Persist keys locally so a refresh keeps the console usable (never logged/sent elsewhere).
+for (const id of ["baseUrl","pubKey","secKey","adminSecret"]) {
+  $(id).value = localStorage.getItem("gbaas_"+id) || "";
+  $(id).addEventListener("change", () => localStorage.setItem("gbaas_"+id, $(id).value));
+}
+function saveKeys(){ for (const id of ["baseUrl","pubKey","secKey"]) localStorage.setItem("gbaas_"+id,$(id).value); toast("keys saved"); }
+
+let toastTimer;
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2200); }
+
+async function api(method, path, body, headers) {
+  const res = await fetch(base()+path, { method, headers: Object.assign({"Content-Type":"application/json"}, headers||{}),
+    body: body!=null ? JSON.stringify(body) : undefined });
+  let data = {}; try { data = await res.json(); } catch(e){}
+  if (!res.ok) throw new Error((data.error && data.error.message) || ("HTTP "+res.status));
+  return data;
+}
+const adminHdr  = () => ({ "X-Admin-Secret": $("adminSecret").value });
+const projHdr   = () => ({ "X-Api-Key": $("pubKey").value, "X-Secret-Key": $("secKey").value });
+const apiKeyHdr = () => ({ "X-Api-Key": $("pubKey").value });
+
+// ---- platform ----
+async function createProject(){
+  try { const p = await api("POST","/v1/admin/projects",{name:$("projName").value},adminHdr());
+    $("projOut").innerHTML = `<p class="muted">Created — save these now, the secret is shown once:</p>
+      <p class="keys">public_key = ${esc(p.public_key)}<br>secret_key = ${esc(p.secret_key)}</p>`;
+    toast("project created");
+  } catch(e){ toast(e.message); } }
+async function listProjects(){
+  try { const r = await api("GET","/v1/admin/projects",null,adminHdr());
+    $("projOut").innerHTML = rows(["id","name","public_key"], r.projects); }
+  catch(e){ toast(e.message); } }
+
+// ---- project console tabs ----
+let current = "config";
+function tab(name){ current=name; for (const b of document.querySelectorAll(".tabs button"))
+  b.classList.toggle("active", b.dataset.tab===name); render(); }
+
+function rows(cols, data){
+  if (!data || !data.length) return '<p class="muted">(empty)</p>';
+  return `<table><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr>` +
+    data.map(d=>`<tr>${cols.map(c=>`<td>${esc(d[c])}</td>`).join("")}</tr>`).join("") + `</table>`;
+}
+
+async function render(){
+  const p = $("panel");
+  try {
+    if (current==="config") {
+      const r = await api("GET","/v1/config",null,apiKeyHdr());
+      const items = Object.entries(r.config||{}).map(([k,v])=>({key:k,value:v}));
+      p.innerHTML = `<div><input id="ck" type="text" placeholder="key"> <input id="cv" type="text" placeholder="value">
+        <button onclick="setConfig()">Set</button></div>` + tableWithDelete(["key","value"], items, "delConfig");
+    } else if (current==="events") {
+      const r = await api("GET","/v1/events",null,apiKeyHdr());
+      p.innerHTML = `<div class="muted">Schedule (times "YYYY-MM-DD HH:MM:SS" UTC):</div>
+        <div><input id="ek" type="text" placeholder="key"> <input id="en" type="text" placeholder="name"></div>
+        <div><input id="es" type="text" placeholder="starts_at"> <input id="ee" type="text" placeholder="ends_at">
+        <button onclick="createEvent()">Schedule</button></div>
+        <div class="muted" style="margin-top:8px">Active now:</div>` + rows(["key","name","payload"], r.events);
+    } else if (current==="analytics") {
+      const r = await api("GET","/v1/admin/analytics/summary",null,projHdr());
+      p.innerHTML = rows(["name","count"], r.counts);
+    } else if (current==="users") {
+      const r = await api("GET","/v1/admin/users",null,projHdr());
+      p.innerHTML = rows(["id","email","display_name","is_guest"], r.users);
+    } else if (current==="board") {
+      const key = p.querySelector("#bk") ? p.querySelector("#bk").value : "colony_high";
+      let entries = [];
+      try { entries = (await api("GET","/v1/leaderboards/"+encodeURIComponent(key)+"/top?limit=20",null,apiKeyHdr())).entries; } catch(e){}
+      p.innerHTML = `<div><input id="bk" type="text" value="${esc(key)}"> <button onclick="render()">Load</button></div>`
+        + rows(["rank","display_name","value","user_id"], entries);
+    }
+  } catch(e){ p.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+function tableWithDelete(cols, data, fn){
+  if (!data || !data.length) return '<p class="muted">(empty)</p>';
+  return `<table><tr>${cols.map(c=>`<th>${c}</th>`).join("")}<th></th></tr>` +
+    data.map(d=>`<tr>${cols.map(c=>`<td>${esc(d[c])}</td>`).join("")}`+
+      `<td><button class="sec" onclick="${fn}('${esc(d.key)}')">delete</button></td></tr>`).join("") + `</table>`;
+}
+async function setConfig(){ try{ await api("PUT","/v1/admin/config/"+encodeURIComponent($("ck").value),{value:$("cv").value},projHdr()); toast("set"); render(); }catch(e){toast(e.message);} }
+async function delConfig(k){ try{ await api("DELETE","/v1/admin/config/"+encodeURIComponent(k),null,projHdr()); toast("deleted"); render(); }catch(e){toast(e.message);} }
+async function createEvent(){ try{ await api("POST","/v1/admin/events",
+  {key:$("ek").value,name:$("en").value,starts_at:$("es").value,ends_at:$("ee").value,payload:"{}"},projHdr());
+  toast("scheduled"); render(); }catch(e){toast(e.message);} }
+
+render();
+</script>
+</body>
+</html>

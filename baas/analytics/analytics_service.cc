@@ -30,4 +30,14 @@ void record(long project_id, long user_id, const std::string& name, const std::s
     }
 }
 
+std::vector<Count> summary(long project_id) {
+    const auto rows = db::client()->execSqlSync(
+        "SELECT name, count(*) AS c FROM analytics_events WHERE project_id=? "
+        "GROUP BY name ORDER BY c DESC, name ASC",
+        project_id);
+    std::vector<Count> out;
+    for (const auto& r : rows) out.push_back({r["name"].as<std::string>(), r["c"].as<long>()});
+    return out;
+}
+
 }  // namespace web::analytics
