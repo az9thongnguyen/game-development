@@ -32,8 +32,11 @@ SDL_Window*           g_window   = nullptr;
 SDL_Renderer*         g_renderer = nullptr;  // used ONLY to present the texture
 SDL_Texture*          g_texture  = nullptr;  // streaming texture we upload into
 std::vector<uint32_t> g_pixels;              // <-- THE framebuffer (ARGB8888)
-int                   g_fb_w = 0;
+int                   g_fb_w = 0;    // PHYSICAL framebuffer size = logical * supersample
 int                   g_fb_h = 0;
+int                   g_log_w = 0;   // LOGICAL size the game/mouse reason in
+int                   g_log_h = 0;
+int                   g_ss    = 1;   // supersample factor
 bool                  g_quit  = false;
 InputState            g_input;
 
@@ -90,8 +93,8 @@ void pump_events() {
     const Uint32 mask = SDL_GetMouseState(&mx, &my);
     int ww = g_fb_w, wh = g_fb_h;
     SDL_GetWindowSize(g_window, &ww, &wh);
-    g_input.mouse_x = (ww > 0) ? mx * g_fb_w / ww : mx;
-    g_input.mouse_y = (wh > 0) ? my * g_fb_h / wh : my;
+    g_input.mouse_x = (ww > 0) ? mx * g_log_w / ww : mx;   // map to LOGICAL space (not physical)
+    g_input.mouse_y = (wh > 0) ? my * g_log_h / wh : my;
     struct BtnMap { MouseButton b; Uint32 m; };
     static const BtnMap bmap[] = {
         {MouseButton::Left,   SDL_BUTTON_LMASK},
@@ -117,9 +120,12 @@ bool init(const Config& cfg) {
         return false;
     }
 
-    g_fb_w = cfg.fb_width;
-    g_fb_h = cfg.fb_height;
-    const int win_w = cfg.fb_width  * cfg.scale;
+    g_ss    = cfg.supersample < 1 ? 1 : (cfg.supersample > 4 ? 4 : cfg.supersample);
+    g_log_w = cfg.fb_width;
+    g_log_h = cfg.fb_height;
+    g_fb_w  = g_log_w * g_ss;    // physical framebuffer we actually rasterize into
+    g_fb_h  = g_log_h * g_ss;
+    const int win_w = cfg.fb_width  * cfg.scale;   // the window stays at logical*scale
     const int win_h = cfg.fb_height * cfg.scale;
 
     const Uint32 win_flags = SDL_WINDOW_SHOWN |
@@ -140,9 +146,12 @@ bool init(const Config& cfg) {
     }
 
     // Smooth (linear) present for real artwork; nearest for crisp retro pixels.
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, cfg.smooth ? "linear" : "nearest");
-    SDL_RenderSetLogicalSize(g_renderer, g_fb_w, g_fb_h);
-    SDL_RenderSetIntegerScale(g_renderer, cfg.smooth ? SDL_FALSE : SDL_TRUE);
+    // SSAA (g_ss>1) REQUIRES linear + non-integer so the physical texture is
+    // box-ish downsampled to the logical rect (that downsample IS the anti-alias).
+    const bool linear = cfg.smooth || g_ss > 1;
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, linear ? "linear" : "nearest");
+    SDL_RenderSetLogicalSize(g_renderer, g_log_w, g_log_h);   // logical → RenderCopy downsamples to it
+    SDL_RenderSetIntegerScale(g_renderer, linear ? SDL_FALSE : SDL_TRUE);
 
     g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ARGB8888,
                                   SDL_TEXTUREACCESS_STREAMING, g_fb_w, g_fb_h);
@@ -175,6 +184,8 @@ void shutdown() {
 Framebuffer framebuffer() {
     return Framebuffer{ g_pixels.data(), g_fb_w, g_fb_h, g_fb_w };
 }
+
+int supersample() { return g_ss; }
 
 void present() {
     SDL_UpdateTexture(g_texture, nullptr, g_pixels.data(),

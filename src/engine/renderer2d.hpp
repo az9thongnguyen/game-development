@@ -28,20 +28,24 @@ struct Sprite {
 
 class Renderer2D {
 public:
-    explicit Renderer2D(platform::Framebuffer fb) : fb_(fb) {}
+    // `ss` is the supersample factor: the framebuffer `fb` is PHYSICALLY ss× the
+    // logical size. The whole public API is in LOGICAL coordinates — every method
+    // scales by ss internally — so game code is unaware of SSAA. ss=1 is a no-op.
+    explicit Renderer2D(platform::Framebuffer fb, int ss = 1)
+        : fb_(fb), ss_(ss < 1 ? 1 : ss) {}
 
-    int width()  const { return fb_.width; }
-    int height() const { return fb_.height; }
+    int width()  const { return fb_.width  / ss_; }   // LOGICAL size
+    int height() const { return fb_.height / ss_; }
+    int supersample() const { return ss_; }
 
     void clear(Color c);
 
-    void set_pixel(int x, int y, Color c);    // opaque write, clipped
-    void blend_pixel(int x, int y, Color c);  // alpha blend, clipped
-    void blend_pixel(int x, int y, Color c, std::uint8_t coverage);  // + AA coverage (0..255)
+    void set_pixel(int x, int y, Color c);    // opaque write, clipped (logical)
+    void blend_pixel(int x, int y, Color c);  // alpha blend, clipped (logical)
 
     void fill_rect(int x, int y, int w, int h, Color c);
     void draw_rect(int x, int y, int w, int h, Color c);   // 1px outline
-    void draw_line(int x0, int y0, int x1, int y1, Color c);
+    void draw_line(int x0, int y0, int x1, int y1, Color c);          // aliased (Bresenham)
 
     void blit(const Sprite& s, int x, int y);  // alpha-blended sprite
 
@@ -58,9 +62,16 @@ public:
     void draw_text(int x, int y, const char* s, Color c, int scale);  // explicit 8x8
 
 private:
+    // Physical-space sinks (already scaled — NO logical→physical conversion). The
+    // logical public methods above convert, then write through these; the AA
+    // primitives rasterize in physical space and deposit partial coverage here.
+    void fill_phys(int px, int py, int pw, int ph, Color c);           // solid rect
+    void blend_cov(int px, int py, Color c, std::uint8_t coverage);    // coverage blend
+
     platform::Framebuffer fb_;
     text::Font*           font_    = nullptr;
     int                   font_px_ = 0;
+    int                   ss_      = 1;    // supersample factor (physical = logical*ss_)
 };
 
 } // namespace gfx

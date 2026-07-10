@@ -41,6 +41,8 @@ struct Config {
     int         scale     = 2;
     bool        smooth    = false;  // present scaling: false=nearest (retro), true=linear (smooth)
     bool        highdpi   = true;   // use the display's full resolution for a crisp present
+    int         supersample = 1;    // SSAA: render the framebuffer at NxN and downsample on present
+                                    // (1=off). Costs N^2 fill; the game still uses LOGICAL coords.
 };
 
 // ---- Lifetime ----
@@ -48,7 +50,8 @@ bool init(const Config& cfg);   // returns false on failure (message on stderr)
 void shutdown();
 
 // ---- Framebuffer ----
-Framebuffer framebuffer();      // the buffer to draw into this frame
+Framebuffer framebuffer();      // the buffer to draw into this frame (PHYSICAL size = logical*supersample)
+int         supersample();      // the active SSAA factor (1 if off); Renderer2D scales by this
 void        present();          // upload + show it (run() calls this for you)
 
 // ---- Main loop ----
