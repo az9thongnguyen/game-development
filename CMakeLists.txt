@@ -310,6 +310,15 @@ target_include_directories(test_server PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(test_server PRIVATE engine_flags)
 add_test(NAME server COMMAND test_server)
 
+# ---- Game BaaS C++ SDK (gbaas_sdk): game-facing client, native + web -----------
+# NOT gated on Drogon: the SDK links no server code. Only libcurl (native) or
+# emscripten_fetch (web). The colony game links this to talk to the backend.
+add_subdirectory(sdk/cpp)
+
+add_executable(test_sdk_client tests/test_sdk_client.cc)
+target_link_libraries(test_sdk_client PRIVATE gbaas_sdk engine_flags)
+add_test(NAME sdk_client COMMAND test_sdk_client)
+
 # ---- Game BaaS backend (Slice #1, requirements.md §11): SEPARATE process --------
 # Drogon-based platform (auth + leaderboard + ...). Links NONE of the engine/game
 # code — the engine core never depends on Drogon. Desktop only (never the web

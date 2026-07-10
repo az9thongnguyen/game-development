@@ -1,0 +1,125 @@
+// =============================================================================
+//  sdk/cpp/src/client.cc  —  see gbaas/client.h
+// =============================================================================
+#include "gbaas/client.h"
+
+#include <string>
+#include <utility>
+
+namespace gbaas {
+
+// Provided by the platform transport TU (transport_curl.cc / transport_emscripten.cc),
+// selected by CMake. Lets Client(Config) pick the right default transport.
+std::unique_ptr<ITransport> make_default_transport();
+
+Client::Client(Config cfg) : cfg_(std::move(cfg)), transport_(make_default_transport()) {}
+Client::Client(Config cfg, std::unique_ptr<ITransport> transport)
+    : cfg_(std::move(cfg)), transport_(std::move(transport)) {}
+Client::~Client() = default;
+
+void Client::update() { transport_->poll(); }
+
+Session Client::parse_session_and_store(const json::Value& j) {
+    token_ = j["access_token"].as_string();
+    const auto& u = j["user"];
+    return Session{u["user_id"].as_int(), u["display_name"].as_string(), u["is_guest"].as_bool()};
+}
+
+template <class T>
+void Client::request(const std::string& method, const std::string& path,
+                     const std::string& body,
+                     std::function<T(const json::Value&)> extract,
+                     std::function<void(Result<T>)> cb) {
+    Headers headers{{"X-Api-Key", cfg_.api_key}};
+    if (!token_.empty()) headers.push_back({"Authorization", "Bearer " + token_});
+
+    transport_->send(
+        method, cfg_.base_url + path, headers, body,
+        [extract = std::move(extract), cb = std::move(cb)](HttpResponse resp) {
+            if (resp.status < 0) {
+                cb(Result<T>::err({"transport", "request failed", -1}));
+                return;
+            }
+            const auto parsed = json::parse(resp.body);
+            if (resp.status >= 200 && resp.status < 300) {
+                if (!parsed) {
+                    cb(Result<T>::err({"bad_response", "invalid JSON from server", resp.status}));
+                    return;
+                }
+                cb(Result<T>::ok(extract(*parsed)));
+            } else {
+                Error e{"error", "request failed", resp.status};
+                if (parsed && parsed->has("error")) {
+                    const auto& er = (*parsed)["error"];
+                    e.code    = er["code"].as_string(e.code);
+                    e.message = er["message"].as_string(e.message);
+                }
+                cb(Result<T>::err(std::move(e)));
+            }
+        });
+}
+
+// -------- Auth --------
+void Client::Auth::guest(std::function<void(Result<Session>)> cb) {
+    c_->request<Session>("POST", "/v1/auth/guest", "{}",
+                         [c = c_](const json::Value& j) { return c->parse_session_and_store(j); },
+                         std::move(cb));
+}
+
+void Client::Auth::login(const std::string& email, const std::string& password,
+                         std::function<void(Result<Session>)> cb) {
+    const std::string body = "{\"email\":\"" + json::escape(email) + "\",\"password\":\"" +
+                             json::escape(password) + "\"}";
+    c_->request<Session>("POST", "/v1/auth/login", body,
+                         [c = c_](const json::Value& j) { return c->parse_session_and_store(j); },
+                         std::move(cb));
+}
+
+void Client::Auth::registerUser(const std::string& email, const std::string& password,
+                                const std::string& display_name,
+                                std::function<void(Result<Session>)> cb) {
+    const std::string body = "{\"email\":\"" + json::escape(email) + "\",\"password\":\"" +
+                             json::escape(password) + "\",\"display_name\":\"" +
+                             json::escape(display_name) + "\"}";
+    c_->request<Session>("POST", "/v1/auth/register", body,
+                         [c = c_](const json::Value& j) { return c->parse_session_and_store(j); },
+                         std::move(cb));
+}
+
+// -------- Leaderboard --------
+void Client::Leaderboard::submit(long value, std::function<void(Result<Rank>)> cb) {
+    const std::string body = "{\"value\":" + std::to_string(value) + "}";
+    c_->request<Rank>("POST", "/v1/leaderboards/" + key_ + "/scores", body,
+                      [](const json::Value& j) {
+                          return Rank{j["value"].as_int(), static_cast<int>(j["rank"].as_int()),
+                                      j["updated"].as_bool()};
+                      },
+                      std::move(cb));
+}
+
+void Client::Leaderboard::top(int limit, std::function<void(Result<Board>)> cb) {
+    c_->request<Board>("GET", "/v1/leaderboards/" + key_ + "/top?limit=" + std::to_string(limit), "",
+                       [](const json::Value& j) {
+                           Board       b;
+                           const auto& entries = j["entries"];
+                           for (std::size_t k = 0; k < entries.size(); ++k) {
+                               const auto& e = entries[k];
+                               b.entries.push_back({static_cast<int>(e["rank"].as_int()),
+                                                    e["user_id"].as_int(),
+                                                    e["display_name"].as_string(),
+                                                    e["value"].as_int()});
+                           }
+                           return b;
+                       },
+                       std::move(cb));
+}
+
+void Client::Leaderboard::me(std::function<void(Result<Rank>)> cb) {
+    c_->request<Rank>("GET", "/v1/leaderboards/" + key_ + "/me", "",
+                      [](const json::Value& j) {
+                          return Rank{j["value"].as_int(), static_cast<int>(j["rank"].as_int()), false};
+                      },
+                      std::move(cb));
+}
+
+}  // namespace gbaas
