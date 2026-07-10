@@ -17,6 +17,7 @@ endif()
 
 add_executable(baas
   main.cc
+  db/db.cc
 )
 target_include_directories(baas PRIVATE ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
 target_link_libraries(baas PRIVATE Drogon::Drogon engine_flags)
