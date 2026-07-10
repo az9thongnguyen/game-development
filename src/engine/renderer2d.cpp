@@ -124,6 +124,7 @@ void Renderer2D::draw_text(int x, int y, const char* s, Color c, int scale) {
 
 // ---- font-backed (anti-aliased) text ----------------------------------------
 void Renderer2D::set_font(text::Font* f, int px) { font_ = f; font_px_ = px; }
+void Renderer2D::set_font_size(int px)           { font_px_ = px; }
 
 int Renderer2D::text_width(const char* s) const {
     if (font_ && font_px_ > 0) return font_->text_width(font_px_, s);
