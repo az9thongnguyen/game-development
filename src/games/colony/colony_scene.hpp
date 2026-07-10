@@ -46,6 +46,8 @@ private:
     void               cloud_save();   // serialize the sim → saves().put("colony", …)
     void               cloud_load();   // saves().get("colony") → rebuild the sim
     void               refresh_wood(); // inventory().get("wood") → wood_
+    void               connect_realtime(); // realtime().connect() + join the "colony" room
+    void               poll_realtime();    // drain realtime events → presence state
 
     Sim                          sim_;
     ui::Context                  ui_;
@@ -64,6 +66,12 @@ private:
     std::string   motd_;         // remote config value
     std::string   event_name_;  // first active live event
     gbaas::Board  board_;
+
+    // ---- realtime (Lobby) presence ----
+    bool          rt_on_    = false;               // realtime channel connected?
+    int           peers_    = 0;                    // players in the "colony" room (incl. me)
+    std::string   rt_line_  = "realtime: off";      // status line for the panel
+    std::string   last_msg_;                        // last room message received
 
     float      ox_ = 480.0f, oy_ = 60.0f;   // iso camera offset
     bool       running_ = true;

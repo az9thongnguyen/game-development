@@ -22,6 +22,7 @@
 #ifdef GBAAS_HAS_WS_CURL
 
 #include <fcntl.h>
+#include <sys/select.h>
 #include <unistd.h>
 
 #include <curl/curl.h>
@@ -39,14 +40,15 @@ public:
         if (!curl_) return false;
         curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl_, CURLOPT_CONNECT_ONLY, 2L);   // 2 = WebSocket mode
-        if (curl_easy_perform(curl_) != CURLE_OK) { close(); return false; }
+        if (curl_easy_perform(curl_) != CURLE_OK) { close(); return false; }   // handshake
 
-        // Make the underlying socket non-blocking so poll() never stalls.
-        curl_socket_t sock = CURL_SOCKET_BAD;
-        if (curl_easy_getinfo(curl_, CURLINFO_ACTIVESOCKET, &sock) == CURLE_OK &&
-            sock != CURL_SOCKET_BAD) {
-            const int fl = ::fcntl(sock, F_GETFL, 0);
-            if (fl != -1) ::fcntl(sock, F_SETFL, fl | O_NONBLOCK);
+        // Make the underlying socket non-blocking so poll() never stalls (and so
+        // curl_ws_recv drains libcurl's internal buffer, then returns CURLE_AGAIN).
+        sock_ = CURL_SOCKET_BAD;
+        if (curl_easy_getinfo(curl_, CURLINFO_ACTIVESOCKET, &sock_) == CURLE_OK &&
+            sock_ != CURL_SOCKET_BAD) {
+            const int fl = ::fcntl(sock_, F_GETFL, 0);
+            if (fl != -1) ::fcntl(sock_, F_SETFL, fl | O_NONBLOCK);
         }
         connected_ = true;
         return true;
@@ -54,6 +56,7 @@ public:
 
     void close() override {
         if (curl_) { curl_easy_cleanup(curl_); curl_ = nullptr; }
+        sock_      = CURL_SOCKET_BAD;
         connected_ = false;
         pending_.clear();
     }
@@ -62,13 +65,26 @@ public:
 
     bool send_text(const std::string& text) override {
         if (!curl_ || !connected_) return false;
-        std::size_t    sent = 0;
-        const CURLcode r =
-            curl_ws_send(curl_, text.data(), text.size(), &sent, 0, CURLWS_TEXT);
-        // ponytail: assume small frames send in one call on localhost; loop on
-        // partial sends if large payloads ever matter.
-        if (r != CURLE_OK && r != CURLE_AGAIN) { connected_ = false; return false; }
-        return true;
+        // On a non-blocking socket curl_ws_send may return CURLE_AGAIN ("not sent,
+        // call again") — it is NOT success. Wait briefly for writability and retry
+        // (frames are small + infrequent, so a short bounded wait is fine).
+        for (int tries = 0; tries < 100; ++tries) {
+            std::size_t    sent = 0;
+            const CURLcode r =
+                curl_ws_send(curl_, text.data(), text.size(), &sent, 0, CURLWS_TEXT);
+            if (r == CURLE_OK) return true;
+            if (r != CURLE_AGAIN) { connected_ = false; return false; }
+            if (sock_ != CURL_SOCKET_BAD) {   // block up to 5ms for the socket to drain
+                fd_set         wr;
+                FD_ZERO(&wr);
+                FD_SET(sock_, &wr);
+                struct timeval tv{0, 5000};
+                ::select(static_cast<int>(sock_) + 1, nullptr, &wr, nullptr, &tv);
+            }
+        }
+        return false;   // could not flush after ~0.5s
+        // ponytail: small frames send whole; loop on partial sends only if large
+        // payloads ever matter.
     }
 
     bool poll(std::vector<std::string>& out) override {
@@ -94,9 +110,10 @@ public:
     }
 
 private:
-    CURL*       curl_      = nullptr;
-    bool        connected_ = false;
-    std::string pending_;   // accumulates a fragmented text frame
+    CURL*         curl_      = nullptr;
+    curl_socket_t sock_      = CURL_SOCKET_BAD;   // the active socket (for select)
+    bool          connected_ = false;
+    std::string   pending_;   // accumulates a fragmented text frame
 };
 
 }  // namespace

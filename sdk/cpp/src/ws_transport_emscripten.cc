@@ -11,14 +11,29 @@
 #include "gbaas/ws_transport.h"
 
 #include <cstddef>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <emscripten/emscripten.h>
 #include <emscripten/websocket.h>
 
 namespace gbaas {
 namespace {
+
+// A same-origin game passes an empty base_url, so Realtime builds a scheme-less URL
+// like "/v1/ws?...". emscripten_websocket_new needs an absolute ws(s):// URL, so
+// resolve a relative one against the page origin (http→ws, https→wss). Returns a
+// malloc'd C string the caller frees.
+EM_JS(char*, gbaas_ws_resolve_url, (const char* rel), {
+    var r   = UTF8ToString(rel);
+    var url = (r.indexOf("://") >= 0) ? r : (location.origin.replace(/^http/, "ws") + r);
+    var len = lengthBytesUTF8(url) + 1;
+    var buf = _malloc(len);
+    stringToUTF8(url, buf, len);
+    return buf;
+});
 
 class WsTransportEmscripten : public IWsTransport {
 public:
@@ -29,8 +44,10 @@ public:
         if (!emscripten_websocket_is_supported()) return false;
         EmscriptenWebSocketCreateAttributes attr;
         emscripten_websocket_init_create_attributes(&attr);
-        attr.url = url.c_str();
-        sock_    = emscripten_websocket_new(&attr);
+        char* full = gbaas_ws_resolve_url(url.c_str());   // absolute ws(s):// URL
+        attr.url   = full;
+        sock_      = emscripten_websocket_new(&attr);
+        std::free(full);
         if (sock_ <= 0) return false;
         alive_ = true;
         emscripten_websocket_set_onopen_callback(sock_, this, on_open);
