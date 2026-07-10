@@ -45,6 +45,7 @@ private:
     void               refresh_board();
     void               cloud_save();   // serialize the sim → saves().put("colony", …)
     void               cloud_load();   // saves().get("colony") → rebuild the sim
+    void               refresh_wood(); // inventory().get("wood") → wood_
 
     Sim                          sim_;
     ui::Context                  ui_;
@@ -59,6 +60,7 @@ private:
     std::string   status_     = "connecting...";
     long long     my_score_   = 0;
     int           my_rank_    = 0;
+    long long     wood_       = 0;
     gbaas::Board  board_;
 
     float      ox_ = 480.0f, oy_ = 60.0f;   // iso camera offset
