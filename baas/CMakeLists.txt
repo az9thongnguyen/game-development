@@ -35,6 +35,8 @@ add_library(baas_core OBJECT
   auth/jwt.cc
   auth/auth_service.cc
   auth/auth_controller.cc
+  leaderboard/lb_service.cc
+  leaderboard/lb_controller.cc
   app_setup.cc
 )
 target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
@@ -54,3 +56,7 @@ add_test(NAME baas_jwt COMMAND test_baas_jwt)
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
+
+add_executable(test_baas_leaderboard ${CMAKE_SOURCE_DIR}/tests/test_baas_leaderboard.cc)
+target_link_libraries(test_baas_leaderboard PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_leaderboard COMMAND test_baas_leaderboard)
