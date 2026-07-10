@@ -41,6 +41,12 @@ add_library(baas_core OBJECT
   cloud_save/save_controller.cc
   inventory/inv_service.cc
   inventory/inv_controller.cc
+  remote_config/config_service.cc
+  remote_config/config_controller.cc
+  analytics/analytics_service.cc
+  analytics/analytics_controller.cc
+  live_events/events_service.cc
+  live_events/events_controller.cc
   app_setup.cc
 )
 target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
@@ -72,6 +78,12 @@ add_test(NAME baas_cloudsave COMMAND test_baas_cloudsave)
 add_executable(test_baas_inventory ${CMAKE_SOURCE_DIR}/tests/test_baas_inventory.cc)
 target_link_libraries(test_baas_inventory PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_inventory COMMAND test_baas_inventory)
+
+foreach(svc config analytics events)
+  add_executable(test_baas_${svc} ${CMAKE_SOURCE_DIR}/tests/test_baas_${svc}.cc)
+  target_link_libraries(test_baas_${svc} PRIVATE baas_core CURL::libcurl engine_flags)
+  add_test(NAME baas_${svc} COMMAND test_baas_${svc})
+endforeach()
 
 # End-to-end: the real SDK (libcurl transport) against a live server. Links the
 # SDK + the server + curl (for the healthz probe in the harness).

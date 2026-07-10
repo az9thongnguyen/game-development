@@ -68,6 +68,17 @@ struct Item {
     long long   qty = 0;
 };
 
+struct ConfigEntry {
+    std::string key;
+    std::string value;
+};
+
+struct LiveEvent {
+    std::string key;
+    std::string name;
+    std::string payload;   // opaque JSON
+};
+
 class Client {
 public:
     // Native default transport (libcurl). Provide a transport explicitly for the
@@ -137,10 +148,43 @@ public:
         Client* c_;
     };
 
+    class RemoteConfig {
+    public:
+        void all(std::function<void(Result<std::vector<ConfigEntry>>)> cb);
+        void get(const std::string& key, std::function<void(Result<std::string>)> cb);
+    private:
+        friend class Client;
+        explicit RemoteConfig(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
+    class Analytics {
+    public:
+        // props is an opaque JSON string ("{}" default). cb is optional (fire-and-forget).
+        void track(const std::string& name, const std::string& props = "{}",
+                   std::function<void(Result<bool>)> cb = nullptr);
+    private:
+        friend class Client;
+        explicit Analytics(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
+    class LiveEvents {
+    public:
+        void active(std::function<void(Result<std::vector<LiveEvent>>)> cb);
+    private:
+        friend class Client;
+        explicit LiveEvents(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
     Auth        auth() { return Auth(this); }
     Leaderboard leaderboard(std::string key) { return Leaderboard(this, std::move(key)); }
     Saves       saves() { return Saves(this); }
     Inventory   inventory() { return Inventory(this); }
+    RemoteConfig config() { return RemoteConfig(this); }
+    Analytics    analytics() { return Analytics(this); }
+    LiveEvents   events() { return LiveEvents(this); }
 
 private:
     // Build headers, send, and route the response into a Result<T> via `extract`.

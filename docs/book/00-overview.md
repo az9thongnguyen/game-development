@@ -146,6 +146,7 @@ checks).
 | 58 | **Game BaaS Slice #1 acceptance** (end-to-end, security checklist, tests) |
 | 59 | **Cloud Save** (versioned per-user/per-slot saves, optimistic concurrency, colony save/load) |
 | 60 | **Inventory** (per-user item quantities, grant/consume, server-enforced non-negative spend) |
+| 61 | **Remote Config, Analytics & Live Events** (the read/ingest L1 services; L1-vs-L3 split) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -172,6 +173,7 @@ observe → pitfalls → exercises.**
 | **BaaS S1 ✅** | Game Backend-as-a-Service, Slice #1 — auth (argon2id + JWT) + leaderboard on Drogon, multi-tenant projects, a unified non-blocking C++ SDK; colony online native + web |
 | **BaaS S2 ✅** | Cloud Save — versioned per-user/per-slot saves with optimistic concurrency (If-Match); colony state round-trips to the cloud, native + web |
 | **BaaS S3 ✅** | Inventory — per-user item quantities (grant/consume, server-enforced non-negative spend); colony wood economy, native + web |
+| **BaaS S4 ✅** | Remote Config + Analytics + Live Events — the read/ingest L1 services (admin write/query deferred to the L3 dashboard); colony reads motd + live events, sends analytics |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

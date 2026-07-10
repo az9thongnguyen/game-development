@@ -197,4 +197,47 @@ void Client::Inventory::list(std::function<void(Result<std::vector<Item>>)> cb) 
         std::move(cb));
 }
 
+// -------- Remote config --------
+void Client::RemoteConfig::all(std::function<void(Result<std::vector<ConfigEntry>>)> cb) {
+    c_->request<std::vector<ConfigEntry>>(
+        "GET", "/v1/config", "",
+        [](const json::Value& j) {
+            std::vector<ConfigEntry> out;
+            for (const auto& kv : j["config"].obj)   // config is a JSON object
+                out.push_back({kv.first, kv.second.as_string()});
+            return out;
+        },
+        std::move(cb));
+}
+
+void Client::RemoteConfig::get(const std::string& key, std::function<void(Result<std::string>)> cb) {
+    c_->request<std::string>("GET", "/v1/config/" + key, "",
+                             [](const json::Value& j) { return j["value"].as_string(); },
+                             std::move(cb));
+}
+
+// -------- Analytics --------
+void Client::Analytics::track(const std::string& name, const std::string& props,
+                              std::function<void(Result<bool>)> cb) {
+    const std::string body = "{\"name\":\"" + json::escape(name) + "\",\"props\":" + props + "}";
+    c_->request<bool>("POST", "/v1/analytics/events", body,
+                      [](const json::Value& j) { return j["ok"].as_bool(); },
+                      cb ? std::move(cb) : [](Result<bool>) {});
+}
+
+// -------- Live events --------
+void Client::LiveEvents::active(std::function<void(Result<std::vector<LiveEvent>>)> cb) {
+    c_->request<std::vector<LiveEvent>>(
+        "GET", "/v1/events", "",
+        [](const json::Value& j) {
+            std::vector<LiveEvent> out;
+            const auto&            arr = j["events"];
+            for (std::size_t k = 0; k < arr.size(); ++k)
+                out.push_back({arr[k]["key"].as_string(), arr[k]["name"].as_string(),
+                               arr[k]["payload"].as_string()});
+            return out;
+        },
+        std::move(cb));
+}
+
 }  // namespace gbaas
