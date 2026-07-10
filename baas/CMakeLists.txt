@@ -37,6 +37,8 @@ add_library(baas_core OBJECT
   auth/auth_controller.cc
   leaderboard/lb_service.cc
   leaderboard/lb_controller.cc
+  cloud_save/save_service.cc
+  cloud_save/save_controller.cc
   app_setup.cc
 )
 target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
@@ -60,6 +62,10 @@ add_test(NAME baas_auth COMMAND test_baas_auth)
 add_executable(test_baas_leaderboard ${CMAKE_SOURCE_DIR}/tests/test_baas_leaderboard.cc)
 target_link_libraries(test_baas_leaderboard PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_leaderboard COMMAND test_baas_leaderboard)
+
+add_executable(test_baas_cloudsave ${CMAKE_SOURCE_DIR}/tests/test_baas_cloudsave.cc)
+target_link_libraries(test_baas_cloudsave PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_cloudsave COMMAND test_baas_cloudsave)
 
 # End-to-end: the real SDK (libcurl transport) against a live server. Links the
 # SDK + the server + curl (for the healthz probe in the harness).

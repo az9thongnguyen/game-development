@@ -33,6 +33,7 @@ material that accompanies the code.
 | **F** | Editor support — hand-written immediate-mode GUI + a UI-driven physics sandbox | ✅ done |
 | **integration** | Colony sim — a game standing on the engine core (ECS + jobs + frame allocator + asset cache + GUI) | ✅ done |
 | **BaaS S1** | Game Backend-as-a-Service, Slice #1 — auth (argon2id + JWT) + leaderboard on Drogon, multi-tenant projects, unified non-blocking C++ SDK (native libcurl / web emscripten_fetch); colony online native + web | ✅ done |
+| **BaaS S2** | Cloud Save — versioned per-user/per-slot game state with optimistic concurrency (If-Match); `client.saves()` in the SDK; colony Cloud Save/Load native + web | ✅ done |
 
 ## Prerequisites (macOS)
 
