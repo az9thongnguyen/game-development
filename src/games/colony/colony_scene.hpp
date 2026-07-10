@@ -48,6 +48,12 @@ private:
     void               refresh_wood(); // inventory().get("wood") → wood_
     void               connect_realtime(); // realtime().connect() + join the "colony" room
     void               poll_realtime();    // drain realtime events → presence state
+    // ---- replay (record a command stream → cloud → deterministic playback) ----
+    void               apply_command(const std::string& cmd);   // spawn|corner|reset → the sim
+    void               issue_command(const std::string& cmd);   // apply + record (if recording)
+    void               save_replay();       // stop recording → replays().save(...)
+    void               play_last_replay();  // replays().list → get newest → play it
+    void               update_replay();     // drive playback each frame
 
     Sim                          sim_;
     ui::Context                  ui_;
@@ -72,6 +78,17 @@ private:
     int           peers_    = 0;                    // players in the "colony" room (incl. me)
     std::string   rt_line_  = "realtime: off";      // status line for the panel
     std::string   last_msg_;                        // last room message received
+
+    // ---- replay: record the command stream, store it, play it back ----
+    long                                     sim_frame_ = 0;   // sim frame counter
+    bool                                     recording_ = false;
+    long                                     rec_start_ = 0;   // frame recording began
+    std::string                              rec_buf_;         // "relframe:cmd\n" lines
+    bool                                     playing_  = false;
+    std::vector<std::pair<long, std::string>> play_cmds_;
+    std::size_t                              play_idx_  = 0;
+    long                                     play_frame_ = 0;
+    std::string                              replay_line_ = "replay: idle";
 
     float      ox_ = 480.0f, oy_ = 60.0f;   // iso camera offset
     bool       running_ = true;

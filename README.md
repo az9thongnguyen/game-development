@@ -39,6 +39,7 @@ material that accompanies the code.
 | **BaaS S5** | Dashboard (L3) — admin API with two-level auth (platform `X-Admin-Secret` + per-project `X-Secret-Key`): create/list projects, config & live-event writes, analytics summary, users; a hand-written web dashboard at `/dashboard` | ✅ done |
 | **BaaS S6** | Realtime (L2) — Lobby + Matchmaking over WebSocket (`/v1/ws`): mutex-guarded in-memory hub, auth-on-upgrade, tenant-scoped rooms/queue; `client.realtime()` in the SDK (native `ws://` via libcurl, web via the browser WebSocket) + a live dashboard Realtime console. Last hand-buildable tier (L4 needs real cloud/3rd-party infra). | ✅ done |
 | **BaaS S7** | Realtime end-to-end in the game — native `ws://` transport proven live (`sdk_realtime_live`: lobby, broadcast, matchmaking, tenant isolation, auth rejection); colony **presence** panel via `client.realtime()` (native + web, browser-verified). | ✅ done |
+| **BaaS S8** | Replay System — per-user immutable named recordings (`/v1/replays`, project+user scoped, 512 KiB cap); `client.replays()` in the SDK (over the existing HTTP transport); colony records its command stream → cloud → command-stream playback. | ✅ done |
 
 ## Prerequisites (macOS)
 

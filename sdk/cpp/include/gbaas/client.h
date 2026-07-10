@@ -70,6 +70,20 @@ struct Item {
     long long   qty = 0;
 };
 
+struct ReplayMeta {
+    long long   id = 0;
+    std::string name;
+    long long   size = 0;
+    std::string created_at;
+};
+
+struct Replay {
+    long long   id = 0;
+    std::string name;
+    std::string data;
+    std::string created_at;
+};
+
 struct ConfigEntry {
     std::string key;
     std::string value;
@@ -180,6 +194,20 @@ public:
         Client* c_;
     };
 
+    class Replays {
+    public:
+        // Record a new replay (data is an opaque recorded stream). cb gets its id.
+        void save(const std::string& name, const std::string& data,
+                  std::function<void(Result<ReplayMeta>)> cb);
+        void list(std::function<void(Result<std::vector<ReplayMeta>>)> cb);
+        void get(long long id, std::function<void(Result<Replay>)> cb);
+        void remove(long long id, std::function<void(Result<bool>)> cb);
+    private:
+        friend class Client;
+        explicit Replays(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
     Auth        auth() { return Auth(this); }
     Leaderboard leaderboard(std::string key) { return Leaderboard(this, std::move(key)); }
     Saves       saves() { return Saves(this); }
@@ -187,6 +215,7 @@ public:
     RemoteConfig config() { return RemoteConfig(this); }
     Analytics    analytics() { return Analytics(this); }
     LiveEvents   events() { return LiveEvents(this); }
+    Replays      replays() { return Replays(this); }
 
     // The persistent realtime channel (Lobby + Matchmaking). Unlike the handles
     // above it is stateful and long-lived, so it is owned by the Client and

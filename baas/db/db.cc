@@ -99,6 +99,14 @@ CREATE TABLE IF NOT EXISTS live_events (
   payload TEXT NOT NULL DEFAULT '{}',
   UNIQUE(project_id, key)
 );
+CREATE TABLE IF NOT EXISTS replays (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  data TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 )SQL";
 
 bool is_blank(const std::string& s) {
