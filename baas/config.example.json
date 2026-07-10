@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy to baas/config.json (gitignored) for local dev. CLI flags override these. Not all fields are wired yet — see the sub-milestone that introduces each.",
+  "host": "127.0.0.1",
+  "port": 8080,
+  "db_url": "sqlite://baas.db",
+  "jwt_secret": "CHANGE_ME_dev_only_secret_min_32_bytes_______",
+  "jwt_ttl_seconds": 3600,
+  "cors_origins": ["http://127.0.0.1:8081"]
+}

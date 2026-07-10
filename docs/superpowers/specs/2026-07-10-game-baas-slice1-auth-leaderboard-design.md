@@ -130,9 +130,9 @@ against a fake transport.
 |---|---|---|
 | Web framework | **Drogon 1.9.13** (brew) | Named in `requirements.md §11`; C++17 async, HTTP+WebSocket, built-in `DbClient` (PG/SQLite). Alt: Crow (no ORM), upgrade hand-written server (must re-write concurrency/WS/DB → too slow to "real"). |
 | DB (dev/test) | **SQLite 3.53** (installed) | Zero-infra, instant demo, in-file test DBs. |
-| DB (prod) | **Postgres 18** (installed) | Real concurrency/durability. Same SQL via `DbClient`. |
+| DB (prod) | **Postgres 18** (installed) | Real concurrency/durability, same SQL via `DbClient`. NOTE: the Homebrew Drogon bottle lacks libpq, so runtime Postgres needs Drogon built from source with libpq; Slice #1 ships/tests on SQLite (see plan S1.8). |
 | Password hashing | **libsodium argon2id** (brew) | Never hand-roll crypto. Memory-hard, modern. Alt rejected: bcrypt (fine, but libsodium also gives us primitives for later). |
-| JWT | **jwt-cpp** (brew, header-only) | HS256 signing/verify. Don't hand-roll token crypto. |
+| JWT | **libsodium HMAC-SHA256** (no extra dep) | HS256 = a base64url envelope over libsodium's audited HMAC + constant-time verify. jwt-cpp is not a Homebrew formula and drags an OpenSSL backend; the envelope is ~40 lines and keeps crypto in audited code. |
 | HTTP client (native SDK) | **libcurl** | Ubiquitous, robust. |
 | HTTP client (web SDK) | **emscripten_fetch** | The only non-blocking HTTP path in WASM. |
 | JSON | Drogon's built-in JSON (server) + a tiny reuse of engine JSON on client, or nlohmann/json for the SDK | Decide in planning; keep SDK dep-light. |

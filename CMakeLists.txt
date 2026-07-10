@@ -309,3 +309,28 @@ add_executable(test_server tests/test_server.cpp
 target_include_directories(test_server PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(test_server PRIVATE engine_flags)
 add_test(NAME server COMMAND test_server)
+
+# ---- Game BaaS backend (Slice #1, requirements.md §11): SEPARATE process --------
+# Drogon-based platform (auth + leaderboard + ...). Links NONE of the engine/game
+# code — the engine core never depends on Drogon. Desktop only (never the web
+# build). GUARDED on Drogon being installed so the ordinary engine build never
+# hard-depends on it: run `brew install drogon libsodium` to enable the 'baas'
+# target. On macOS the Homebrew prefix is added so find_package locates Drogon.
+if(NOT EMSCRIPTEN)
+  if(APPLE AND BREW_EXECUTABLE)
+    execute_process(
+      COMMAND ${BREW_EXECUTABLE} --prefix
+      OUTPUT_VARIABLE HOMEBREW_PREFIX
+      OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(HOMEBREW_PREFIX)
+      list(PREPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}")
+    endif()
+  endif()
+  find_package(Drogon CONFIG QUIET)
+  if(Drogon_FOUND)
+    message(STATUS "Drogon: found (${Drogon_DIR}) — building 'baas' backend")
+    add_subdirectory(baas)
+  else()
+    message(STATUS "Drogon not found — skipping 'baas' backend (brew install drogon)")
+  endif()
+endif()

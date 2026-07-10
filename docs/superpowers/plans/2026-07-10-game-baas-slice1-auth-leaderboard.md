@@ -6,7 +6,7 @@
 
 **Architecture:** A single Drogon process (modular monolith) under `baas/`: a Gateway filter chain (`ApiKeyFilter` → project, `AuthFilter` → user via JWT) in front of `Auth` and `Leaderboard` modules (each `Controller` = HTTP edge, `Service` = unit-testable logic), persisting through Drogon's `DbClient` (SQLite dev / Postgres prod, one parameterized-SQL codebase). A separate `gbaas_sdk` C++ library gives games a non-blocking client whose HTTP transport is a seam (`libcurl` native / `emscripten_fetch` web), mirroring the engine's platform seam. The colony game consumes the SDK.
 
-**Tech Stack:** C++20, Drogon 1.9.13, libsodium (argon2id), jwt-cpp (HS256), libcurl, emscripten_fetch, SQLite 3 / Postgres 18, CMake, existing engine `ui::Context` for the in-game panel.
+**Tech Stack:** C++20, Drogon 1.9.13, libsodium (argon2id password hashing **+ HMAC-SHA256 for JWT HS256** — no separate JWT lib), libcurl, emscripten_fetch, SQLite 3 (dev + prod for this slice; Postgres needs a Drogon build with libpq — see S1.8), CMake, existing engine `ui::Context` for the in-game panel.
 
 ## Global Constraints
 
@@ -80,7 +80,7 @@ CMakeLists.txt (root)        # add_subdirectory(baas), (sdk), new tests, link co
 **Interfaces:**
 - Produces: a runnable `baas` binary serving `GET /healthz` → `200 {"status":"ok"}`.
 
-- [ ] **Step 1: Install deps.** `brew install drogon libsodium jwt-cpp` (Drogon pulls jsoncpp/uuid/zlib). Verify: `brew list --versions drogon libsodium jwt-cpp`.
+- [ ] **Step 1: Install deps.** `brew install drogon libsodium` (the Drogon bottle pulls jsoncpp + openssl@3 and is built with **SQLite3** support but **not** libpq). There is **no** jwt-cpp — it is not a brew formula; JWT is implemented over libsodium's HMAC-SHA256 (see S1.3). Verify: `brew list --versions drogon libsodium` and that `$(brew --prefix)/lib/cmake/Drogon/DrogonConfig.cmake` exists.
 - [ ] **Step 2: Minimal `main.cc`** — parse `--port/--host`, register a lambda handler for `/healthz`, `drogon::app().addListener(host,port).run()`. Keep it under ~40 lines; this only proves Drogon builds and boots.
 - [ ] **Step 3: `baas/CMakeLists.txt`** — `find_package(Drogon CONFIG REQUIRED)`, `add_executable(baas main.cc)`, `target_link_libraries(baas PRIVATE Drogon::Drogon)`. Root CMake: `find_package(Drogon CONFIG QUIET)` then `if(Drogon_FOUND) add_subdirectory(baas) endif()` so the engine build never hard-depends on Drogon.
 - [ ] **Step 4: Build + boot.** `cmake -B build -S . && cmake --build build --target baas`. Run `./build/baas/baas --port 8080 &`; `curl -s localhost:8080/healthz` → `{"status":"ok"}`; kill it.
@@ -187,7 +187,7 @@ assert(!web::jwt::verify(web::jwt::issue(7,3,"k",-1), "k"));        // expired
 ```
 Run: FAIL (undeclared).
 - [ ] **Step 2: `password.cc`** — libsodium `crypto_pwhash_str` / `_str_verify` (require `sodium_init() >= 0` at startup in `main`).
-- [ ] **Step 3: `jwt.cc`** — jwt-cpp HS256 create with claims `sub`,`pid`,`iat`,`exp`; verify with leeway 0, catch → `nullopt`.
+- [ ] **Step 3: `jwt.cc`** — HS256 with **no external JWT library**: token = `base64url(header) + "." + base64url(payload)`, signed with libsodium `crypto_auth_hmacsha256` (a 32-byte key derived from the configured secret), then `+ "." + base64url(mac)`. `verify` recomputes the MAC over `header.payload` and compares with `crypto_auth_hmacsha256_verify` (constant-time), then checks `exp`. Claims: `sub`,`pid`,`iat`,`exp`; returns `nullopt` on any failure.
 - [ ] **Step 4: Run unit tests** → PASS.
 - [ ] **Step 5: `auth_service.cc`** — `register`(project_id,email,pw,name): reject dup email, `pw::hash`, insert, return user; `login`: fetch by (project,email), `pw::verify`, **identical error** for missing-user vs bad-pw; `guest`(project_id,name?): insert `is_guest=1`, no email/pw. All parameterized, all scoped by `project_id` from the request attribute.
 - [ ] **Step 6: `auth_controller.cc`** — parse+validate body (required fields, sizes), call service, on success `issue` a JWT with the configured secret, return the user (never the password_hash) + token. Map service errors via `make_error`.
@@ -353,7 +353,7 @@ Run: FAIL.
 - [ ] **Step 1: Guidebook** — ensure chapters 51–58 exist and are complete (each task should have drafted its chapter; polish here). Update overview + README.
 - [ ] **Step 2: Security checklist pass** (spec §11) — grep for SQL string-concatenation; confirm secrets are config/env + gitignored; confirm every service query filters `project_id`; re-run the tenant-isolation + spoof tests.
 - [ ] **Step 3: Sanitizers** — build the tests under ASan/UBSan (`-DENGINE_SANITIZE=ON`), run the full CTest suite (existing 14 + the 4 new). All green.
-- [ ] **Step 4: Postgres portability check** — run the integration suite once against a local Postgres 18 DB (`--db postgres://...`); fix any SQL that diverged from SQLite. Document the result.
+- [ ] **Step 4: Postgres portability (documented, not run from the bottle).** The Homebrew Drogon bottle links SQLite3 but **not** libpq, so `newPgClient` is not usable at runtime — Slice #1 ships and is tested on SQLite. Keep the SQL conservative/portable and **document** that prod Postgres requires building Drogon from source with libpq (`-DBUILD_POSTGRESQL=ON`). Optionally verify against a source build; not a Slice #1 blocker.
 - [ ] **Step 5: cpp-reviewer + security-reviewer** subagents over `baas/` and `sdk/cpp/`; fix findings; re-test (auto-loop).
 - [ ] **Step 6: Merge.** `git checkout main && git merge --no-ff feat/baas-slice1-auth-leaderboard`; verify clean tree, full CTest green; delete the feature branch.
 
