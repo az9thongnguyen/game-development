@@ -117,6 +117,45 @@ void ColonyScene::refresh_board() {
     });
 }
 
+// Serialize every entity (grid pos, color, agent-or-prop) to a small JSON string
+// and store it under the "colony" slot. Payload is UTF-8 JSON — cloud save's format.
+void ColonyScene::cloud_save() {
+    std::string s     = "{\"e\":[";
+    bool        first = true;
+    sim_.registry().view<Visual, GridPos>([&](ecs::Entity, Visual& v, GridPos& p) {
+        if (!first) s += ',';
+        first = false;
+        s += "{\"x\":" + std::to_string(static_cast<int>(std::lround(p.x))) +
+             ",\"y\":" + std::to_string(static_cast<int>(std::lround(p.y))) +
+             ",\"c\":" + std::to_string(static_cast<unsigned long>(v.color)) +
+             ",\"a\":" + (v.is_agent ? "1" : "0") + "}";
+    });
+    s += "]}";
+    client_.saves().put("colony", s, [this](gbaas::Result<gbaas::SaveMeta> r) {
+        status_ = r ? ("cloud saved v" + std::to_string(r->version)) : "save failed";
+    });
+}
+
+// Load the "colony" slot and rebuild the sim from scratch.
+void ColonyScene::cloud_load() {
+    client_.saves().get("colony", [this](gbaas::Result<gbaas::Save> r) {
+        if (!r) { status_ = "no cloud save"; return; }
+        const auto j = gbaas::json::parse(r->data);
+        if (!j) { status_ = "bad save data"; return; }
+        sim_.clear();
+        const auto& es = (*j)["e"];
+        for (std::size_t k = 0; k < es.size(); ++k) {
+            const auto&      it = es[k];
+            const int        x  = static_cast<int>(it["x"].as_int());
+            const int        y  = static_cast<int>(it["y"].as_int());
+            const gfx::Color c  = static_cast<gfx::Color>(it["c"].as_int());
+            if (it["a"].as_int() != 0) sim_.spawn_agent(x, y, c);
+            else                       sim_.spawn_prop(x, y, c);
+        }
+        status_ = "cloud loaded v" + std::to_string(r->version);
+    });
+}
+
 iso::Vec2i ColonyScene::hovered_cell(const platform::InputState& in) const {
     return iso::screen_to_grid(static_cast<float>(in.mouse_x), static_cast<float>(in.mouse_y), ox_, oy_);
 }
@@ -187,7 +226,7 @@ void ColonyScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
 
     ui_.begin(&g, in);
-    ui_.panel(ui::Rect{12, 12, 210, 300}, "COLONY");
+    ui_.panel(ui::Rect{12, 12, 210, 372}, "COLONY");
     char line[64];
     std::snprintf(line, sizeof(line), "agents: %d   fps: %d", sim_.agent_count(), static_cast<int>(fps_ + 0.5));
     ui_.label(line);
@@ -207,6 +246,8 @@ void ColonyScene::render(const engine::Context& ctx) {
         if (ui_.button(board_open_ ? "Hide leaderboard" : "Leaderboard")) {
             if (board_open_) board_open_ = false; else refresh_board();
         }
+        if (ui_.button("Cloud Save")) cloud_save();
+        if (ui_.button("Load"))       cloud_load();
     } else {
         if (ui_.button("Login (guest)")) login();
     }

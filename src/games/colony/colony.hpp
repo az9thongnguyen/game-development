@@ -50,6 +50,7 @@ public:
 
     int  agent_count() const { return agent_count_; }
     void reset_default();                // a starter map + a few agents/props
+    void clear();                        // wipe all entities (keep the map) — used by load
 
 private:
     iso::TileMap    map_;
