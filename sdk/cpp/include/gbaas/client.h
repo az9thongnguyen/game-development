@@ -63,6 +63,11 @@ struct Save {
     std::string data;
 };
 
+struct Item {
+    std::string item;
+    long long   qty = 0;
+};
+
 class Client {
 public:
     // Native default transport (libcurl). Provide a transport explicitly for the
@@ -120,9 +125,22 @@ public:
         Client* c_;
     };
 
+    class Inventory {
+    public:
+        void grant(const std::string& item, long long amount, std::function<void(Result<Item>)> cb);
+        void consume(const std::string& item, long long amount, std::function<void(Result<Item>)> cb);
+        void get(const std::string& item, std::function<void(Result<Item>)> cb);
+        void list(std::function<void(Result<std::vector<Item>>)> cb);
+    private:
+        friend class Client;
+        explicit Inventory(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
     Auth        auth() { return Auth(this); }
     Leaderboard leaderboard(std::string key) { return Leaderboard(this, std::move(key)); }
     Saves       saves() { return Saves(this); }
+    Inventory   inventory() { return Inventory(this); }
 
 private:
     // Build headers, send, and route the response into a Result<T> via `extract`.
