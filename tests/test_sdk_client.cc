@@ -155,6 +155,28 @@ int main() {
     c.update();
     CHECK(il && il->size() == 2 && (*il)[1].item == "gold" && (*il)[1].qty == 2);
 
+    // --- remote config / analytics / live events ---
+    gbaas::Result<std::vector<gbaas::ConfigEntry>> cf{};
+    c.config().all([&](gbaas::Result<std::vector<gbaas::ConfigEntry>> r) { cf = r; });
+    CHECK(fake->last_url == "http://x/v1/config");
+    fake->reply(200, R"({"config":{"motd":"hi","max":"9"}})");
+    c.update();
+    CHECK(cf && cf->size() == 2);
+
+    gbaas::Result<bool> tk{};
+    c.analytics().track("score.submitted", R"({"v":1})", [&](gbaas::Result<bool> r) { tk = r; });
+    CHECK(fake->last_method == "POST" && fake->last_url == "http://x/v1/analytics/events");
+    CHECK(fake->last_body.find(R"("props":{"v":1})") != std::string::npos);   // props embedded raw
+    fake->reply(200, R"({"ok":true})");
+    c.update();
+    CHECK(tk && *tk);
+
+    gbaas::Result<std::vector<gbaas::LiveEvent>> le{};
+    c.events().active([&](gbaas::Result<std::vector<gbaas::LiveEvent>> r) { le = r; });
+    fake->reply(200, R"({"events":[{"key":"dw","name":"Double Wood","payload":"{}"}]})");
+    c.update();
+    CHECK(le && le->size() == 1 && (*le)[0].name == "Double Wood");
+
     // --- JSON parser hardening (adversarial input must fail, not crash) ---
     {
         const std::string deep(5000, '[');                        // deeply nested → depth-capped

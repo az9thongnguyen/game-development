@@ -119,6 +119,23 @@ int main() {
         CHECK(pump(c, done));
         CHECK(ic && ic->qty == 6);
 
+        // remote config / live events / analytics (real transport)
+        gbaas::Result<std::vector<gbaas::ConfigEntry>> cf;
+        done = false;
+        c.config().all([&](gbaas::Result<std::vector<gbaas::ConfigEntry>> r) { cf = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(cf && !cf->empty());
+        gbaas::Result<std::vector<gbaas::LiveEvent>> le;
+        done = false;
+        c.events().active([&](gbaas::Result<std::vector<gbaas::LiveEvent>> r) { le = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(le && le->size() >= 1);
+        gbaas::Result<bool> tk;
+        done = false;
+        c.analytics().track("test.event", "{}", [&](gbaas::Result<bool> r) { tk = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(tk && *tk);
+
         drogon::app().quit();
     });
 

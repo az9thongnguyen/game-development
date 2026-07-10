@@ -96,12 +96,26 @@ std::string ColonyScene::default_base_url() {
 void ColonyScene::login() {
     status_ = "connecting...";
     client_.auth().guest([this](gbaas::Result<gbaas::Session> r) {
-        if (r) { online_ = true; status_ = "signed in: " + r->display_name; refresh_wood(); }
-        else   { online_ = false; status_ = "login failed"; }
+        if (r) {
+            online_ = true;
+            status_ = "signed in: " + r->display_name;
+            refresh_wood();
+            // remote config (motd) + currently-active live events
+            client_.config().get("motd", [this](gbaas::Result<std::string> cr) {
+                if (cr) motd_ = *cr;
+            });
+            client_.events().active([this](gbaas::Result<std::vector<gbaas::LiveEvent>> er) {
+                if (er && !er->empty()) event_name_ = (*er)[0].name;
+            });
+        } else {
+            online_ = false;
+            status_ = "login failed";
+        }
     });
 }
 
 void ColonyScene::submit_score() {
+    client_.analytics().track("score.submitted");   // fire-and-forget analytics event
     // The colony's "score" is how many colonists it is managing.
     client_.leaderboard("colony_high").submit(sim_.agent_count(),
         [this](gbaas::Result<gbaas::Rank> r) {
@@ -298,8 +312,13 @@ void ColonyScene::render(const engine::Context& ctx) {
         hovered_.x >= 0 && hovered_.y >= 0 && hovered_.x < sim_.width() && hovered_.y < sim_.height())
         sim_.set_goal(hovered_.x, hovered_.y);
 
+    if (online_ && (!motd_.empty() || !event_name_.empty())) {
+        std::string banner = motd_;
+        if (!event_name_.empty()) banner += "   [LIVE: " + event_name_ + "]";
+        g.draw_text(12, h_ - 30, banner.c_str(), gfx::rgb(210, 205, 130), 1);
+    }
     g.draw_text(12, h_ - 16,
-                "click: send agents (A*)  -  B:ECS C:jobs A:frame D:asset F:ui  +  BaaS: auth/leaderboard  -  ESC:quit",
+                "BaaS: auth/leaderboard/cloud-save/inventory/config/analytics/events  (native + web)  -  ESC:quit",
                 gfx::rgb(150, 160, 180), 1);
 }
 
