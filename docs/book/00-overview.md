@@ -148,6 +148,8 @@ checks).
 | 60 | **Inventory** (per-user item quantities, grant/consume, server-enforced non-negative spend) |
 | 61 | **Remote Config, Analytics & Live Events** (the read/ingest L1 services; L1-vs-L3 split) |
 | 62 | **The Dashboard & Admin API** (operator half: two-level admin auth, project provisioning, a hand-written SPA) |
+| 63 | **Realtime server** (Lobby + Matchmaking over WebSocket: the hub, auth-on-upgrade, tenant isolation, disconnect cleanup) |
+| 64 | **Realtime SDK & demo** (the `IWsTransport` seam — native `ws://` via libcurl, web via the browser WebSocket — and the live dashboard console) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -176,6 +178,7 @@ observe → pitfalls → exercises.**
 | **BaaS S3 ✅** | Inventory — per-user item quantities (grant/consume, server-enforced non-negative spend); colony wood economy, native + web |
 | **BaaS S4 ✅** | Remote Config + Analytics + Live Events — the read/ingest L1 services (admin write/query deferred to the L3 dashboard); colony reads motd + live events, sends analytics |
 | **BaaS S5 ✅** | Dashboard (L3) — admin API (two-level auth: platform secret + per-project secret key) for project provisioning, config/events write, analytics/users; a hand-written web dashboard served by the baas |
+| **BaaS S6 ✅** | Realtime (L2) — Lobby + Matchmaking over WebSocket: a mutex-guarded in-memory hub, auth-on-upgrade, tenant-scoped rooms/queue; SDK realtime channel (native `ws://` + web browser WebSocket) and a live dashboard console. **Last hand-buildable tier — L4 needs real cloud/3rd-party infra.** |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).

@@ -23,6 +23,8 @@
 
 namespace gbaas {
 
+class Realtime;   // realtime.h — the persistent WebSocket channel (Lobby + Matchmaking)
+
 struct Config {
     std::string base_url;   // e.g. "http://127.0.0.1:8080"
     std::string api_key;    // the project's public key
@@ -186,7 +188,14 @@ public:
     Analytics    analytics() { return Analytics(this); }
     LiveEvents   events() { return LiveEvents(this); }
 
+    // The persistent realtime channel (Lobby + Matchmaking). Unlike the handles
+    // above it is stateful and long-lived, so it is owned by the Client and
+    // returned by reference. Created on first use.
+    Realtime& realtime();
+
 private:
+    friend class Realtime;   // reads base_url / api_key / token to open the socket
+
     // Build headers, send, and route the response into a Result<T> via `extract`.
     template <class T>
     void request(const std::string& method, const std::string& path, const std::string& body,
@@ -199,6 +208,7 @@ private:
     Config                      cfg_;
     std::unique_ptr<ITransport> transport_;
     std::string                 token_;
+    std::unique_ptr<Realtime>   rt_;   // created on first realtime() call
 };
 
 }  // namespace gbaas
