@@ -46,6 +46,7 @@ public:
     void fill_rect(int x, int y, int w, int h, Color c);
     void draw_rect(int x, int y, int w, int h, Color c);   // 1px outline
     void draw_line(int x0, int y0, int x1, int y1, Color c);          // aliased (Bresenham)
+    void draw_line_aa(int x0, int y0, int x1, int y1, Color c);       // anti-aliased (Xiaolin Wu)
 
     void blit(const Sprite& s, int x, int y);  // alpha-blended sprite
 

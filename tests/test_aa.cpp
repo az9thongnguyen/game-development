@@ -64,6 +64,25 @@ int main() {
         CHECK(buf[3 * W + 3] == BG);                  // interior hole
     }
 
+    // --- Wu AA line: horizontal is crisp; a shallow diagonal splits coverage ---
+    {
+        constexpr int W = 12, H = 8;
+        std::vector<std::uint32_t> buf(W * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        Renderer2D r(fb, 1);
+        auto R = [&](int x, int y) { return (buf[y * W + x] >> 16) & 0xFF; };
+
+        r.draw_line_aa(1, 4, 6, 4, FG);              // horizontal
+        CHECK(R(3, 4) > 200);                        // on the line: near-full coverage
+        CHECK(R(3, 3) == 0 && R(3, 5) == 0);         // neighbours untouched
+
+        for (auto& p : buf) p = BG;
+        r.draw_line_aa(0, 0, 8, 3, FG);              // shallow diagonal (grad 0.375)
+        const int a = R(4, 1), b = R(4, 2);
+        CHECK(a > 0 && b > 0);                        // both straddling pixels lit...
+        CHECK(a + b > 200 && a + b < 300);           // ...and coverage sums to ~1 (that's AA)
+    }
+
     if (g_failures == 0) std::printf("aa: all tests passed\n");
     else                 std::printf("aa: %d FAILURE(S)\n", g_failures);
     return g_failures;
