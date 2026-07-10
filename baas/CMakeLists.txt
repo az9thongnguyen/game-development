@@ -90,14 +90,13 @@ foreach(svc config analytics events admin)
   add_test(NAME baas_${svc} COMMAND test_baas_${svc})
 endforeach()
 
-# Realtime (WebSocket): drives the server with Drogon's own WebSocketClient (no
-# new dependency, no keg-only-curl fight) — proves lobby + matchmaking end-to-end.
-add_executable(test_baas_realtime ${CMAKE_SOURCE_DIR}/tests/test_baas_realtime.cc)
-target_link_libraries(test_baas_realtime PRIVATE baas_core CURL::libcurl engine_flags)
-add_test(NAME baas_realtime COMMAND test_baas_realtime)
-
 # End-to-end: the real SDK (libcurl transport) against a live server. Links the
 # SDK + the server + curl (for the healthz probe in the harness).
 add_executable(test_sdk_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_live.cc)
 target_link_libraries(test_sdk_live PRIVATE gbaas_sdk baas_core CURL::libcurl engine_flags)
 add_test(NAME sdk_live COMMAND test_sdk_live)
+
+# End-to-end realtime: the SDK's NATIVE ws:// transport against a live server.
+add_executable(test_sdk_realtime_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_realtime_live.cc)
+target_link_libraries(test_sdk_realtime_live PRIVATE gbaas_sdk baas_core CURL::libcurl engine_flags)
+add_test(NAME sdk_realtime_live COMMAND test_sdk_realtime_live)

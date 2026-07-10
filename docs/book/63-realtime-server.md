@@ -347,28 +347,35 @@ key prefix.
 
 ---
 
-## 9. Testing it: `test_baas_realtime`
+## 9. Testing it: `sdk_realtime_live`
 
-WebSocket clients need an event loop, so the integration test can't reuse the
-libcurl HTTP driver the other tests use. Instead it uses **Drogon's own
-`WebSocketClient`** (no new dependency) on a **separate `trantor::EventLoopThread`**,
-while the server runs on the main thread. A control thread mints guest tokens over
-HTTP, drives the sockets via `loop->runInLoop(...)`, and waits on a thread-safe
-inbox with a predicate + timeout.
+The realtime tier is covered end-to-end by **`sdk_realtime_live`**, which drives the
+server with the **SDK's own native ws:// transport** (ch.64) from a worker thread
+while the app runs on the main thread. That one test exercises the server *and* the
+real client transport together, and it asserts the whole server surface:
 
-It asserts the whole surface:
-
-- **auth rejection** — a bad token yields an `error` frame (connect still succeeds,
-  because the 101 already happened — see §4);
+- **auth rejection** — a bad token on the upgrade is refused (a raw libcurl ws
+  connection receives an `error` frame / is closed — the 101 still happens first,
+  see §4);
 - **lobby** — join → `joined` with the right member count; a second join →
   `peer_joined` to the first; broadcast → reaches the peer, **not** the sender;
-- **tenant isolation** — project B joins `"lobby"` and sees only itself; A's
-  broadcast never crosses into B;
-- **matchmaking** — two waiters both get `matched` with the *same* room; a paired
-  broadcast then flows between them;
-- **cancel** — a lone waiter leaves the queue (`queue_size` drops to 0).
+- **tenant isolation** — a project-B client joins `"lobby"` and sees only itself;
+  project A's broadcast never crosses into B;
+- **matchmaking** — two waiters both get `matched` with the *same* room;
+- **cancel / disconnect** — leaving the queue / dropping the socket cleans up.
 
-All green under CTest and clean under ASan/UBSan.
+> **Why not Drogon's `WebSocketClient`?** An earlier version of this test used
+> Drogon's client on a *separate* `trantor::EventLoopThread`. It passed its
+> assertions every time but **flaked at teardown** (~1 run in 10): tearing down a
+> second event loop while the server's loop is also shutting down raced inside
+> trantor ("mutex lock failed" during the quit-time functor drain). The lesson is a
+> general one — *coordinating the shutdown of two event loops in one process is
+> genuinely hard* — so the test was rebuilt on the SDK's blocking-curl transport,
+> which needs no client event loop and is therefore deterministic (0 failures in
+> 20+ stress runs). Fewer moving parts at teardown beats a clever harness.
+
+All green under CTest and clean under ASan/UBSan. The Realtime *logic* on the client
+side is additionally unit-tested with a fake transport (`sdk_realtime`, ch.64 §6).
 
 ---
 
