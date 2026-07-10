@@ -15,11 +15,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
-#include <functional>
 #include <string>
 
 #include <drogon/drogon.h>
 
+#include "baas/app_setup.h"
 #include "baas/db/db.h"
 
 int main(int argc, char** argv) {
@@ -55,16 +55,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Liveness probe: cheap, dependency-free, used by tests and orchestration.
-    drogon::app().registerHandler(
-        "/healthz",
-        [](const drogon::HttpRequestPtr&,
-           std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
-            Json::Value j;
-            j["status"] = "ok";
-            callback(drogon::HttpResponse::newHttpJsonResponse(j));
-        },
-        {drogon::Get});
+    web::register_routes();
 
     LOG_INFO << "baas listening on " << host << ":" << port;
     drogon::app().addListener(host, port).run();
