@@ -8,6 +8,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/assets.hpp"
@@ -150,6 +153,70 @@ void ColonyScene::poll_realtime() {
     }
 }
 
+// ---- replay -----------------------------------------------------------------
+// A replay is the recorded command stream (one "relframe:cmd" line per action).
+// Playing it back re-issues the same commands at the same relative frames on a
+// fresh sim — a command-stream replay, the model RTS games use.
+void ColonyScene::apply_command(const std::string& cmd) {
+    if (cmd == "spawn")       sim_.spawn_agent(1, sim_.height() / 2, gfx::rgb(90, 180, 235));
+    else if (cmd == "corner") sim_.set_goal(sim_.width() - 2, sim_.height() - 6);
+    else if (cmd == "reset")  { sim_.reset_default(); running_ = true; }
+}
+
+void ColonyScene::issue_command(const std::string& cmd) {
+    apply_command(cmd);
+    if (recording_) rec_buf_ += std::to_string(sim_frame_ - rec_start_) + ":" + cmd + "\n";
+}
+
+void ColonyScene::save_replay() {
+    recording_ = false;
+    if (rec_buf_.empty()) { replay_line_ = "replay: nothing recorded"; return; }
+    if (!online_)         { replay_line_ = "replay: login first";      return; }
+    const std::string name = "colony-" + std::to_string(sim_frame_);
+    client_.replays().save(name, rec_buf_, [this](gbaas::Result<gbaas::ReplayMeta> r) {
+        replay_line_ = r ? ("replay: saved #" + std::to_string(r->id)) : "replay: save failed";
+    });
+    rec_buf_.clear();
+}
+
+void ColonyScene::play_last_replay() {
+    if (!online_) { replay_line_ = "replay: login first"; return; }
+    replay_line_ = "replay: loading...";
+    client_.replays().list([this](gbaas::Result<std::vector<gbaas::ReplayMeta>> r) {
+        if (!r || r->empty()) { replay_line_ = "replay: none saved"; return; }
+        const long long id = (*r)[0].id;   // newest first
+        client_.replays().get(id, [this](gbaas::Result<gbaas::Replay> g) {
+            if (!g) { replay_line_ = "replay: load failed"; return; }
+            play_cmds_.clear();
+            const std::string& d = g->data;
+            for (std::size_t pos = 0; pos < d.size();) {
+                std::size_t nl = d.find('\n', pos);
+                if (nl == std::string::npos) nl = d.size();
+                const std::string line = d.substr(pos, nl - pos);
+                pos = nl + 1;
+                const std::size_t colon = line.find(':');
+                if (colon == std::string::npos) continue;
+                const long f = std::strtol(line.substr(0, colon).c_str(), nullptr, 10);
+                play_cmds_.emplace_back(f, line.substr(colon + 1));
+            }
+            sim_.reset_default();   // play on a fresh sim
+            running_ = true;
+            playing_ = true; play_idx_ = 0; play_frame_ = 0;
+            replay_line_ = "replay: playing (" + std::to_string(play_cmds_.size()) + " cmds)";
+        });
+    });
+}
+
+void ColonyScene::update_replay() {
+    if (!playing_) return;
+    ++play_frame_;
+    while (play_idx_ < play_cmds_.size() && play_cmds_[play_idx_].first <= play_frame_) {
+        apply_command(play_cmds_[play_idx_].second);
+        ++play_idx_;
+    }
+    if (play_idx_ >= play_cmds_.size()) { playing_ = false; replay_line_ = "replay: done"; }
+}
+
 void ColonyScene::submit_score() {
     client_.analytics().track("score.submitted");   // fire-and-forget analytics event
     // The colony's "score" is how many colonists it is managing.
@@ -219,6 +286,8 @@ iso::Vec2i ColonyScene::hovered_cell(const platform::InputState& in) const {
 void ColonyScene::update(double dt, const platform::InputState& /*in*/) {
     client_.update();   // BaaS: pump async responses → fire callbacks (even while paused)
     poll_realtime();    // drain realtime (Lobby) events → presence state
+    ++sim_frame_;
+    update_replay();    // if playing a replay, re-issue recorded commands on schedule
     if (!running_) return;
     // Apply the UI speed to every agent, then advance (parallel inside the Sim).
     sim_.registry().view<Agent>([&](ecs::Entity, Agent& a) { a.speed = speed_; });
@@ -283,15 +352,15 @@ void ColonyScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
 
     ui_.begin(&g, in);
-    ui_.panel(ui::Rect{12, 12, 210, 512}, "COLONY");
+    ui_.panel(ui::Rect{12, 12, 210, 588}, "COLONY");
     char line[64];
     std::snprintf(line, sizeof(line), "agents: %d   fps: %d", sim_.agent_count(), static_cast<int>(fps_ + 0.5));
     ui_.label(line);
-    if (ui_.button("Spawn agent")) sim_.spawn_agent(1, sim_.height() / 2, gfx::rgb(90, 180, 235));
-    if (ui_.button("Send to corner")) sim_.set_goal(sim_.width() - 2, sim_.height() - 6);
+    if (ui_.button("Spawn agent")) issue_command("spawn");
+    if (ui_.button("Send to corner")) issue_command("corner");
     ui_.checkbox("running", running_);
     ui_.slider("speed", speed_, 0.5f, 8.0f);
-    if (ui_.button("Reset")) { sim_.reset_default(); running_ = true; }
+    if (ui_.button("Reset")) issue_command("reset");
 
     // ---- BaaS: online controls ----
     ui_.label(status_.c_str());
@@ -323,6 +392,20 @@ void ColonyScene::render(const engine::Context& ctx) {
         ui_.label(rt_line_.c_str());
         if (rt_on_ && ui_.button("Ping room")) client_.realtime().send("ping");
         if (!last_msg_.empty()) ui_.label(last_msg_.c_str());
+
+        // ---- replay: record the command stream → cloud → play it back ----
+        if (ui_.button(recording_ ? "Stop & Save replay" : "Record replay")) {
+            if (recording_) {
+                save_replay();
+            } else {
+                recording_   = true;
+                rec_start_   = sim_frame_;
+                rec_buf_.clear();
+                replay_line_ = "replay: recording";
+            }
+        }
+        if (ui_.button("Play last replay")) play_last_replay();
+        ui_.label(replay_line_.c_str());
     } else {
         if (ui_.button("Login (guest)")) login();
     }

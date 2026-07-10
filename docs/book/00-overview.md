@@ -150,6 +150,7 @@ checks).
 | 62 | **The Dashboard & Admin API** (operator half: two-level admin auth, project provisioning, a hand-written SPA) |
 | 63 | **Realtime server** (Lobby + Matchmaking over WebSocket: the hub, auth-on-upgrade, tenant isolation, disconnect cleanup) |
 | 64 | **Realtime SDK & demo** (the `IWsTransport` seam — native `ws://` via libcurl, web via the browser WebSocket — and the live dashboard console) |
+| 65 | **Replay System** (command-stream record/store/playback: the `replays` store, `client.replays()`, colony record→cloud→playback; determinism honestly discussed) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -180,6 +181,7 @@ observe → pitfalls → exercises.**
 | **BaaS S5 ✅** | Dashboard (L3) — admin API (two-level auth: platform secret + per-project secret key) for project provisioning, config/events write, analytics/users; a hand-written web dashboard served by the baas |
 | **BaaS S6 ✅** | Realtime (L2) — Lobby + Matchmaking over WebSocket: a mutex-guarded in-memory hub, auth-on-upgrade, tenant-scoped rooms/queue; SDK realtime channel (native `ws://` + web browser WebSocket) and a live dashboard console. **Last hand-buildable tier — L4 needs real cloud/3rd-party infra.** |
 | **BaaS S7 ✅** | Realtime end-to-end in the game — native `ws://` transport proven against a live server (`sdk_realtime_live`: lobby, broadcast, matchmaking, tenant isolation, auth rejection); colony gains a **presence** panel via `client.realtime()` (native + web, browser-verified). Fixes found by the live test: project-wide ws-capable libcurl (no dual-curl), async-connect op buffering, and same-origin ws URL resolution on web. |
+| **BaaS S8 ✅** | Replay System — per-user, immutable, named recordings (`/v1/replays` create/list/get/delete, project+user scoped, 512 KiB cap); `client.replays()` in the SDK (rides the existing HTTP transport — zero new web work); colony records its command stream → cloud → **deterministic-ish command-stream playback**. The one hand-buildable Phase-2 item; the rest (voice, hosting, cross-platform login, AI) needs real cloud/3rd-party infra. |
 
 See `requirements.md` for the full specification, and `README.md` for the git
 workflow (a feature branch per milestone, merged to `main` at each review).
