@@ -35,6 +35,7 @@ material that accompanies the code.
 | **BaaS S1** | Game Backend-as-a-Service, Slice #1 — auth (argon2id + JWT) + leaderboard on Drogon, multi-tenant projects, unified non-blocking C++ SDK (native libcurl / web emscripten_fetch); colony online native + web | ✅ done |
 | **BaaS S2** | Cloud Save — versioned per-user/per-slot game state with optimistic concurrency (If-Match); `client.saves()` in the SDK; colony Cloud Save/Load native + web | ✅ done |
 | **BaaS S3** | Inventory — per-user item quantities, grant/consume with server-enforced non-negative spend; `client.inventory()`; colony wood economy native + web | ✅ done |
+| **BaaS S4** | Remote Config + Analytics + Live Events — client-facing read/ingest L1 services (`client.config()/analytics()/events()`); admin write/query deferred to the L3 dashboard | ✅ done |
 
 ## Prerequisites (macOS)
 

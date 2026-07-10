@@ -61,6 +61,8 @@ private:
     long long     my_score_   = 0;
     int           my_rank_    = 0;
     long long     wood_       = 0;
+    std::string   motd_;         // remote config value
+    std::string   event_name_;  // first active live event
     gbaas::Board  board_;
 
     float      ox_ = 480.0f, oy_ = 60.0f;   // iso camera offset
