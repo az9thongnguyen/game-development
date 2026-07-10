@@ -6,6 +6,8 @@
 #include <string>
 #include <utility>
 
+#include "gbaas/realtime.h"   // complete type for the unique_ptr<Realtime> member/dtor
+
 namespace gbaas {
 
 // Provided by the platform transport TU (transport_curl.cc / transport_emscripten.cc),
@@ -17,7 +19,10 @@ Client::Client(Config cfg, std::unique_ptr<ITransport> transport)
     : cfg_(std::move(cfg)), transport_(std::move(transport)) {}
 Client::~Client() = default;
 
-void Client::update() { transport_->poll(); }
+void Client::update() {
+    transport_->poll();
+    if (rt_) rt_->update();   // pump the realtime channel too, if one was opened
+}
 
 Session Client::parse_session_and_store(const json::Value& j) {
     token_ = j["access_token"].as_string();

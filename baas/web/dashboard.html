@@ -69,6 +69,7 @@
       <button data-tab="analytics" onclick="tab('analytics')">Analytics</button>
       <button data-tab="users" onclick="tab('users')">Users</button>
       <button data-tab="board" onclick="tab('board')">Leaderboard</button>
+      <button data-tab="realtime" onclick="tab('realtime')">Realtime</button>
     </div>
     <div id="panel" style="margin-top:12px"></div>
   </section>
@@ -153,8 +154,49 @@ async function render(){
       try { entries = (await api("GET","/v1/leaderboards/"+encodeURIComponent(key)+"/top?limit=20",null,apiKeyHdr())).entries; } catch(e){}
       p.innerHTML = `<div><input id="bk" type="text" value="${esc(key)}"> <button onclick="render()">Load</button></div>`
         + rows(["rank","display_name","value","user_id"], entries);
+    } else if (current==="realtime") {
+      // A live WebSocket console for /v1/ws (Lobby + Matchmaking). Uses the
+      // browser's native WebSocket — connects as a guest of the console's project.
+      p.innerHTML = `
+        <div><button onclick="rtConnect()">Connect (guest)</button>
+             <button class="sec" onclick="rtDisconnect()">Disconnect</button>
+             <span id="rtstate" class="muted"> ${rtSock ? "● connected" : "○ not connected"}</span></div>
+        <div style="margin-top:8px"><input id="rtroom" type="text" value="lobby-1" placeholder="room">
+             <button onclick="rtSend({op:'join',room:$('rtroom').value})">Join</button>
+             <button class="sec" onclick="rtSend({op:'leave'})">Leave</button></div>
+        <div style="margin-top:6px"><input id="rtmsg" type="text" placeholder="message to the room">
+             <button onclick="rtSend({op:'msg',data:$('rtmsg').value})">Send</button></div>
+        <div style="margin-top:6px"><button onclick="rtSend({op:'queue'})">Queue for match</button>
+             <button class="sec" onclick="rtSend({op:'cancel'})">Cancel</button>
+             <span class="muted"> (open two tabs and queue in both → matched)</span></div>
+        <pre id="rtlog" style="margin-top:10px;max-height:220px;overflow:auto;background:#0e1016;
+             padding:8px;border-radius:6px;font-size:12px;white-space:pre-wrap"></pre>`;
     }
   } catch(e){ p.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+// ---- realtime (WebSocket) console ----
+let rtSock = null;
+function rtLog(line){ const el=$("rtlog"); if(el){ el.textContent += line+"\n"; el.scrollTop = el.scrollHeight; } }
+function rtState(s){ const el=$("rtstate"); if(el) el.textContent = " "+s; }
+async function rtConnect(){
+  if (rtSock){ toast("already connected"); return; }
+  try {
+    const g = await api("POST","/v1/auth/guest",{},apiKeyHdr());   // mint a guest token
+    const httpBase = base() || location.origin;
+    const url = httpBase.replace(/^http/,"ws") + "/v1/ws?api_key=" +
+                encodeURIComponent($("pubKey").value) + "&token=" + encodeURIComponent(g.access_token);
+    rtSock = new WebSocket(url);
+    rtSock.onopen    = ()=>{ rtLog("● connected"); rtState("● connected"); };
+    rtSock.onmessage = (e)=> rtLog("← "+e.data);
+    rtSock.onclose   = ()=>{ rtLog("○ closed"); rtState("○ not connected"); rtSock=null; };
+    rtSock.onerror   = ()=> rtLog("! socket error");
+  } catch(e){ toast(e.message); }
+}
+function rtDisconnect(){ if(rtSock) rtSock.close(); }
+function rtSend(obj){
+  if (!rtSock || rtSock.readyState!==1){ toast("not connected"); return; }
+  const s = JSON.stringify(obj); rtSock.send(s); rtLog("→ "+s);
 }
 
 function tableWithDelete(cols, data, fn){

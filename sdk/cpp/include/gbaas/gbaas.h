@@ -8,5 +8,7 @@
 
 #include "gbaas/client.h"
 #include "gbaas/json.hpp"
+#include "gbaas/realtime.h"
 #include "gbaas/result.h"
 #include "gbaas/transport.h"
+#include "gbaas/ws_transport.h"
