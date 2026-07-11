@@ -117,6 +117,16 @@ CREATE TABLE IF NOT EXISTS assets (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(project_id, name)
 );
+CREATE TABLE IF NOT EXISTS testruns (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  scenario TEXT NOT NULL,
+  params TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  result TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 )SQL";
 
 bool is_blank(const std::string& s) {
