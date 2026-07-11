@@ -22,4 +22,22 @@ uint64_t content_hash(const std::vector<uint8_t>& bytes);
 // Lowercase 16-char hex of a content hash, for manifests, logs, and inspect output.
 std::string hash_hex(uint64_t h);
 
+// One resolved resource in a package: its type, asset-relative path, and content hash.
+struct PackagedResource {
+    std::string type;
+    std::string path;
+    uint64_t    hash = 0;
+};
+
+// A combined package fingerprint: the release-id seed. Computed over the resources
+// sorted by path, so reordering the declaration list never changes the package hash;
+// changing any resource's path or content does. Empty package == the offset basis.
+uint64_t package_hash(std::vector<PackagedResource> resources);
+
+// The deterministic package manifest text ("package1" magic): project identity +
+// resources sorted by path (each with its content hash) + the combined package hash.
+// This is the immutable artifact a preview/release references and compares by hash.
+std::string build_package(const std::string& name, int schema, const std::string& entry,
+                          std::vector<PackagedResource> resources);
+
 } // namespace engine

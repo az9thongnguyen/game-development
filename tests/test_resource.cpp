@@ -45,6 +45,27 @@ int main() {
     CHECK(basis.size() == 16);
     CHECK(basis == "cbf29ce484222325");   // 0xcbf29ce484222325 == the offset basis
 
+    // --- package manifest ---
+    // package_hash is independent of declaration order (sorted by path)...
+    std::vector<PackagedResource> a = {{"map", "b.map", 111}, {"texture", "a.tex", 222}};
+    std::vector<PackagedResource> b = {{"texture", "a.tex", 222}, {"map", "b.map", 111}};
+    CHECK(package_hash(a) == package_hash(b));
+    // ...but changes when a content hash changes...
+    std::vector<PackagedResource> c = {{"map", "b.map", 111}, {"texture", "a.tex", 999}};
+    CHECK(package_hash(a) != package_hash(c));
+    // ...and when a path changes.
+    std::vector<PackagedResource> d = {{"map", "z.map", 111}, {"texture", "a.tex", 222}};
+    CHECK(package_hash(a) != package_hash(d));
+
+    // build_package: canonical text, resources sorted by path, ending in packagehash.
+    const std::string pkg = build_package("Demo", 1, "fps", a);
+    CHECK(pkg.rfind("package1\n", 0) == 0);                      // magic first
+    CHECK(pkg.find("resource texture a.tex 00000000000000de\n") != std::string::npos);  // 222 == 0xde
+    CHECK(pkg.find("resource map b.map 000000000000006f\n") != std::string::npos);      // 111 == 0x6f
+    CHECK(pkg.find("a.tex") < pkg.find("b.map"));                // sorted by path
+    CHECK(pkg.find("packagehash " + hash_hex(package_hash(a))) != std::string::npos);
+    CHECK(build_package("Demo", 1, "fps", a) == build_package("Demo", 1, "fps", b));  // order-independent
+
     if (g_failures == 0) std::printf("resource: all tests passed\n");
     else                 std::printf("resource: %d FAILURE(S)\n", g_failures);
     return g_failures;
