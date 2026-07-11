@@ -44,9 +44,23 @@ static void test_fail_closed() {
 static void test_forward_compat() {
     // Unknown additive keys (future fields) must not break known-field parsing.
     const std::string text =
-        "gameproject1\nname X\nschema 1\nentry fps\nassets content/\nbaas http://x\n";
+        "gameproject1\nname X\nschema 1\nentry fps\nfuturekey content/\nbaas http://x\n";
     auto p = parse_project(text);
     CHECK(p && p->name == "X" && p->entry == "fps" && p->schema == 1);
+    CHECK(p->assets.empty());   // no `asset` lines declared
+}
+
+static void test_asset_declarations() {
+    // Repeatable `asset <type> <path>` lines populate the dependency list and
+    // round-trip in canonical order (after name/schema/entry).
+    const std::string text =
+        "gameproject1\nname X\nschema 1\nentry fps\n"
+        "asset map maps/level_00.map\nasset texture textures/wall_1.hrt\n";
+    auto p = parse_project(text);
+    CHECK(p && p->assets.size() == 2);
+    CHECK(p->assets[0].type == "map" && p->assets[0].path == "maps/level_00.map");
+    CHECK(p->assets[1].type == "texture" && p->assets[1].path == "textures/wall_1.hrt");
+    CHECK(to_text(*p) == text);   // stable round-trip including assets
 }
 
 static void test_validate() {
@@ -66,6 +80,7 @@ int main() {
     test_parse_and_roundtrip();
     test_fail_closed();
     test_forward_compat();
+    test_asset_declarations();
     test_validate();
 
     if (g_failures == 0) std::printf("project: all tests passed\n");
