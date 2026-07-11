@@ -25,6 +25,7 @@
 #include "games/studio/studio_scene.hpp"
 #include "games/sandbox/sandbox_scene.hpp"
 #include "games/maplab/maplab_scene.hpp"
+#include "games/fx/fx_scene.hpp"
 
 namespace {
 
@@ -193,6 +194,18 @@ int main(int argc, char** argv) {
         cfg.highdpi   = true;
         cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<maplab::MaplabScene>());
+    }
+
+    if (mode == "--fx") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — particle fx";
+        cfg.fb_width  = 960;
+        cfg.fb_height = 600;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        cfg.supersample = kAA;
+        return run_window(cfg, std::make_unique<fx::FxScene>());
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
