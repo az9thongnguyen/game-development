@@ -103,6 +103,14 @@ struct ConfigEntry {
     std::string value;
 };
 
+struct TestRun {
+    long long   id = 0;
+    std::string scenario;
+    std::string params;
+    std::string status;   // pending|running|passed|failed|error
+    std::string result;
+};
+
 struct LiveEvent {
     std::string key;
     std::string name;
@@ -237,10 +245,28 @@ public:
         Client* c_;
     };
 
+    // Managed headless test-runs. submit/get/list are for the operator; claim +
+    // complete are for the worker (demo --runner). Project-scoped, api key only.
+    class TestRuns {
+    public:
+        void submit(const std::string& scenario, const std::string& params,
+                    std::function<void(Result<TestRun>)> cb);
+        void get(long long id, std::function<void(Result<TestRun>)> cb);
+        void list(std::function<void(Result<std::vector<TestRun>>)> cb);
+        void claim(long long id, std::function<void(Result<TestRun>)> cb);
+        void complete(long long id, const std::string& status, const std::string& result,
+                      std::function<void(Result<bool>)> cb);
+    private:
+        friend class Client;
+        explicit TestRuns(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
     Auth        auth() { return Auth(this); }
     Leaderboard leaderboard(std::string key) { return Leaderboard(this, std::move(key)); }
     Saves       saves() { return Saves(this); }
     Assets      assets() { return Assets(this); }
+    TestRuns    testruns() { return TestRuns(this); }
     Inventory   inventory() { return Inventory(this); }
     RemoteConfig config() { return RemoteConfig(this); }
     Analytics    analytics() { return Analytics(this); }

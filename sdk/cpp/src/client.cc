@@ -210,6 +210,50 @@ void Client::Assets::remove(const std::string& name, std::function<void(Result<b
                       std::move(cb));
 }
 
+// -------- TestRuns (managed headless runs; api key only) --------
+namespace {
+TestRun testrun_from(const json::Value& j) {
+    return TestRun{j["id"].as_int(), j["scenario"].as_string(), j["params"].as_string(),
+                   j["status"].as_string(), j["result"].as_string()};
+}
+}  // namespace
+
+void Client::TestRuns::submit(const std::string& scenario, const std::string& params,
+                              std::function<void(Result<TestRun>)> cb) {
+    const std::string body = "{\"scenario\":\"" + json::escape(scenario) +
+                             "\",\"params\":\"" + json::escape(params) + "\"}";
+    c_->request<TestRun>("POST", "/v1/testruns", body, testrun_from, std::move(cb));
+}
+
+void Client::TestRuns::get(long long id, std::function<void(Result<TestRun>)> cb) {
+    c_->request<TestRun>("GET", "/v1/testruns/" + std::to_string(id), "", testrun_from, std::move(cb));
+}
+
+void Client::TestRuns::list(std::function<void(Result<std::vector<TestRun>>)> cb) {
+    c_->request<std::vector<TestRun>>(
+        "GET", "/v1/testruns", "",
+        [](const json::Value& j) {
+            std::vector<TestRun> out;
+            const auto&          arr = j["testruns"];
+            for (std::size_t k = 0; k < arr.size(); ++k) out.push_back(testrun_from(arr[k]));
+            return out;
+        },
+        std::move(cb));
+}
+
+void Client::TestRuns::claim(long long id, std::function<void(Result<TestRun>)> cb) {
+    c_->request<TestRun>("POST", "/v1/testruns/" + std::to_string(id) + "/claim", "",
+                         testrun_from, std::move(cb));
+}
+
+void Client::TestRuns::complete(long long id, const std::string& status, const std::string& result,
+                                std::function<void(Result<bool>)> cb) {
+    const std::string body = "{\"status\":\"" + json::escape(status) +
+                             "\",\"result\":\"" + json::escape(result) + "\"}";
+    c_->request<bool>("PATCH", "/v1/testruns/" + std::to_string(id), body,
+                      [](const json::Value&) { return true; }, std::move(cb));
+}
+
 // -------- Replays --------
 void Client::Replays::save(const std::string& name, const std::string& data,
                            std::function<void(Result<ReplayMeta>)> cb) {
