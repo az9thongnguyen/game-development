@@ -26,10 +26,14 @@ FxScene::FxScene() {
     c.rate = 300; c.speed = 220; c.speed_var = 60; c.spread = 0.35f;
     c.life = 1.6f; c.gravity = 300; c.size0 = 5; c.size1 = 0;
     sys_.set_config(c);
+    sweep_ = anim::Tween{0.0f, 1.0f, 2.4f, anim::Ease::SineInOut, /*pingpong=*/true};
 }
 
 void FxScene::update(double dt, const platform::InputState&) {
-    sys_.update(float(dt), float(w_) * 0.5f, float(h_) - 30.0f, fountain_);
+    sweep_.update(float(dt));
+    const float ex = sweep_on_ ? 80.0f + sweep_.value() * float(w_ - 160)
+                               : float(w_) * 0.5f;
+    sys_.update(float(dt), ex, float(h_) - 30.0f, fountain_);
 }
 
 void FxScene::render(const engine::Context& ctx) {
@@ -48,8 +52,9 @@ void FxScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
     ui_.begin(&g, in);
 
-    ui_.panel(ui::Rect{12, 12, 190, 218}, "PARTICLE FX");
+    ui_.panel(ui::Rect{12, 12, 190, 242}, "PARTICLE FX");
     ui_.checkbox("fountain", fountain_);
+    ui_.checkbox("sweep", sweep_on_);
     ui_.slider("gravity", sys_.config().gravity, -200.0f, 700.0f);
     ui_.slider("rate",    sys_.config().rate,       0.0f, 700.0f);
     ui_.slider("speed",   sys_.config().speed,      0.0f, 400.0f);
