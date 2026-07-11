@@ -169,7 +169,10 @@ observe → pitfalls → exercises.**
 > **colony** and **editor** are the showcases (verified native and in-browser).
 > Native 2D scenes render at `supersample=2`; the web build stays at `1×` (per-
 > primitive AA + AA fonts still apply) so WASM keeps a smooth frame rate. The web
-> operator dashboard (ch.72) speaks the same design language via CSS tokens.
+> operator dashboard (ch.72) speaks the same design language via CSS tokens. The
+> **3D scenes** (`--3d`/`--viz3d`/`--fps`) were polished too: AA HUD text, a
+> vertical sky→ground gradient background (`fill_v_gradient`) for depth, SSAA on the
+> rasterizer scenes, and horizon gradients + existing distance-fog on the raycaster.
 
 ## 6. Milestone roadmap
 

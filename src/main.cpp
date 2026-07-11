@@ -104,6 +104,7 @@ int main(int argc, char** argv) {
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<viz3d::Scene3D>());
     }
 
@@ -115,6 +116,7 @@ int main(int argc, char** argv) {
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<viz3d::EditorScene>());
     }
 
