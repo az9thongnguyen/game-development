@@ -57,6 +57,14 @@ RaycastScene::RaycastScene()
       dirX_(1.0), dirY_(0.0),
       planeX_(0.0), planeY_(0.66)
 {
+    // Honour a Lab-authored spawn (else keep the default 3.5,8.5 facing +x above).
+    if (map_.spawn_cx >= 0 && map_.spawn_cy >= 0) {
+        posX_ = map_.spawn_cx + 0.5;
+        posY_ = map_.spawn_cy + 0.5;
+        dirX_ = std::cos(map_.spawn_dir); dirY_ = std::sin(map_.spawn_dir);
+        planeX_ = -dirY_ * 0.66; planeY_ = dirX_ * 0.66;   // camera plane ⟂ dir, FOV 0.66
+    }
+
     // Generate SFX once (signed 16-bit mono, assume 44.1 kHz device).
     const int rate = 44100;
     const int gn = rate * 18 / 100;  // gunshot: ~0.18s noise burst, fast decay
