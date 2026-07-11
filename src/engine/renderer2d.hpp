@@ -62,7 +62,9 @@ public:
     // alpha is the total darkness, divided across layers.
     void drop_shadow(int x, int y, int w, int h, int radius, int dx, int dy, int spread, Color c);
 
-    void blit(const Sprite& s, int x, int y);  // alpha-blended sprite
+    void blit(const Sprite& s, int x, int y);  // alpha-blended sprite (native size)
+    // Nearest-neighbour resample of `s` into the logical dw×dh rect at (dx,dy).
+    void blit_scaled(const Sprite& s, int dx, int dy, int dw, int dh);
 
     // Text. With a font set (set_font), draw_text renders anti-aliased glyphs;
     // otherwise it falls back to the embedded 8x8 bitmap font at scale 1. `y` is

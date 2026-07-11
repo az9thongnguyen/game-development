@@ -144,6 +144,24 @@ int main() {
         CHECK(Bc(H / 2) > Bc(0) && Bc(H / 2) < Bc(H - 1));        // increases downward
     }
 
+    // --- blit_scaled: upscale fills blocks, transparent texel skipped ---
+    {
+        constexpr int W = 8, H = 8;
+        std::vector<std::uint32_t> buf(W * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        Renderer2D r(fb, 1);
+        // 2x2 source: TL red, TR transparent, BL green, BR blue.
+        const std::uint32_t src[4] = {0xFFFF0000, 0x00000000, 0xFF00FF00, 0xFF0000FF};
+        gfx::Sprite s{src, 2, 2};
+        r.blit_scaled(s, 0, 0, 4, 4);                    // 2x2 -> 4x4 (each texel a 2x2 block)
+        CHECK(buf[0] == 0xFFFF0000u && buf[W + 1] == 0xFFFF0000u);   // TL red 2x2 block
+        CHECK(buf[2] == BG && buf[3] == BG);                          // TR texel transparent -> bg
+        CHECK(buf[2 * W + 0] == 0xFF00FF00u);                         // BL green (row y=2)
+        CHECK(buf[2 * W + 2] == 0xFF0000FFu);                         // BR blue
+        CHECK(buf[4] == BG);                                          // nothing past the dst rect
+        r.blit_scaled(s, 0, 0, 0, 4);                    // non-positive dw -> no-op (no crash)
+    }
+
     if (g_failures == 0) std::printf("aa: all tests passed\n");
     else                 std::printf("aa: %d FAILURE(S)\n", g_failures);
     return g_failures;
