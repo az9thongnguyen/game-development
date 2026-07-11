@@ -44,6 +44,25 @@ std::optional<Image> decode_hrt(const std::vector<uint8_t>& b) {
     return img;
 }
 
+std::vector<uint8_t> encode_hrt(const Image& img) {
+    std::vector<uint8_t> out;
+    if (img.w <= 0 || img.h <= 0) return out;
+    out.reserve(12 + static_cast<size_t>(img.w) * img.h * 4);
+    const char magic[4] = {'H', 'R', 'T', '1'};
+    out.insert(out.end(), magic, magic + 4);
+    auto be32 = [&](uint32_t v) {
+        out.push_back(uint8_t(v >> 24)); out.push_back(uint8_t(v >> 16));
+        out.push_back(uint8_t(v >> 8));  out.push_back(uint8_t(v));
+    };
+    be32(static_cast<uint32_t>(img.w));
+    be32(static_cast<uint32_t>(img.h));
+    for (Color c : img.pixels) {
+        out.push_back(r_of(c)); out.push_back(g_of(c));
+        out.push_back(b_of(c)); out.push_back(a_of(c));
+    }
+    return out;
+}
+
 std::optional<Image> load_image(const std::string& path) {
     auto bytes = assets::load_file(path);   // I/O via the seam (web-portable)
     if (!bytes) return std::nullopt;

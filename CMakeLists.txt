@@ -102,9 +102,10 @@ add_executable(demo
   src/games/iso/iso_scene.cpp
   src/games/editor/editor_scene.cpp
   src/games/colony/colony_scene.cpp
+  src/games/studio/studio_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
 # ---- Tests (CTest) -----------------------------------------------------------
@@ -266,6 +267,26 @@ add_executable(test_viz3d tests/test_viz3d.cpp)
 target_include_directories(test_viz3d PRIVATE src)
 target_link_libraries(test_viz3d PRIVATE viz3d_core render3d_core engine_flags)
 add_test(NAME viz3d COMMAND test_viz3d)
+
+# ---- Mini Studio (Track B): procedural content authoring — PURE core (no SDL) ----
+# noise -> texture_gen -> recipe. Testable headless; the --studio scene links it.
+add_library(studio_core STATIC
+  src/games/studio/noise.cpp
+  src/games/studio/texture_gen.cpp
+  src/games/studio/recipe.cpp
+)
+target_include_directories(studio_core PUBLIC src)
+target_link_libraries(studio_core PRIVATE engine_flags)
+
+# test_studio compiles image.cpp + assets.cpp directly so the encode/decode + recipe
+# round-trips stay dependency-free (round-trips use in-memory buffers, no disk).
+add_executable(test_studio tests/test_studio.cpp
+  src/engine/image.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_studio PRIVATE src)
+target_link_libraries(test_studio PRIVATE studio_core engine_flags)
+add_test(NAME studio COMMAND test_studio)
 
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
