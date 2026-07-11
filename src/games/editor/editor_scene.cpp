@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "engine/color.hpp"
+#include "engine/ui/theme.hpp"
 
 namespace editor {
 
@@ -55,6 +56,7 @@ void EditorScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     w_ = g.width();
     h_ = g.height();
+    g.set_font(ctx.font, ui::theme::sz_body);   // AA UI text (8x8 fallback if null)
     if (ctx.dt > 0.0) fps_ = fps_ * 0.92 + (1.0 / ctx.dt) * 0.08;
 
     g.clear(gfx::rgb(28, 30, 40));
@@ -83,7 +85,7 @@ void EditorScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
 
     ui_.begin(&g, in);
-    ui_.panel(ui::Rect{12, 12, 210, 220}, "EDITOR");
+    ui_.panel(ui::Rect{12, 12, 220, 252}, "EDITOR");
     char count[48];
     std::snprintf(count, sizeof(count), "bodies: %d   fps: %d",
                   world_.count() - static_count_, static_cast<int>(fps_ + 0.5));
@@ -101,9 +103,10 @@ void EditorScene::render(const engine::Context& ctx) {
     if (ctx.input.pressed(MouseButton::Left) && !ui_.hovering_ui())
         spawn_at(static_cast<float>(in.mx), static_cast<float>(in.my));
 
-    g.draw_text(12, h_ - 16,
-                "click the world to drop a body  -  spawn:current kind  -  ESC:quit",
-                gfx::rgb(150, 160, 180), 1);
+    g.set_font_size(ui::theme::sz_caption);
+    g.draw_text(12, h_ - 22,
+                "click the world to drop a body   -   spawn: current kind   -   ESC: quit",
+                ui::theme::text_muted);
 }
 
 } // namespace editor
