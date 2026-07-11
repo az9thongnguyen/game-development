@@ -341,6 +341,25 @@ target_include_directories(test_particles PRIVATE src)
 target_link_libraries(test_particles PRIVATE engine_flags)
 add_test(NAME particles COMMAND test_particles)
 
+# ---- Test-runner worker core (Track C): runs a sandbox scenario headlessly ----
+# Pure (no SDK/no Drogon): reuses the sandbox sim to execute + check a scenario.
+add_library(runner_core STATIC
+  src/games/runner/runner.cpp
+)
+target_include_directories(runner_core PUBLIC src)
+target_link_libraries(runner_core PUBLIC sandbox_core PRIVATE engine_flags)
+
+# test_runner compiles the sandbox sources directly (dependency-free, like test_sandbox).
+add_executable(test_runner tests/test_runner.cpp
+  src/games/runner/runner.cpp
+  src/games/sandbox/world.cpp
+  src/games/sandbox/serialize.cpp
+  src/engine/ecs/registry.cpp
+)
+target_include_directories(test_runner PRIVATE src)
+target_link_libraries(test_runner PRIVATE engine_flags)
+add_test(NAME runner COMMAND test_runner)
+
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
 add_library(chess_core STATIC
