@@ -90,10 +90,28 @@ static void test_slider() {
     CHECK(!ch3 && approx(zv, 3.0f));
 }
 
+static void test_button_states() {
+    ui::Context ui;
+    const ui::Rect r{0, 0, 100, 30};
+
+    // Disabled button: press+release inside yields NO click and captures no hover.
+    ui.begin(nullptr, press(10, 10));   ui.button(r, "D", /*primary*/false, /*enabled*/false); ui.end();
+    ui.begin(nullptr, release(10, 10)); bool c = ui.button(r, "D", false, false); ui.end();
+    CHECK(!c);
+    ui.begin(nullptr, idle(10, 10)); ui.button(r, "D", false, false); ui.end();
+    CHECK(!ui.hovering_ui());
+
+    // Primary is a visual variant only — still fully clickable.
+    ui.begin(nullptr, press(10, 10));   ui.button(r, "P", /*primary*/true); ui.end();
+    ui.begin(nullptr, release(10, 10)); bool c2 = ui.button(r, "P", true); ui.end();
+    CHECK(c2);
+}
+
 int main() {
     test_button_click();
     test_checkbox();
     test_slider();
+    test_button_states();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;

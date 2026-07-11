@@ -29,14 +29,16 @@ public:
     void end();
 
     // ---- explicit-rect widgets (the testable core) ----
-    bool button(Rect r, const char* label);
+    // `primary` uses the accent fill (one hot-action per screen); `enabled=false`
+    // draws a muted, non-interactive control (always returns false).
+    bool button(Rect r, const char* label, bool primary = false, bool enabled = true);
     bool checkbox(Rect r, const char* label, bool& value);     // true if toggled
     bool slider(Rect r, const char* label, float& value, float lo, float hi);  // true if changed
     void label(int x, int y, const char* text, gfx::Color color = gfx::colors::white);
 
     // ---- layout helpers (advance a vertical cursor inside a panel) ----
     void panel(Rect bg, const char* title = nullptr);
-    bool button(const char* label);
+    bool button(const char* label, bool primary = false, bool enabled = true);
     bool checkbox(const char* label, bool& value);
     bool slider(const char* label, float& value, float lo, float hi);
     void label(const char* text);
