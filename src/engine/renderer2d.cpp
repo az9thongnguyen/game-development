@@ -268,6 +268,21 @@ void Renderer2D::blit(const Sprite& s, int x, int y) {
     }
 }
 
+void Renderer2D::blit_scaled(const Sprite& s, int dx, int dy, int dw, int dh) {
+    if (!s.pixels || dw <= 0 || dh <= 0 || s.w <= 0 || s.h <= 0) return;
+    for (int oy = 0; oy < dh; ++oy) {
+        const int sy = oy * s.h / dh;                  // nearest source row
+        for (int ox = 0; ox < dw; ++ox) {
+            const int sx = ox * s.w / dw;              // nearest source col
+            const Color src = s.pixels[sy * s.w + sx];
+            if (a_of(src) == 0) continue;              // skip transparent
+            const int bx = (dx + ox) * ss_, by = (dy + oy) * ss_;
+            for (int py = 0; py < ss_; ++py)           // nearest ss×ss upscale
+                for (int px = 0; px < ss_; ++px) blend_cov(bx + px, by + py, src, 255);
+        }
+    }
+}
+
 // ---- 8x8 bitmap text (legacy / fallback) ------------------------------------
 void Renderer2D::draw_char(int x, int y, char ch, Color c, int scale) {
     unsigned uc = static_cast<unsigned char>(ch);
