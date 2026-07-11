@@ -47,6 +47,7 @@ material that accompanies the code.
 | **Textured Sprites v1** | The Mini-Studio join — sandbox actors wear Texture Lab `.hrt` textures: a texture name on the pure `Sprite`, a nearest-neighbour `blit_scaled` primitive, cross-platform collection probe, inspector `Tex:` cycle; round-trips through save/snapshot | ✅ done |
 | **Map / Level Lab v1** | Mini Studio — tile-grid **level editor** (`--maplab`): paint/flood-fill on the shared `fps::Map`, `fpsmap1` text format, palette + save/load collection; `--fps` loads the authored level (`maps/level_00.map`) with a default fallback | ✅ done |
 | **Particle System v1** | Engine depth (Track A) — reusable **CPU particle sim** (`particles_core`): deterministic seeded xorshift, fractional-accumulator emission, gravity, swap-pop reap, bounded pool, fade helpers; interactive `--fx` playground (fountain + click-bursts + live sliders) | ✅ done |
+| **Textured Walls v1** | Mini-Studio 3-tool join — `--fps` skins wall ids 1–3 with Texture Lab `textures/wall_N.hrt` (procedural fallback); a Lab-authored level rendered with Lab-authored walls, joined through `assets/` by naming convention | ✅ done |
 
 ## Prerequisites (macOS)
 
