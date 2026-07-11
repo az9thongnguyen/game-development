@@ -107,10 +107,11 @@ add_executable(demo
   src/games/maplab/maplab_scene.cpp
   src/games/fx/fx_scene.cpp
   src/games/light/light_scene.cpp
+  src/games/audio/audio_scene.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core runner_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
@@ -375,6 +376,22 @@ add_executable(test_light tests/test_light.cpp
 target_include_directories(test_light PRIVATE src)
 target_link_libraries(test_light PRIVATE engine_flags)
 add_test(NAME light COMMAND test_light)
+
+# ---- Audio mixer (Track A: engine depth) — PURE software voice mixer (no SDL) ----
+# Sums active voices into one clipped chunk a scene streams to platform::play_sound;
+# fixes the queue-only seam where overlapping clips couldn't play together.
+add_library(audio_core STATIC
+  src/engine/audio/mixer.cpp
+)
+target_include_directories(audio_core PUBLIC src)
+target_link_libraries(audio_core PRIVATE engine_flags)
+
+add_executable(test_audio tests/test_audio.cpp
+  src/engine/audio/mixer.cpp
+)
+target_include_directories(test_audio PRIVATE src)
+target_link_libraries(test_audio PRIVATE engine_flags)
+add_test(NAME audio COMMAND test_audio)
 
 # ---- Test-runner worker core (Track C): runs a sandbox scenario headlessly ----
 # Pure (no SDK/no Drogon): reuses the sandbox sim to execute + check a scenario.
