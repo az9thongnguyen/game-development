@@ -31,6 +31,13 @@ scores.json
 # Colony's runtime-generated agent sprite
 assets/colony_agent.hrt
 
+# iso farm save (F5/F9 writes through the assets:: seam)
+assets/farm_save.txt
+
+# Horizon 1 local immutable release store (runtime artifacts, content-addressed)
+assets/releases/
+assets/channels/
+
 # BaaS backend (Slice #1): local secrets + dev databases
 baas/config.json
 *.db

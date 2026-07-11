@@ -38,7 +38,13 @@ std::optional<std::vector<uint8_t>> load_file(const std::string& path) {
 }
 
 bool write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
-    const std::string full = g_base + "/" + path;
+    const std::filesystem::path full = std::filesystem::path(g_base) / path;
+
+    // Create any missing parent directories (e.g. a content-addressed release path
+    // like "releases/<hash>/package.txt"). std::ofstream will not make them itself;
+    // works on native and Emscripten MEMFS alike. On failure the open below fails too.
+    std::error_code ec;
+    if (full.has_parent_path()) std::filesystem::create_directories(full.parent_path(), ec);
 
     std::ofstream f(full, std::ios::binary | std::ios::trunc);
     if (!f) {

@@ -47,3 +47,11 @@ jobs:
 
       - name: Golden-path smoke (headless inspect)
         run: ./build/demo --project-inspect projects/creator.gameproject
+
+      - name: Release-store smoke (publish → status → promote)
+        run: |
+          ./build/demo --project-publish projects/creator.gameproject
+          ./build/demo --project-publish projects/creator.gameproject   # idempotent: second publish is a verified no-op
+          ./build/demo --release-status
+          ./build/demo --release-promote preview production
+          ./build/demo --release-status
