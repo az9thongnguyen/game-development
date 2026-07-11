@@ -19,6 +19,7 @@
 #include "baas/app_setup.h"
 #include "baas/db/db.h"
 #include "gbaas/gbaas.h"
+#include "games/runner/worker.hpp"
 #include "tests/baas_test_util.h"
 
 static int g_failures = 0;
@@ -158,6 +159,25 @@ int main() {
         c.assets().remove("level_00.map", [&](gbaas::Result<bool> r) { ard = r; done = true; });
         CHECK(pump(c, done));
         CHECK(ard && *ard);
+
+        // full test-runner loop: submit a scenario -> the worker claims + runs it
+        // headlessly -> poll the result (the whole Track-C sub-project end to end)
+        gbaas::Result<gbaas::TestRun> tr;
+        done = false;
+        c.testruns().submit(
+            "sandbox1\nbounds 936 560\ne x=100 y=100 rot=0 color=dcc878 w=24 h=24\n",
+            "steps=10;expect_alive=1",
+            [&](gbaas::Result<gbaas::TestRun> r) { tr = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(tr && tr->status == "pending");
+        const long long run_id = tr->id;
+        CHECK(runner::process_one(c));                 // worker: claim -> run_scenario -> complete
+        gbaas::Result<gbaas::TestRun> fin;
+        done = false;
+        c.testruns().get(run_id, [&](gbaas::Result<gbaas::TestRun> r) { fin = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(fin && fin->status == "passed");
+        CHECK(runner::process_one(c) == false);        // nothing left pending
 
         drogon::app().quit();
     });
