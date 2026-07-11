@@ -157,6 +157,7 @@ checks).
 | 69 | **Anti-aliasing I — SSAA** (the supersample seam: physical vs logical framebuffer, downsample on present, logical mouse, free AA for the 3D raycaster, the cost/toggle) |
 | 70 | **Anti-aliasing II — Wu & coverage** (Xiaolin Wu lines; analytic coverage for rounded rects/circles/rings via a tiny distance field) |
 | 71 | **Design systems** (tokens as one source of truth, the one-accent rule, type/spacing/radius scales, elevation + state ramps, applying it to the IMGUI) |
+| 72 | **Design system on the web** (porting the same tokens/accent/scales to the BaaS dashboard as CSS custom properties — behaviour untouched; a design system is decisions, not code) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
@@ -167,7 +168,8 @@ observe → pitfalls → exercises.**
 > layer (`engine/ui/theme.hpp` tokens + rebuilt widgets). All games inherit it;
 > **colony** and **editor** are the showcases (verified native and in-browser).
 > Native 2D scenes render at `supersample=2`; the web build stays at `1×` (per-
-> primitive AA + AA fonts still apply) so WASM keeps a smooth frame rate.
+> primitive AA + AA fonts still apply) so WASM keeps a smooth frame rate. The web
+> operator dashboard (ch.72) speaks the same design language via CSS tokens.
 
 ## 6. Milestone roadmap
 
