@@ -226,6 +226,19 @@ void Renderer2D::draw_circle(int lcx, int lcy, int lr, Color c) {
         }
 }
 
+void Renderer2D::drop_shadow(int x, int y, int w, int h, int radius,
+                             int dx, int dy, int spread, Color c) {
+    if (w <= 0 || h <= 0 || spread < 1) return;
+    // Constant low per-layer alpha over `spread` concentric rings: a pixel near the
+    // edge is inside few rings (faint), one near the panel inside many (darker) →
+    // a natural radial falloff, and the AA rounded-rect softens each ring edge.
+    std::uint8_t pa = a_of(c) / static_cast<std::uint32_t>(spread);
+    if (pa == 0) pa = 1;
+    const Color layer = (c & 0x00FFFFFFu) | (static_cast<std::uint32_t>(pa) << 24);
+    for (int i = spread; i >= 1; --i)
+        fill_round_rect(x + dx - i, y + dy - i, w + 2 * i, h + 2 * i, radius + i, layer);
+}
+
 void Renderer2D::blit(const Sprite& s, int x, int y) {
     if (!s.pixels) return;
     for (int sy = 0; sy < s.h; ++sy) {
