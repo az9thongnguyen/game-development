@@ -43,16 +43,20 @@ void draw_clipped(gfx::Renderer2D& fb, float x0, float y0, float x1, float y1,
 }
 } // namespace
 
-void Renderer3D::begin(gfx::Renderer2D& fb, gfx::Color clear) {
+void Renderer3D::begin(gfx::Renderer2D& fb) {
     fb_ = &fb;
     w_ = fb.width();
     h_ = fb.height();
-    fb.clear(clear);
     // (Re)size and reset the depth buffer. The framebuffer size is fixed for the
     // window, so this allocates once and only refills afterwards.
     const size_t n = static_cast<size_t>(w_) * static_cast<size_t>(h_);
     if (depth_.size() != n) depth_.assign(n, kFarDepth);
     else std::fill(depth_.begin(), depth_.end(), kFarDepth);
+}
+
+void Renderer3D::begin(gfx::Renderer2D& fb, gfx::Color clear) {
+    fb.clear(clear);   // solid clear; use the no-arg begin() to keep a gradient sky
+    begin(fb);
 }
 
 void Renderer3D::set_camera(const math::mat4& view, const math::mat4& proj) {

@@ -7,6 +7,7 @@
 
 #include "engine/color.hpp"
 #include "engine/pick.hpp"
+#include "engine/ui/theme.hpp"
 
 namespace viz3d {
 
@@ -135,7 +136,8 @@ void EditorScene::render(const engine::Context& ctx) {
     const float aspect = static_cast<float>(w_) / static_cast<float>(h_);
     if (ctx.dt > 0.0) fps_ = fps_ * 0.92 + (1.0 / ctx.dt) * 0.08;
 
-    r3_.begin(g, gfx::rgb(22, 24, 30));
+    g.fill_v_gradient(0, 0, w_, h_, gfx::rgb(34, 40, 56), gfx::rgb(13, 14, 19));  // sky → ground
+    r3_.begin(g);                                                                // keep the gradient
     r3_.set_camera(cam_.view(), cam_.proj(aspect));
     r3_.set_cull(cull_);
 
@@ -165,13 +167,15 @@ void EditorScene::render(const engine::Context& ctx) {
                   static_cast<int>(editor_.objects().size()), sname,
                   sel ? sel->scale : 0.0f, mname, cull_ ? "ON" : "OFF",
                   static_cast<int>(fps_ + 0.5));
+    g.set_font(ctx.font, ui::theme::sz_caption);
     g.draw_text(8, 8,
-        "VIZ3D  1-4:spawn  click:select  TAB:next  drag:move  QE:lift  arrows:rotate  -/=:scale  DEL:delete",
-        gfx::colors::white, 1);
-    g.draw_text(8, 22,
-        "RMB:orbit  MMB:pan  W/S:zoom  F:focus  ENTER:shade  G/X/C:grid/axes/cull  ESC:quit",
-        gfx::rgb(150, 160, 180), 1);
-    g.draw_text(8, 40, line, gfx::rgb(180, 220, 255), 1);
+        "VIZ3D   1-4: spawn   click: select   TAB: next   drag: move   QE: lift   arrows: rotate   -/=: scale   DEL: delete",
+        ui::theme::text_dim);
+    g.draw_text(8, 24,
+        "RMB: orbit   MMB: pan   W/S: zoom   F: focus   ENTER: shade   G/X/C: grid/axes/cull   ESC: quit",
+        ui::theme::text_muted);
+    g.set_font_size(ui::theme::sz_body);
+    g.draw_text(8, 44, line, ui::theme::accent_hover);
 }
 
 } // namespace viz3d

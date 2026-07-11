@@ -131,6 +131,19 @@ int main() {
         CHECK(R(19, 0) == 0x88);                      // far corner untouched
     }
 
+    // --- vertical gradient: top≈top colour, bottom≈bottom colour, monotonic between ---
+    {
+        constexpr int W = 4, H = 10;
+        std::vector<std::uint32_t> buf(W * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        Renderer2D r(fb, 1);
+        r.fill_v_gradient(0, 0, W, H, 0xFF000000, 0xFF0000FF);   // black → blue (B: 0→255)
+        auto Bc = [&](int y) { return int(buf[y * W] & 0xFF); };
+        CHECK(Bc(0) < 30);                                        // top ≈ black
+        CHECK(Bc(H - 1) > 225);                                   // bottom ≈ blue
+        CHECK(Bc(H / 2) > Bc(0) && Bc(H / 2) < Bc(H - 1));        // increases downward
+    }
+
     if (g_failures == 0) std::printf("aa: all tests passed\n");
     else                 std::printf("aa: %d FAILURE(S)\n", g_failures);
     return g_failures;

@@ -44,6 +44,7 @@ public:
     void blend_pixel(int x, int y, Color c);  // alpha blend, clipped (logical)
 
     void fill_rect(int x, int y, int w, int h, Color c);
+    void fill_v_gradient(int x, int y, int w, int h, Color top, Color bottom);  // vertical lerp fill
     void draw_rect(int x, int y, int w, int h, Color c);   // 1px outline
     void draw_line(int x0, int y0, int x1, int y1, Color c);          // aliased (Bresenham)
     void draw_line_aa(int x0, int y0, int x1, int y1, Color c);       // anti-aliased (Xiaolin Wu)
