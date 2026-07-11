@@ -3,6 +3,8 @@
 // =============================================================================
 #include "games/fps/map.hpp"
 
+#include <sstream>
+
 namespace fps {
 
 Map default_map() {
@@ -24,6 +26,36 @@ Map default_map() {
     // Four corner pillars (wall id 3).
     set(2, 2, 3); set(13, 2, 3); set(2, 13, 3); set(13, 13, 3);
 
+    return m;
+}
+
+std::string to_text(const Map& m) {
+    std::string s = "fpsmap1\nsize " + std::to_string(m.w) + " " + std::to_string(m.h) + "\n";
+    for (int y = 0; y < m.h; ++y) {
+        s += "row";
+        for (int x = 0; x < m.w; ++x)
+            s += " " + std::to_string(int(m.cells[static_cast<size_t>(y) * m.w + x]));
+        s += "\n";
+    }
+    return s;
+}
+
+std::optional<Map> from_text(const std::string& s) {
+    std::istringstream in(s);
+    std::string tok;
+    if (!(in >> tok) || tok != "fpsmap1") return std::nullopt;
+    if (!(in >> tok) || tok != "size")    return std::nullopt;
+    Map m;
+    if (!(in >> m.w >> m.h) || m.w <= 0 || m.h <= 0) return std::nullopt;
+    m.cells.assign(static_cast<size_t>(m.w) * m.h, 0);
+    for (int y = 0; y < m.h; ++y) {
+        if (!(in >> tok) || tok != "row") return std::nullopt;
+        for (int x = 0; x < m.w; ++x) {
+            int v;
+            if (!(in >> v) || v < 0 || v > 255) return std::nullopt;
+            m.cells[static_cast<size_t>(y) * m.w + x] = static_cast<uint8_t>(v);
+        }
+    }
     return m;
 }
 

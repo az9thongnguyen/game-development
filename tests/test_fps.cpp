@@ -95,6 +95,20 @@ static void test_perp_floor() {
     CHECK(h.wall == 2);
 }
 
+static void test_map_serialize() {
+    // round-trip a hand-built grid through the shared fpsmap1 text form
+    Map m; m.w = 3; m.h = 2; m.cells = {1, 1, 1, 1, 0, 2};
+    const std::string s = to_text(m);
+    auto r = from_text(s);
+    CHECK(r && r->w == 3 && r->h == 2 && r->cells == m.cells);
+    CHECK(to_text(*r) == s);                                  // stable round-trip
+    // fail closed on malformed input
+    CHECK(!from_text("garbage"));                             // bad header
+    CHECK(!from_text("fpsmap1\nsize 3 2\nrow 1 1 1\n"));      // too few rows
+    CHECK(!from_text("fpsmap1\nsize 3 2\nrow 1 1\nrow 1 1\n")); // short row
+    CHECK(!from_text("fpsmap1\nsize 0 0\n"));                 // empty grid
+}
+
 int main() {
     test_map();
     test_cast_east();
@@ -102,6 +116,7 @@ int main() {
     test_no_fisheye();
     test_project_sprite();
     test_perp_floor();
+    test_map_serialize();
 
     if (g_failures == 0) std::printf("fps: all tests passed\n");
     else                 std::printf("fps: %d FAILURE(S)\n", g_failures);

@@ -9,6 +9,8 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace fps {
@@ -25,5 +27,10 @@ struct Map {
 };
 
 Map default_map();  // a small hand-built level
+
+// Text form (the "fpsmap1" format): shared by the Map/Level Lab editor and the
+// raycaster so both sides speak one format. Pure — no IO — the caller reads/writes.
+std::string        to_text(const Map& m);
+std::optional<Map> from_text(const std::string& s);  // nullopt if malformed
 
 } // namespace fps
