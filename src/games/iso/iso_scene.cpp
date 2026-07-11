@@ -8,6 +8,7 @@
 
 #include "engine/assets.hpp"
 #include "engine/color.hpp"
+#include "engine/ui/theme.hpp"
 #include "games/iso/serialize.hpp"
 
 namespace iso {
@@ -134,6 +135,7 @@ void IsoScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     w_ = g.width();
     h_ = g.height();
+    g.set_font(ctx.font, ui::theme::sz_body);   // AA HUD text (8x8 fallback if null)
     if (ctx.dt > 0.0) fps_ = fps_ * 0.92 + (1.0 / ctx.dt) * 0.08;
 
     // Keep the highlight tracking the mouse even on frames with zero updates.
@@ -142,21 +144,23 @@ void IsoScene::render(const engine::Context& ctx) {
     render_farm(g, farm_, cam_, hovered_);
 
     // ---- HUD ----
+    g.set_font_size(ui::theme::sz_caption);
     g.draw_text(8, 8,
-        "ISO FARM  1-4:terrain  5-9:objects  0:bulldoze  TAB:next  LMB:paint  RMB:walk farmer",
-        gfx::colors::white, 1);
-    g.draw_text(8, 22,
-        "arrows/WASD:pan  F5:save  F9:load  R:reset  ESC:quit",
-        gfx::rgb(150, 160, 180), 1);
+        "ISO FARM   1-4: terrain   5-9: objects   0: bulldoze   TAB: next   LMB: paint   RMB: walk farmer",
+        ui::theme::text_dim);
+    g.draw_text(8, 24,
+        "arrows/WASD: pan   F5: save   F9: load   R: reset   ESC: quit",
+        ui::theme::text_muted);
 
     char line[160];
-    std::snprintf(line, sizeof(line), "brush:%s  entities:%d  tile:(%d,%d)  fps:%d",
+    std::snprintf(line, sizeof(line), "brush: %s    entities: %d    tile: (%d,%d)    fps: %d",
                   brush_name(brush_), static_cast<int>(farm_.world().alive().size()),
                   hovered_.x, hovered_.y, static_cast<int>(fps_ + 0.5));
-    g.draw_text(8, 40, line, gfx::rgb(180, 220, 255), 1);
+    g.set_font_size(ui::theme::sz_body);
+    g.draw_text(8, 40, line, ui::theme::accent_hover);
 
     if (status_t_ > 0.0 && !status_.empty())
-        g.draw_text(8, h_ - 16, status_.c_str(), gfx::rgb(255, 230, 120), 1);
+        g.draw_text(8, h_ - 24, status_.c_str(), ui::theme::warn);
 }
 
 } // namespace iso
