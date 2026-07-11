@@ -44,7 +44,7 @@ private:
     geo::Mesh grid_;
     geo::Mesh axes_;
 
-    r3d::Mode mode_   = r3d::Mode::SolidFlat;
+    r3d::Mode mode_   = r3d::Mode::SolidGouraud;   // smooth by default (ENTER cycles)
     bool      use_fly_ = false;
     bool      cull_    = true;
     double    spin_    = 0.0;
