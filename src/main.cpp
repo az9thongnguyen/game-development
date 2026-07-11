@@ -303,6 +303,32 @@ int release_status() {
     return 0;
 }
 
+// Preview parity (strategy metric P2): does the project *as it stands right now* package
+// to the exact release a channel currently points at? Answers "is what I'd ship identical
+// to what's live?" by comparing package hashes. Exit 0 = parity, 2 = drift (valid inputs,
+// but they differ), 1 = error — so a script can tell "drifted" apart from "broke".
+int verify_project(const std::string& path, const std::string& channel) {
+    if (!engine::valid_channel_name(channel)) {
+        std::fprintf(stderr, "verify: invalid channel name '%s'\n", channel.c_str());
+        return 1;
+    }
+    auto r = resolve_project(path);
+    if (!r) return 1;
+    const std::string local = engine::hash_hex(engine::package_hash(r->resources));
+    auto live = read_channel(channel);
+    if (!live) {
+        std::fprintf(stderr, "verify: channel '%s' is unset or malformed — nothing to compare\n",
+                     channel.c_str());
+        return 1;
+    }
+    if (local == *live) {
+        std::printf("parity OK: %s == channel %s (%s)\n", path.c_str(), channel.c_str(), local.c_str());
+        return 0;
+    }
+    std::printf("DRIFT: local %s != channel %s %s\n", local.c_str(), channel.c_str(), live->c_str());
+    return 2;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -377,6 +403,13 @@ int main(int argc, char** argv) {
     // Headless: print what each channel points at and whether the release is present.
     if (mode == "--release-status") {
         return release_status();
+    }
+
+    // Headless: preview parity (P2) — does the project package to the release a channel
+    // holds? Exit 0 = match, 2 = drift, 1 = error.
+    if (mode == "--project-verify") {
+        if (argc < 4) { std::fprintf(stderr, "usage: demo --project-verify <path> <channel>\n"); return 1; }
+        return verify_project(argv[2], argv[3]);
     }
 
     if (mode == "--3d") {
