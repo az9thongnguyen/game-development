@@ -105,9 +105,10 @@ add_executable(demo
   src/games/studio/studio_scene.cpp
   src/games/sandbox/sandbox_scene.cpp
   src/games/maplab/maplab_scene.cpp
+  src/games/fx/fx_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core sandbox_core maplab_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core sandbox_core maplab_core particles_core)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
 # ---- Tests (CTest) -----------------------------------------------------------
@@ -324,6 +325,21 @@ add_executable(test_maplab tests/test_maplab.cpp
 target_include_directories(test_maplab PRIVATE src)
 target_link_libraries(test_maplab PRIVATE engine_flags)
 add_test(NAME maplab COMMAND test_maplab)
+
+# ---- Particle system (Track A: engine depth) — PURE deterministic sim (no SDL) ----
+# Seeded xorshift32 emission + integration; drawing is scene-side over Renderer2D.
+add_library(particles_core STATIC
+  src/engine/fx/particles.cpp
+)
+target_include_directories(particles_core PUBLIC src)
+target_link_libraries(particles_core PRIVATE engine_flags)
+
+add_executable(test_particles tests/test_particles.cpp
+  src/engine/fx/particles.cpp
+)
+target_include_directories(test_particles PRIVATE src)
+target_link_libraries(test_particles PRIVATE engine_flags)
+add_test(NAME particles COMMAND test_particles)
 
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
