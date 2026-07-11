@@ -15,43 +15,110 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Game BaaS — Dashboard</title>
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; background: #12141a; color: #d4dae6;
-         font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  header { padding: 14px 20px; background: #1a1e28; border-bottom: 1px solid #2a3040; }
-  h1 { margin: 0; font-size: 16px; color: #9fc1ff; }
-  main { max-width: 960px; margin: 0 auto; padding: 20px; }
-  section { background: #171a22; border: 1px solid #262c3a; border-radius: 8px;
-            padding: 16px; margin: 0 0 18px; }
-  h2 { margin: 0 0 12px; font-size: 14px; color: #8fb0e8; }
-  label { display: inline-block; min-width: 90px; color: #8b93a7; }
-  input { background: #0e1016; color: #d4dae6; border: 1px solid #2a3040;
-          border-radius: 5px; padding: 6px 8px; margin: 3px 0; font: inherit; }
-  input[type=text] { width: 260px; }
-  button { background: #2b60c9; color: #fff; border: 0; border-radius: 5px;
-           padding: 6px 12px; margin: 3px 4px 3px 0; cursor: pointer; font: inherit; }
-  button.sec { background: #2a3040; }
-  button:hover { filter: brightness(1.12); }
-  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
-  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #232936; font-size: 13px; }
-  th { color: #7f8aa3; font-weight: 600; }
-  .tabs button { background: #2a3040; }
-  .tabs button.active { background: #2b60c9; }
-  .muted { color: #7f8aa3; }
-  .keys { font-size: 12px; color: #7bd88f; word-break: break-all; }
-  #toast { position: fixed; bottom: 16px; right: 16px; background: #22304a;
-           border: 1px solid #34507e; padding: 10px 14px; border-radius: 6px;
-           opacity: 0; transition: opacity .2s; pointer-events: none; }
-  #toast.show { opacity: 1; }
+  /* Design tokens — mirror engine/ui/theme.hpp ("modern dark + one accent"). */
+  :root {
+    color-scheme: dark;
+    --bg:#12141C; --elevated:#1B1E28; --surface:#2A2F3C; --surface-hover:#353B4A;
+    --surface-press:#454C5E; --border:#2A2E3A; --field:#14171F;
+    --text:#E6E9F0; --dim:#A8AEBE; --muted:#6B7180; --on-accent:#0B1017;
+    --accent:#5AAAE6; --accent-hover:#82C8FF; --accent-press:#3E86BE;
+    --accent-soft:rgba(90,170,230,.16);
+    --success:#4CC38A; --warn:#E5B454; --danger:#E5657A;
+    --r-sm:6px; --r-md:10px;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.55 var(--sans); -webkit-font-smoothing:antialiased; }
+
+  /* Header */
+  header { position:sticky; top:0; z-index:5; padding:14px 24px; background:rgba(18,20,28,.85);
+           backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+  .bar { display:flex; align-items:center; gap:12px; max-width:1040px; margin:0 auto; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--accent);
+         box-shadow:0 0 10px var(--accent); flex:0 0 auto; }
+  h1 { margin:0; font-size:16px; font-weight:650; letter-spacing:.2px; }
+  .sub { margin:0; font-size:12px; color:var(--muted); }
+
+  /* Layout + cards */
+  main { max-width:1040px; margin:0 auto; padding:24px; }
+  section { background:var(--elevated); border:1px solid var(--border); border-radius:var(--r-md);
+            padding:20px 20px 16px; margin:0 0 20px; box-shadow:0 6px 22px rgba(0,0,0,.35); }
+  h2 { margin:0 0 16px; font-size:13px; font-weight:650; text-transform:uppercase;
+       letter-spacing:.7px; color:var(--accent); }
+
+  /* Form rows */
+  .field { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 10px; }
+  label { flex:0 0 96px; color:var(--dim); font-size:12px; text-transform:uppercase;
+          letter-spacing:.5px; }
+  input { flex:1 1 220px; min-width:0; background:var(--field); color:var(--text);
+          border:1px solid var(--border); border-radius:var(--r-sm); padding:8px 10px;
+          font:14px var(--sans); transition:border-color .12s, box-shadow .12s; }
+  input::placeholder { color:var(--muted); }
+  input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+
+  /* Buttons */
+  button { flex:0 0 auto; background:var(--accent); color:var(--on-accent); border:0;
+           border-radius:var(--r-sm); padding:8px 14px; cursor:pointer; font:600 13px var(--sans);
+           transition:background .12s, transform .02s; }
+  button:hover { background:var(--accent-hover); }
+  button:active { background:var(--accent-press); transform:translateY(1px); }
+  button.sec { background:var(--surface); color:var(--text); border:1px solid var(--border); }
+  button.sec:hover { background:var(--surface-hover); }
+  button.sec:active { background:var(--surface-press); }
+
+  /* Tabs — segmented row with an accent underline on the active one */
+  .tabs { display:flex; flex-wrap:wrap; gap:4px; margin:16px 0 4px;
+          border-bottom:1px solid var(--border); }
+  .tabs button { background:transparent; color:var(--dim); border:0; border-radius:0;
+          padding:9px 14px; font:600 13px var(--sans); border-bottom:2px solid transparent;
+          margin-bottom:-1px; }
+  .tabs button:hover { color:var(--text); background:transparent; }
+  .tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+  #panel { margin-top:14px; }
+
+  /* Tables */
+  table { border-collapse:collapse; width:100%; margin-top:10px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); font-size:13px; }
+  th { color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.5px;
+       font-size:11px; }
+  tbody tr:hover, tr:hover { background:rgba(255,255,255,.02); }
+  td button { padding:4px 10px; font-size:12px; }
+
+  /* Bits */
+  .muted { color:var(--muted); }
+  .keys { display:block; font:12px/1.6 var(--mono); color:var(--success); word-break:break-all;
+          background:var(--field); border:1px solid var(--border); border-radius:var(--r-sm);
+          padding:10px 12px; margin-top:8px; }
+  pre { font:12px/1.5 var(--mono) !important; }
+  #toast { position:fixed; bottom:20px; right:20px; background:var(--surface);
+           color:var(--text); border:1px solid var(--border); padding:11px 16px;
+           border-radius:var(--r-sm); box-shadow:0 8px 24px rgba(0,0,0,.45);
+           opacity:0; transform:translateY(6px); transition:opacity .18s, transform .18s;
+           pointer-events:none; font-size:13px; }
+  #toast.show { opacity:1; transform:translateY(0); }
+
+  @media (max-width:560px) { label { flex-basis:100%; } main { padding:16px; } }
 </style>
 </head>
 <body>
-<header><h1>Game BaaS — Dashboard</h1></header>
+<header>
+  <div class="bar">
+    <span class="dot"></span>
+    <div>
+      <h1>Game BaaS</h1>
+      <p class="sub">Operator dashboard</p>
+    </div>
+  </div>
+</header>
 <main>
   <section>
     <h2>Platform admin</h2>
-    <div><label>Admin secret</label><input id="adminSecret" type="password" placeholder="X-Admin-Secret"></div>
-    <div><label>New project</label><input id="projName" type="text" placeholder="name">
+    <div class="field"><label for="adminSecret">Admin secret</label>
+      <input id="adminSecret" type="password" placeholder="X-Admin-Secret"></div>
+    <div class="field"><label for="projName">New project</label>
+      <input id="projName" type="text" placeholder="name">
       <button onclick="createProject()">Create</button>
       <button class="sec" onclick="listProjects()">List projects</button></div>
     <div id="projOut"></div>
@@ -59,11 +126,14 @@
 
   <section>
     <h2>Project console</h2>
-    <div><label>Base URL</label><input id="baseUrl" type="text" placeholder="(same origin)"></div>
-    <div><label>Public key</label><input id="pubKey" type="text" placeholder="X-Api-Key"></div>
-    <div><label>Secret key</label><input id="secKey" type="password" placeholder="X-Secret-Key">
+    <div class="field"><label for="baseUrl">Base URL</label>
+      <input id="baseUrl" type="text" placeholder="(same origin)"></div>
+    <div class="field"><label for="pubKey">Public key</label>
+      <input id="pubKey" type="text" placeholder="X-Api-Key"></div>
+    <div class="field"><label for="secKey">Secret key</label>
+      <input id="secKey" type="password" placeholder="X-Secret-Key">
       <button onclick="saveKeys()">Save</button></div>
-    <div class="tabs" style="margin-top:10px">
+    <div class="tabs">
       <button data-tab="config" class="active" onclick="tab('config')">Config</button>
       <button data-tab="events" onclick="tab('events')">Live Events</button>
       <button data-tab="analytics" onclick="tab('analytics')">Analytics</button>
@@ -71,7 +141,7 @@
       <button data-tab="board" onclick="tab('board')">Leaderboard</button>
       <button data-tab="realtime" onclick="tab('realtime')">Realtime</button>
     </div>
-    <div id="panel" style="margin-top:12px"></div>
+    <div id="panel"></div>
   </section>
 </main>
 <div id="toast"></div>
