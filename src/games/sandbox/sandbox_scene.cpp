@@ -90,6 +90,13 @@ void SandboxScene::load_textures() {
         auto img = gfx::load_image(std::string("textures/") + name + ".hrt");
         if (img) { tex_names_.push_back(name); tex_[name] = std::move(*img); }
     }
+    // Animated sheets (vertical N-frame strips, ch.86). Picking one auto-sets the
+    // sprite's frame count; add more here as the collection grows.
+    if (auto sheet = gfx::load_image("sprites/spin_8.hrt")) {
+        tex_names_.push_back("spin_8");
+        tex_["spin_8"] = std::move(*sheet);
+        sheet_frames_["spin_8"] = 8;
+    }
 }
 
 void SandboxScene::save() const {
@@ -104,7 +111,8 @@ void SandboxScene::load() {
 }
 
 void SandboxScene::update(double dt, const platform::InputState&) {
-    if (playing_) world_.tick(float(dt));   // fixed-step, deterministic
+    anim_time_ += dt;                        // cosmetic flipbook clock (runs even when paused)
+    if (playing_) world_.tick(float(dt));    // fixed-step, deterministic
 }
 
 void SandboxScene::render(const engine::Context& ctx) {
@@ -121,7 +129,13 @@ void SandboxScene::render(const engine::Context& ctx) {
         const int dw = int(b.w * t.scale), dh = int(b.h * t.scale);
         auto tit = s.texture.empty() ? tex_.end() : tex_.find(s.texture);
         if (tit != tex_.end()) {
-            gfx::Sprite spr{tit->second.pixels.data(), tit->second.w, tit->second.h};
+            const gfx::Image& img = tit->second;
+            gfx::Sprite spr{img.pixels.data(), img.w, img.h};
+            if (s.frames > 1 && s.fps > 0 && img.h >= s.frames) {   // animated vertical sheet
+                const int fh = img.h / s.frames;
+                const int f  = int(anim_time_ * s.fps) % s.frames;  // shared-clock flipbook
+                spr = {img.pixels.data() + std::size_t(f) * fh * img.w, img.w, fh};
+            }
             g.blit_scaled(spr, cx - dw / 2, cy - dh / 2, dw, dh);
         } else if (s.round) g.fill_circle(cx, cy, dw / 2, s.color);
         else                g.fill_rect(cx - dw / 2, cy - dh / 2, dw, dh, s.color);
@@ -183,7 +197,11 @@ void SandboxScene::render(const engine::Context& ctx) {
                         if (tex_names_[k] == s->texture) { idx = int(k); break; }
                     ++idx;
                     s->texture = idx >= int(tex_names_.size()) ? std::string() : tex_names_[size_t(idx)];
+                    // Picking a known sheet auto-animates it; anything else is static.
+                    auto sf = sheet_frames_.find(s->texture);
+                    s->frames = sf != sheet_frames_.end() ? sf->second : 1;
                 }
+                if (s->frames > 1) ui_.slider("anim fps", s->fps, 1.0f, 24.0f);
             }
         } else {
             ui_.label("(make textures in --studio)");
