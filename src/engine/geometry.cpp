@@ -26,28 +26,25 @@ void recompute_normals(Mesh& mesh) {
 Mesh make_cube(float size, gfx::Color color) {
     const float h = size * 0.5f;
     Mesh m;
-    m.vertices = {
-        {{-h, -h, -h}, {}, color},  // 0
-        {{ h, -h, -h}, {}, color},  // 1
-        {{ h,  h, -h}, {}, color},  // 2
-        {{-h,  h, -h}, {}, color},  // 3
-        {{-h, -h,  h}, {}, color},  // 4
-        {{ h, -h,  h}, {}, color},  // 5
-        {{ h,  h,  h}, {}, color},  // 6
-        {{-h,  h,  h}, {}, color},  // 7
+    // Per-face vertices (4 each → 24 total), each carrying its FLAT face normal.
+    // Shared corners would average to diagonal normals and round the cube under
+    // Gouraud shading; per-face normals keep every face crisp in flat AND Gouraud.
+    // Quads are wound counter-clockwise viewed from OUTSIDE (backface culling keeps
+    // the faces pointing at the camera).
+    auto face = [&](math::vec3 a, math::vec3 b, math::vec3 c, math::vec3 d, math::vec3 n) {
+        const uint32_t base = static_cast<uint32_t>(m.vertices.size());
+        m.vertices.push_back({a, n, color});
+        m.vertices.push_back({b, n, color});
+        m.vertices.push_back({c, n, color});
+        m.vertices.push_back({d, n, color});
+        m.indices.insert(m.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
     };
-    // Each face is a quad wound counter-clockwise when viewed from OUTSIDE, so
-    // backface culling keeps exactly the faces pointing at the camera.
-    auto quad = [&](uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
-        m.indices.insert(m.indices.end(), {a, b, c, a, c, d});
-    };
-    quad(4, 5, 6, 7);  // front  (+z)
-    quad(1, 0, 3, 2);  // back   (-z)
-    quad(0, 4, 7, 3);  // left   (-x)
-    quad(5, 1, 2, 6);  // right  (+x)
-    quad(7, 6, 2, 3);  // top    (+y)
-    quad(0, 1, 5, 4);  // bottom (-y)
-    recompute_normals(m);
+    face({-h, -h,  h}, { h, -h,  h}, { h,  h,  h}, {-h,  h,  h}, { 0,  0,  1});  // front  (+z)
+    face({ h, -h, -h}, {-h, -h, -h}, {-h,  h, -h}, { h,  h, -h}, { 0,  0, -1});  // back   (-z)
+    face({-h, -h, -h}, {-h, -h,  h}, {-h,  h,  h}, {-h,  h, -h}, {-1,  0,  0});  // left   (-x)
+    face({ h, -h,  h}, { h, -h, -h}, { h,  h, -h}, { h,  h,  h}, { 1,  0,  0});  // right  (+x)
+    face({-h,  h,  h}, { h,  h,  h}, { h,  h, -h}, {-h,  h, -h}, { 0,  1,  0});  // top    (+y)
+    face({-h, -h, -h}, { h, -h, -h}, { h, -h,  h}, {-h, -h,  h}, { 0, -1,  0});  // bottom (-y)
     return m;
 }
 

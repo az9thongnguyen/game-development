@@ -150,9 +150,10 @@ static void test_lerp_color() {
 
 // ---- geometry generators ----
 static void test_geometry() {
-    // Cube: 8 shared corners, 12 triangles (36 indices); normals unit + outward.
+    // Cube: 24 per-face verts (4/face, flat normals so it stays crisp in Gouraud),
+    // 12 triangles (36 indices); normals unit + outward.
     const geo::Mesh cube = geo::make_cube(2.0f);
-    CHECK(cube.vertices.size() == 8);
+    CHECK(cube.vertices.size() == 24);
     CHECK(cube.indices.size() == 36);
     for (const auto& v : cube.vertices) {
         CHECK(approx(math::length(v.normal), 1.0f));
