@@ -52,6 +52,7 @@ material that accompanies the code.
 | **BaaS Test-Runner v1** | Lean BaaS (Track C) — managed headless runs: `/v1/testruns` job coordinator (create/claim/complete, atomic conditional-UPDATE state machine) + a `demo --runner` worker that runs `sandbox1` scenarios deterministically and posts pass/fail; SDK `TestRuns` handle; full loop tested end-to-end | ✅ done |
 | **Tween & Easing v1** | Engine depth (Track A) — the animation interpolation primitive (`tween_core`): 13 named easing curves (`ease()`, clamped, endpoint-pinned; Back/Elastic overshoot) + a deterministic scalar `Tween` (one-shot + no-drift ping-pong); `--fx` "sweep" drives the emitter along a `SineInOut` curve | ✅ done |
 | **2D Lighting v1** | Engine depth (Track A) — additive radial lights (`light_core`): smooth `(1-(d/r)²)²` falloff + `light_sample` folding intensity·falloff into an additive-weight alpha, a new `Renderer2D::add_pixel` (saturating glow primitive), `--light` dark-room demo (warm/cool/mouse lights, cool one drifts via a tween) | ✅ done |
+| **Audio Mixer v1** | Engine depth (Track A) — pure software voice `Mixer` (`audio_core`): sums overlapping voices into a clipped int16 chunk (fixes the queue-only seam where clips couldn't play together), `tone` sine synth, streamed each fixed step via the existing `play_sound` (no platform edits); `--audio` demo (tone/chord buttons + live waveform) | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -80,6 +81,7 @@ cmake --build build
 ./build/demo --maplab   # Map/Level Lab: paint/flood-fill a tile grid, Save → maps/level_NN.map (loaded by --fps)
 ./build/demo --fx       # particle playground: fountain + click bursts + live sliders + "sweep" (tween-driven emitter)
 ./build/demo --light    # 2D lighting: dark room, additive radial lights; mouse light follows, sliders for radius/intensity
+./build/demo --audio    # audio mixer: tone buttons + "chord" (sums 4 voices) + master volume + live waveform
 ./build/demo --runner <baas_url> <api_key>   # headless test-run worker: polls the BaaS, runs sandbox scenarios
 ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps, iso, studio)
 ```
