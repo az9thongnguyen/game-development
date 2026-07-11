@@ -54,7 +54,8 @@ material that accompanies the code.
 | **2D Lighting v1** | Engine depth (Track A) — additive radial lights (`light_core`): smooth `(1-(d/r)²)²` falloff + `light_sample` folding intensity·falloff into an additive-weight alpha, a new `Renderer2D::add_pixel` (saturating glow primitive), `--light` dark-room demo (warm/cool/mouse lights, cool one drifts via a tween) | ✅ done |
 | **Audio Mixer v1** | Engine depth (Track A) — pure software voice `Mixer` (`audio_core`): sums overlapping voices into a clipped int16 chunk (fixes the queue-only seam where clips couldn't play together), `tone` sine synth, streamed each fixed step via the existing `play_sound` (no platform edits); `--audio` demo (tone/chord buttons + live waveform) | ✅ done |
 | **Sprite Animation v1** | Engine depth (Track A) — `anim::Flipbook` frame-index player (in `tween_core`): steps a sheet at `fps`, loops (bounded `t`, no drift) or holds one-shot. Vertical sheet packing → each frame is a contiguous `gfx::Sprite` drawn by the existing `blit_scaled` (zero new renderer code); `--anim` demo plays a generated 8-frame spinner (`sprites/spin_8.hrt`) with fps/loop/restart | ✅ done |
-| **Sandbox Animated Actors v1** | Track A×B join — sandbox actors carry a sheet animation: `frames`/`fps` on the shared `Sprite`/`Archetype` (emitted by the `sandbox1` codec only when animated), drawn by a scene-wide cosmetic `anim_time_` clock, authored by cycling **Tex** to a known sheet (`spin_8` → 8 frames auto) with an `anim fps` slider; round-trips through save/snapshot | ✅ done |
+| **Sandbox Animated Actors v1** | Track A×B join — sandbox actors carry a sheet animation: `frames`/`fps` on the shared `Sprite`/`Archetype` (emitted by the `sandbox1` codec only when animated), drawn by a scene-wide cosmetic `anim_time_` clock, authored by cycling **Tex** to a sheet with an `anim fps` slider; round-trips through save/snapshot | ✅ done |
+| **Studio Sheet Export v1** | Track B — the Texture Lab exports **animated sheets**: `make_sheet` turns any tileable recipe into an N-frame seamless-scroll loop (`sprites/sheet_NN.hrt`); frame count self-describes via aspect ratio (`anim::frames_in_sheet` = h/w), so `--anim` and `--sandbox` auto-discover Studio output — the animation pipeline is now self-hosting (no script) | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -78,7 +79,7 @@ cmake --build build
 ./build/demo --iso      # M4 isometric farm sim (1-0 brushes, LMB paint, RMB walk farmer, F5/F9 save/load)
 ./build/demo --editor   # F editor: immediate-mode GUI + physics sandbox (click to drop bodies)
 ./build/demo --colony   # integration: iso agent sim on ECS + jobs + frame alloc + asset cache + GUI
-./build/demo --studio   # Mini Studio: procedural Texture Lab (cycle base/op/ramp, sliders, Save → .hrt)
+./build/demo --studio   # Mini Studio: procedural Texture Lab (Save → .hrt; Export Sheet → animated sprites/sheet_NN.hrt)
 ./build/demo --sandbox  # declarative sandbox: drag-drop actors, attach behaviors + textures (+ animated sheets), Play/Stop (F5/F9)
 ./build/demo --maplab   # Map/Level Lab: paint/flood-fill a tile grid, Save → maps/level_NN.map (loaded by --fps)
 ./build/demo --fx       # particle playground: fountain + click bursts + live sliders + "sweep" (tween-driven emitter)
