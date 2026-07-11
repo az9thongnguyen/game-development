@@ -27,6 +27,13 @@
 #include "games/maplab/maplab_scene.hpp"
 #include "games/fx/fx_scene.hpp"
 
+#include <chrono>
+#include <cstdio>
+#include <thread>
+
+#include "gbaas/client.h"
+#include "games/runner/worker.hpp"
+
 namespace {
 
 void parse_chess_opts(int argc, char** argv, int from, bool& vs_ai, int& depth) {
@@ -206,6 +213,22 @@ int main(int argc, char** argv) {
         cfg.highdpi   = true;
         cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<fx::FxScene>());
+    }
+
+    // Headless test-run worker: polls a BaaS coordinator, runs claimed sandbox
+    // scenarios, and posts results. Links the engine + SDK (the BaaS may not) — a
+    // plain poll loop, not a windowed scene, so it bypasses platform::init.
+    if (mode == "--runner") {
+        if (argc < 4) {
+            std::fprintf(stderr, "usage: demo --runner <base_url> <api_key>\n");
+            return 1;
+        }
+        gbaas::Client c({argv[2], argv[3]});
+        std::fprintf(stderr, "runner: polling %s for test runs (Ctrl-C to stop)\n", argv[2]);
+        for (;;) {
+            if (!runner::process_one(c))
+                std::this_thread::sleep_for(std::chrono::seconds(1));  // idle: back off
+        }
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
