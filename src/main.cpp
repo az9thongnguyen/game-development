@@ -150,6 +150,38 @@ int launch_project(const std::string& path, bool inspect_only) {
     return launch_entry(proj->entry);
 }
 
+// Emit the deterministic package manifest (identity + content-hashed resources +
+// combined package hash) for a project to stdout. Refuses if validation or closure
+// fails — you cannot package a project that would not launch. ponytail: the closure
+// loop is duplicated with launch_project; unify into a helper if a third consumer needs it.
+int package_project(const std::string& path) {
+    auto bytes = assets::load_file(path);
+    if (!bytes) { std::fprintf(stderr, "project: cannot read '%s'\n", path.c_str()); return 1; }
+    auto proj = engine::parse_project(std::string(bytes->begin(), bytes->end()));
+    if (!proj) {
+        std::fprintf(stderr, "project: '%s' is not a valid gameproject1 manifest\n", path.c_str());
+        return 1;
+    }
+    const auto errs = engine::validate(*proj, kKnownEntries);
+    std::vector<engine::PackagedResource> resources;
+    std::vector<std::string> missing;
+    for (const auto& a : proj->assets) {
+        if (auto ab = assets::load_file(a.path))
+            resources.push_back({a.type, a.path,
+                                 engine::content_hash(std::vector<uint8_t>(ab->begin(), ab->end()))});
+        else
+            missing.push_back(a.path);
+    }
+    if (!errs.empty() || !missing.empty()) {
+        std::fprintf(stderr, "project: '%s' cannot be packaged:\n", path.c_str());
+        for (const auto& e : errs) std::fprintf(stderr, "  - %s\n", e.c_str());
+        for (const auto& m : missing) std::fprintf(stderr, "  - missing asset: %s\n", m.c_str());
+        return 1;
+    }
+    std::printf("%s", engine::build_package(proj->name, proj->schema, proj->entry, resources).c_str());
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -194,6 +226,12 @@ int main(int argc, char** argv) {
     if (mode == "--project-inspect") {
         if (argc < 3) { std::fprintf(stderr, "usage: demo --project-inspect <path>\n"); return 1; }
         return launch_project(argv[2], /*inspect_only=*/true);
+    }
+
+    // Headless: emit the deterministic package manifest (release-id seed) to stdout.
+    if (mode == "--project-package") {
+        if (argc < 3) { std::fprintf(stderr, "usage: demo --project-package <path>\n"); return 1; }
+        return package_project(argv[2]);
     }
 
     if (mode == "--3d") {
