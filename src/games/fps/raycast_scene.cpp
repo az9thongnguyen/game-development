@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 
 #include "engine/assets.hpp"
@@ -25,6 +26,18 @@ Map load_level() {
     return default_map();
 }
 
+// Start from the procedural wall textures, then skin wall ids 1..3 with any
+// Texture Lab .hrt named textures/wall_<id>.hrt (the 3-tool join: Lab -> level
+// walls). A missing/garbage file leaves that id on its hand-made procedural texture.
+WallTextures load_wall_textures() {
+    WallTextures wt = make_wall_textures();
+    for (int id = 1; id <= 3; ++id) {
+        char path[32]; std::snprintf(path, sizeof(path), "textures/wall_%d.hrt", id);
+        if (auto img = gfx::load_image(path)) wt.tex[static_cast<size_t>(id)] = std::move(*img);
+    }
+    return wt;
+}
+
 // Multiply a color by a brightness factor, clamped to [0,255] per channel.
 gfx::Color shade_color(gfx::Color c, double s) {
     auto ch = [&](uint8_t v) -> uint8_t {
@@ -37,7 +50,7 @@ gfx::Color shade_color(gfx::Color c, double s) {
 
 RaycastScene::RaycastScene()
     : map_(load_level()),
-      textures_(make_wall_textures()),
+      textures_(load_wall_textures()),
       barrel_(make_barrel()),
       sprites_{ {4.5, 8.5}, {3.5, 3.5}, {12.5, 3.5}, {3.5, 12.5}, {12.5, 12.5} },
       posX_(3.5), posY_(8.5),
