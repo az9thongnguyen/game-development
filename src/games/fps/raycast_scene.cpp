@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "engine/assets.hpp"
 #include "engine/color.hpp"
 #include "engine/ui/theme.hpp"
 #include "games/fps/raycast.hpp"
@@ -15,6 +16,15 @@
 namespace fps {
 
 namespace {
+// Load a level authored in the Map/Level Lab (--maplab), falling back to the
+// hand-built default_map() when the asset is absent or malformed.
+Map load_level() {
+    if (auto bytes = assets::load_file("maps/level_00.map")) {
+        if (auto m = from_text(std::string(bytes->begin(), bytes->end()))) return *m;
+    }
+    return default_map();
+}
+
 // Multiply a color by a brightness factor, clamped to [0,255] per channel.
 gfx::Color shade_color(gfx::Color c, double s) {
     auto ch = [&](uint8_t v) -> uint8_t {
@@ -26,7 +36,7 @@ gfx::Color shade_color(gfx::Color c, double s) {
 } // namespace
 
 RaycastScene::RaycastScene()
-    : map_(default_map()),
+    : map_(load_level()),
       textures_(make_wall_textures()),
       barrel_(make_barrel()),
       sprites_{ {4.5, 8.5}, {3.5, 3.5}, {12.5, 3.5}, {3.5, 12.5}, {12.5, 12.5} },
