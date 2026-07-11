@@ -1,0 +1,49 @@
+# =============================================================================
+#  CI — clean-checkout build + headless test (Horizon 0, strategy priority #5)
+# =============================================================================
+#  Reproduces the baseline on a fresh machine so a "it builds and tests pass"
+#  claim does not depend on the maintainer's laptop. The test_* targets are
+#  dependency-free and headless (no window/display), so ctest runs on CI as-is;
+#  building `demo` links SDL2 but does not need a display. The Drogon-guarded
+#  `baas` target is skipped automatically when Drogon is absent.
+#
+#  Authored 2026-07-11. NOTE: written but not run in the authoring environment —
+#  its first green run is the owner's verification after push.
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    name: build + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2 (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+
+      - name: Install SDL2 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl2
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Golden-path smoke (headless inspect)
+        run: ./build/demo --project-inspect projects/creator.gameproject
