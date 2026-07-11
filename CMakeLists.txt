@@ -108,6 +108,7 @@ add_executable(demo
   src/games/fx/fx_scene.cpp
   src/games/light/light_scene.cpp
   src/games/audio/audio_scene.cpp
+  src/games/anim/anim_scene.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
@@ -350,6 +351,7 @@ add_test(NAME particles COMMAND test_particles)
 # particles/sprite-animation all build on. No SDL, unit-tested headless.
 add_library(tween_core STATIC
   src/engine/anim/tween.cpp
+  src/engine/anim/flipbook.cpp
 )
 target_include_directories(tween_core PUBLIC src)
 target_link_libraries(tween_core PRIVATE engine_flags)
@@ -360,6 +362,13 @@ add_executable(test_tween tests/test_tween.cpp
 target_include_directories(test_tween PRIVATE src)
 target_link_libraries(test_tween PRIVATE engine_flags)
 add_test(NAME tween COMMAND test_tween)
+
+add_executable(test_flipbook tests/test_flipbook.cpp
+  src/engine/anim/flipbook.cpp
+)
+target_include_directories(test_flipbook PRIVATE src)
+target_link_libraries(test_flipbook PRIVATE engine_flags)
+add_test(NAME flipbook COMMAND test_flipbook)
 
 # ---- 2D lighting (Track A: engine depth) — PURE radial-light math (no SDL) ----
 # Falloff + additive per-pixel contribution; the framebuffer deposit is scene-side
