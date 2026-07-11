@@ -288,6 +288,26 @@ target_include_directories(test_studio PRIVATE src)
 target_link_libraries(test_studio PRIVATE studio_core engine_flags)
 add_test(NAME studio COMMAND test_studio)
 
+# ---- Sandbox editor (Track B): declarative 2D playground — PURE core (no SDL) ----
+# components + World::tick systems + text serializer. On the generic ecs::Registry.
+add_library(sandbox_core STATIC
+  src/games/sandbox/world.cpp
+  src/games/sandbox/serialize.cpp
+)
+target_include_directories(sandbox_core PUBLIC src)
+target_link_libraries(sandbox_core PRIVATE engine_flags)
+
+# test_sandbox compiles registry.cpp directly (ecs::Registry's non-template ops) to
+# stay dependency-free — the tick/serializer round-trips use only in-memory state.
+add_executable(test_sandbox tests/test_sandbox.cpp
+  src/games/sandbox/world.cpp
+  src/games/sandbox/serialize.cpp
+  src/engine/ecs/registry.cpp
+)
+target_include_directories(test_sandbox PRIVATE src)
+target_link_libraries(test_sandbox PRIVATE engine_flags)
+add_test(NAME sandbox COMMAND test_sandbox)
+
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
 add_library(chess_core STATIC
