@@ -66,6 +66,7 @@ adopted execution posture. The two are complementary, not competing.
 | **Studio Sheet Export v1** | Track B — the Texture Lab exports **animated sheets**: `make_sheet` turns any tileable recipe into an N-frame seamless-scroll loop (`sprites/sheet_NN.hrt`); frame count self-describes via aspect ratio (`anim::frames_in_sheet` = h/w), so `--anim` and `--sandbox` auto-discover Studio output — the animation pipeline is now self-hosting (no script) | ✅ done |
 | **Project Manifest v1** | Platform spine (Horizon 0, [strategy](docs/strategy/)) — a versioned `game.project` manifest (`project_core`: parse/validate/round-trip, pure & headless) + a shared `launch_entry` seam so `--project <path>` launches a game **from a file** instead of a hard-coded flag; `--project-inspect` is the headless validate/doctor. `assets/projects/creator.gameproject` runs the FPS game with no `src/main.cpp` edit — the first step of the create→…→run golden path | ✅ done |
 | **Resource Closure v1** | Platform spine (Horizon 0) — a manifest **declares its content** (additive `asset <type> <path>` lines) and the launcher enforces **dependency closure**: `resource_core` hand-written FNV-1a `content_hash` (deterministic, wasm-safe), `--project-inspect` reports each asset + hash, and `--project` **refuses to launch** on a missing dependency (hard reject). The seed of the package/preview-parity fingerprint | ✅ done |
+| **Package Manifest v1** | Platform spine (Horizon 0→1 bridge) — `--project-package` emits a deterministic `package1` manifest: identity + content-hashed resources **sorted by path** + a combined `packagehash` (`resource_core::build_package`/`package_hash`). Order-independent, content-sensitive — the **immutable-release-id seed** a preview/rollback compares by hash. `docs/book/92` | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -82,6 +83,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ./build/demo --project projects/creator.gameproject   # golden path: launch a game from a game.project manifest
 ./build/demo --project-inspect projects/creator.gameproject  # headless: validate/doctor a manifest (no window)
+./build/demo --project-package projects/creator.gameproject  # headless: emit the deterministic package manifest (release-id seed)
 ./build/demo            # M0 engine demo
 ./build/demo --gui      # chess (GUI)     — also: hvh|hvai  easy|medium|hard
 ./build/demo --tui      # chess (terminal)
