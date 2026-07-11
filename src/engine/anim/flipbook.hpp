@@ -25,4 +25,10 @@ struct Flipbook {
     void reset() { t = 0; }
 };
 
+// Frame count of a vertically-packed sprite sheet with SQUARE frames: a sheet of N
+// w×w frames is w×(N·w), so N = h/w. Any image that isn't a taller-than-wide exact
+// multiple is a single static frame. This lets a sheet self-describe its length by
+// its shape — no sidecar, no filename convention.
+int frames_in_sheet(int w, int h);
+
 } // namespace anim

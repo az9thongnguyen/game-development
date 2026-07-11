@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <vector>
 
+#include "engine/anim/flipbook.hpp"
 #include "engine/assets.hpp"
 #include "engine/ui/theme.hpp"
 #include "games/sandbox/serialize.hpp"
@@ -90,12 +91,17 @@ void SandboxScene::load_textures() {
         auto img = gfx::load_image(std::string("textures/") + name + ".hrt");
         if (img) { tex_names_.push_back(name); tex_[name] = std::move(*img); }
     }
-    // Animated sheets (vertical N-frame strips, ch.86). Picking one auto-sets the
-    // sprite's frame count; add more here as the collection grows.
-    if (auto sheet = gfx::load_image("sprites/spin_8.hrt")) {
-        tex_names_.push_back("spin_8");
-        tex_["spin_8"] = std::move(*sheet);
-        sheet_frames_["spin_8"] = 8;
+    // Animated sheets from sprites/: the built-in spinner plus any Studio-exported
+    // sheet_NN (ch.88). A sheet's frame count self-describes via its aspect ratio
+    // (anim::frames_in_sheet), so no per-name registry is needed — picking one and
+    // reading its shape is enough.
+    auto load_sheet = [&](const std::string& file, const std::string& nm) {
+        if (auto img = gfx::load_image(file)) { tex_names_.push_back(nm); tex_[nm] = std::move(*img); }
+    };
+    load_sheet("sprites/spin_8.hrt", "spin_8");
+    for (int i = 0; i < 8; ++i) {
+        char nm[16]; std::snprintf(nm, sizeof(nm), "sheet_%02d", i);
+        load_sheet(std::string("sprites/") + nm + ".hrt", nm);
     }
 }
 
@@ -197,9 +203,9 @@ void SandboxScene::render(const engine::Context& ctx) {
                         if (tex_names_[k] == s->texture) { idx = int(k); break; }
                     ++idx;
                     s->texture = idx >= int(tex_names_.size()) ? std::string() : tex_names_[size_t(idx)];
-                    // Picking a known sheet auto-animates it; anything else is static.
-                    auto sf = sheet_frames_.find(s->texture);
-                    s->frames = sf != sheet_frames_.end() ? sf->second : 1;
+                    // A tall sheet auto-animates (frame count = h/w); anything else is static.
+                    auto it = tex_.find(s->texture);
+                    s->frames = it != tex_.end() ? anim::frames_in_sheet(it->second.w, it->second.h) : 1;
                 }
                 if (s->frames > 1) ui_.slider("anim fps", s->fps, 1.0f, 24.0f);
             }

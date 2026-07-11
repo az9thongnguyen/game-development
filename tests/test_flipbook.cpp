@@ -71,6 +71,14 @@ int main() {
         CHECK(fb.frame() == 0 && !fb.done());
     }
 
+    // frames_in_sheet: square frames stacked vertically self-describe their count.
+    CHECK(anim::frames_in_sheet(48, 384) == 8);     // spin_8
+    CHECK(anim::frames_in_sheet(64, 256) == 4);
+    CHECK(anim::frames_in_sheet(32, 32)  == 1);     // single square = static
+    CHECK(anim::frames_in_sheet(64, 48)  == 1);     // wider-than-tall = static
+    CHECK(anim::frames_in_sheet(48, 380) == 1);     // not an exact multiple = static
+    CHECK(anim::frames_in_sheet(0, 100)  == 1);     // guard
+
     if (g_failures == 0) std::printf("flipbook: all tests passed\n");
     else                 std::printf("flipbook: %d FAILURE(S)\n", g_failures);
     return g_failures;

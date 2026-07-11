@@ -8,6 +8,7 @@
 #include "games/studio/noise.hpp"
 #include "games/studio/texture_gen.hpp"
 #include "games/studio/recipe.hpp"
+#include "games/studio/sheet.hpp"
 #include "engine/image.hpp"
 
 #include <cmath>
@@ -103,6 +104,35 @@ static void test_recipe_roundtrip() {
     CHECK(generate(from_recipe(once)).pixels == generate(p).pixels);
 }
 
+// ---- animated sheet export ------------------------------------------------
+
+static void test_make_sheet() {
+    TextureParams p; p.size = 32; p.seed = 5;
+    const gfx::Image base = generate(p);
+
+    const gfx::Image sheet = make_sheet(p, 8);
+    CHECK(sheet.w == 32 && sheet.h == 32 * 8);            // vertical, square frames
+    CHECK(sheet.h / sheet.w == 8);                        // shape encodes frame count
+    // Frame 0 (zero scroll) equals the base texture, row for row.
+    bool frame0_matches = true;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x)
+            if (sheet.pixels[size_t(y) * 32 + x] != base.pixels[size_t(y) * 32 + x])
+                frame0_matches = false;
+    CHECK(frame0_matches);
+    // A later frame is scrolled, so it differs from frame 0 (non-uniform texture).
+    bool frame4_differs = false;
+    for (int i = 0; i < 32 * 32; ++i)
+        if (sheet.pixels[size_t(4) * 32 * 32 + i] != base.pixels[size_t(i)]) frame4_differs = true;
+    CHECK(frame4_differs);
+    // Every frame is a seamless roll of the base: it's a permutation of base pixels,
+    // so a scrolled frame reuses base's exact colours (spot-check the row wrap).
+    const int shift = (4 * 32) / 8;                       // frame 4 scroll = 16
+    CHECK(sheet.pixels[size_t(4) * 32 * 32 + 0] == base.pixels[size_t(shift % 32)]);
+
+    CHECK(make_sheet(p, 1).pixels == base.pixels);        // frames<=1 → plain texture
+}
+
 int main() {
     test_noise_range();
     test_noise_deterministic();
@@ -111,6 +141,7 @@ int main() {
     test_texture_size_clamp();
     test_hrt_roundtrip();
     test_recipe_roundtrip();
+    test_make_sheet();
     if (g_failures == 0) std::printf("studio: all tests passed\n");
     else                 std::printf("studio: %d FAILURE(S)\n", g_failures);
     return g_failures;

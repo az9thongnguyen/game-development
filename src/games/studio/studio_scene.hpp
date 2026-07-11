@@ -22,6 +22,7 @@ private:
     void regenerate();                           // params_ -> preview_
     void save_current();                         // encode + write .hrt + .recipe
     void load_saved(const std::string& name);    // read .recipe -> params_
+    void export_sheet();                         // make_sheet(params_) -> sprites/sheet_NN.hrt
 
     TextureParams            params_;
     gfx::Image               preview_;
@@ -34,7 +35,10 @@ private:
     std::uint32_t seed_ = 1;
 
     int save_counter_ = 0;
+    int sheet_idx_ = 1;                          // index into kSheetFrames (default 8)
+    int sheet_counter_ = 0;                      // sprites/sheet_NN slot
     std::vector<std::string> collection_;        // saved texture names (this session)
+    std::vector<std::string> sheets_;            // exported sheet names (this session)
     int w_ = 0, h_ = 0;
 };
 

@@ -282,6 +282,7 @@ add_library(studio_core STATIC
   src/games/studio/noise.cpp
   src/games/studio/texture_gen.cpp
   src/games/studio/recipe.cpp
+  src/games/studio/sheet.cpp
 )
 target_include_directories(studio_core PUBLIC src)
 target_link_libraries(studio_core PRIVATE engine_flags)

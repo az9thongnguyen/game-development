@@ -13,12 +13,14 @@ namespace animdemo {
 using platform::MouseButton;
 
 AnimScene::AnimScene() {
-    if (auto img = gfx::load_image("sprites/spin_8.hrt")) {
-        sheet_ = std::move(*img);
-        have_sheet_ = true;
-    }
-    fh_ = have_sheet_ && frames_ > 0 ? sheet_.h / frames_ : 48;
-    fb_ = anim::Flipbook{frames_, fps_, loop_};
+    // Prefer a Studio-exported sheet (ch.88); fall back to the built-in spinner.
+    auto img = gfx::load_image("sprites/sheet_00.hrt");
+    if (!img) img = gfx::load_image("sprites/spin_8.hrt");
+    if (img) { sheet_ = std::move(*img); have_sheet_ = true; }
+    // Frame count self-describes via aspect ratio — no hard-coded 8.
+    frames_ = have_sheet_ ? anim::frames_in_sheet(sheet_.w, sheet_.h) : 8;
+    fh_     = have_sheet_ && frames_ > 0 ? sheet_.h / frames_ : 48;
+    fb_     = anim::Flipbook{frames_, fps_, loop_};
 }
 
 // A frame is a contiguous run of fh_ rows in the vertical sheet, so it's just a
