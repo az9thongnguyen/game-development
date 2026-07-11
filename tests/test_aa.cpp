@@ -83,6 +83,38 @@ int main() {
         CHECK(a + b > 200 && a + b < 300);           // ...and coverage sums to ~1 (that's AA)
     }
 
+    // --- coverage shapes: rounded rect corners are AA and monotonic ---
+    {
+        constexpr int W = 12, H = 12;
+        std::vector<std::uint32_t> buf(W * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        Renderer2D r(fb, 1);
+        auto R = [&](int x, int y) { return int((buf[y * W + x] >> 16) & 0xFF); };
+
+        r.fill_round_rect(0, 0, 10, 10, 3, FG);
+        CHECK(R(5, 5) == 255);                       // interior solid
+        CHECK(R(0, 0) == 0);                          // corner rounded away
+        const int e = R(1, 0);
+        CHECK(e > 0 && e < 255);                      // arc pixel is fractional (AA)
+        CHECK(R(2, 0) >= e && e >= R(0, 0));          // coverage decreases outward
+    }
+
+    // --- filled circle: solid centre, empty far corner, AA edge exists ---
+    {
+        constexpr int W = 14, H = 14;
+        std::vector<std::uint32_t> buf(W * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        Renderer2D r(fb, 1);
+        auto R = [&](int x, int y) { return int((buf[y * W + x] >> 16) & 0xFF); };
+
+        r.fill_circle(6, 6, 4, FG);
+        CHECK(R(6, 6) == 255);                        // centre solid
+        CHECK(R(0, 0) == 0);                          // far corner empty
+        int frac = 0;
+        for (auto p : buf) { const int rr = (p >> 16) & 0xFF; if (rr > 0 && rr < 255) ++frac; }
+        CHECK(frac > 0);                              // an anti-aliased edge exists
+    }
+
     if (g_failures == 0) std::printf("aa: all tests passed\n");
     else                 std::printf("aa: %d FAILURE(S)\n", g_failures);
     return g_failures;

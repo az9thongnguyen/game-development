@@ -48,6 +48,13 @@ public:
     void draw_line(int x0, int y0, int x1, int y1, Color c);          // aliased (Bresenham)
     void draw_line_aa(int x0, int y0, int x1, int y1, Color c);       // anti-aliased (Xiaolin Wu)
 
+    // Anti-aliased shapes (analytic coverage). All args are LOGICAL; corners get
+    // smooth quarter-disc edges. radius<=0 falls back to the crisp rect.
+    void fill_round_rect(int x, int y, int w, int h, int radius, Color c);
+    void draw_round_rect(int x, int y, int w, int h, int radius, Color c);  // ~1px AA outline
+    void fill_circle(int cx, int cy, int r, Color c);
+    void draw_circle(int cx, int cy, int r, Color c);                       // ~1px AA outline
+
     void blit(const Sprite& s, int x, int y);  // alpha-blended sprite
 
     // Text. With a font set (set_font), draw_text renders anti-aliased glyphs;
