@@ -168,6 +168,48 @@ void Client::Saves::remove(const std::string& slot, std::function<void(Result<bo
                       std::move(cb));
 }
 
+// -------- Assets (project-scoped; api key only, no login) --------
+void Client::Assets::put(const std::string& name, const std::string& kind, const std::string& data,
+                         std::function<void(Result<AssetMeta>)> cb) {
+    const std::string body = "{\"kind\":\"" + json::escape(kind) +
+                             "\",\"data\":\"" + json::escape(data) + "\"}";
+    c_->request<AssetMeta>("PUT", "/v1/assets/" + name, body,
+                           [](const json::Value& j) {
+                               return AssetMeta{j["name"].as_string(), j["kind"].as_string(),
+                                                j["version"].as_int(), j["size"].as_int()};
+                           },
+                           std::move(cb));
+}
+
+void Client::Assets::get(const std::string& name, std::function<void(Result<Asset>)> cb) {
+    c_->request<Asset>("GET", "/v1/assets/" + name, "",
+                       [](const json::Value& j) {
+                           return Asset{j["name"].as_string(), j["kind"].as_string(),
+                                        j["version"].as_int(), j["data"].as_string()};
+                       },
+                       std::move(cb));
+}
+
+void Client::Assets::list(std::function<void(Result<std::vector<AssetMeta>>)> cb) {
+    c_->request<std::vector<AssetMeta>>(
+        "GET", "/v1/assets", "",
+        [](const json::Value& j) {
+            std::vector<AssetMeta> out;
+            const auto&            arr = j["assets"];
+            for (std::size_t k = 0; k < arr.size(); ++k)
+                out.push_back({arr[k]["name"].as_string(), arr[k]["kind"].as_string(),
+                               arr[k]["version"].as_int(), arr[k]["size"].as_int()});
+            return out;
+        },
+        std::move(cb));
+}
+
+void Client::Assets::remove(const std::string& name, std::function<void(Result<bool>)> cb) {
+    c_->request<bool>("DELETE", "/v1/assets/" + name, "",
+                      [](const json::Value& j) { return j["deleted"].as_bool(); },
+                      std::move(cb));
+}
+
 // -------- Replays --------
 void Client::Replays::save(const std::string& name, const std::string& data,
                            std::function<void(Result<ReplayMeta>)> cb) {
