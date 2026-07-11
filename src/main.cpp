@@ -8,9 +8,11 @@
 // =============================================================================
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "engine/app.hpp"
 #include "engine/assets.hpp"
+#include "engine/project/project.hpp"
 #include "platform/platform.hpp"
 
 #include "demo/demo_scene.hpp"
@@ -70,6 +72,61 @@ int run_window(const platform::Config& cfg, std::unique_ptr<engine::Scene> scene
     return 0;
 }
 
+// Launch a reference-game entry scene by its manifest id. Single source of truth
+// shared by the --fps flag and the --project path, so a project manifest selects a
+// game without editing this dispatch. Extend the table (and kKnownEntries) when a
+// new entry scene is added. ponytail: starts with the one Horizon 0 reference game.
+int launch_entry(const std::string& entry) {
+    if (entry == "fps") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — fps";
+        cfg.fb_width  = 640;
+        cfg.fb_height = 400;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<fps::RaycastScene>());
+    }
+    std::fprintf(stderr, "unknown entry scene: %s\n", entry.c_str());
+    return 1;
+}
+
+// The entry ids a project manifest may name — kept in sync with launch_entry.
+const std::vector<std::string> kKnownEntries = {"fps"};
+
+// Load a game.project manifest through the assets:: seam, validate it, and either
+// print an inspection report (headless, no window) or launch its entry scene.
+int launch_project(const std::string& path, bool inspect_only) {
+    auto bytes = assets::load_file(path);
+    if (!bytes) {
+        std::fprintf(stderr, "project: cannot read '%s'\n", path.c_str());
+        return 1;
+    }
+    auto proj = engine::parse_project(std::string(bytes->begin(), bytes->end()));
+    if (!proj) {
+        std::fprintf(stderr, "project: '%s' is not a valid gameproject1 manifest\n",
+                     path.c_str());
+        return 1;
+    }
+    const auto errs = engine::validate(*proj, kKnownEntries);
+
+    if (inspect_only) {
+        std::printf("project: %s\n  name   %s\n  schema %d\n  entry  %s\n",
+                    path.c_str(), proj->name.c_str(), proj->schema, proj->entry.c_str());
+        if (errs.empty()) { std::printf("  status OK\n"); return 0; }
+        std::printf("  status %zu problem(s):\n", errs.size());
+        for (const auto& e : errs) std::printf("    - %s\n", e.c_str());
+        return 1;
+    }
+
+    if (!errs.empty()) {
+        std::fprintf(stderr, "project: '%s' failed validation:\n", path.c_str());
+        for (const auto& e : errs) std::fprintf(stderr, "  - %s\n", e.c_str());
+        return 1;
+    }
+    return launch_entry(proj->entry);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -100,14 +157,20 @@ int main(int argc, char** argv) {
     }
 
     if (mode == "--fps") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — fps";
-        cfg.fb_width  = 640;
-        cfg.fb_height = 400;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        return run_window(cfg, std::make_unique<fps::RaycastScene>());
+        return launch_entry("fps");
+    }
+
+    // Launch a game from a versioned game.project manifest (asset-relative path),
+    // instead of a hard-coded scene flag: this is the Horizon 0 golden path.
+    if (mode == "--project") {
+        if (argc < 3) { std::fprintf(stderr, "usage: demo --project <path>\n"); return 1; }
+        return launch_project(argv[2], /*inspect_only=*/false);
+    }
+
+    // Headless: validate a manifest and print an inspection report, no window.
+    if (mode == "--project-inspect") {
+        if (argc < 3) { std::fprintf(stderr, "usage: demo --project-inspect <path>\n"); return 1; }
+        return launch_project(argv[2], /*inspect_only=*/true);
     }
 
     if (mode == "--3d") {
