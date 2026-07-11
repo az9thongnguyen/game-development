@@ -148,10 +148,30 @@ declare its content → validate the closure → fingerprint it into a package �
 immutably → promote and roll back by moving a pointer.** That is the whole Horizon 0→1
 spine the strategy asked to build *before* adding breadth.
 
-Deliberately **not** built yet, each with its trigger:
+## Preview parity, the cheap way (metric P2)
+
+The strategy tracks a metric called **preview parity**: is what you *previewed* byte-for-byte
+what you *published*? Because a project already reduces to one package hash, answering it is
+a string comparison, not a diff engine — `--project-verify <path> <channel>`:
+
+```cpp
+const std::string local = engine::hash_hex(engine::package_hash(r->resources));  // what I'd ship now
+auto live = read_channel(channel);                                               // what's on the channel
+if (local == *live) return 0;   // parity
+return 2;                        // drift: valid inputs, but they differ
+```
+
+The exit codes are the point. `0` = parity, `2` = drift, `1` = error — three *distinct*
+outcomes, so a script (or CI) can tell "the project drifted from the channel" apart from
+"the command broke." A CI gate that publishes and then asserts `--project-verify ... preview`
+exits `0` catches the whole class of "the thing I shipped isn't the thing I tested" bugs for
+the price of one hash comparison. That the metric fell out this cheaply is the dividend of
+having made the package deterministic back in Chapter 92.
+
+## What is deliberately deferred
+
+Still **not** built, each with its trigger:
 - **A release log / history listing** — add when a UI or audit genuinely needs to
   enumerate past releases; it will be an append-only file, never a directory scan.
-- **Preview-parity diffing** (metric P2) — comparing a running preview to a published
-  release by hash; the hashes are now in place, the comparison is a later slice.
 - **Server-side hosting** — the same path scheme behind an HTTP/object store, which is
   the ops-heavy part the strategy keeps *conditional on evidence*, not scheduled.
