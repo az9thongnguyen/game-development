@@ -10,6 +10,7 @@
 #include "engine/image.hpp"
 #include "engine/ui/theme.hpp"
 #include "games/studio/recipe.hpp"
+#include "games/studio/sheet.hpp"
 
 namespace studio {
 
@@ -26,6 +27,8 @@ const Ramp kRamps[] = {
 constexpr int kRampCount = int(sizeof(kRamps) / sizeof(kRamps[0]));
 const char* kBaseNames[] = {"FBM", "Value", "Perlin", "Checker", "Wood"};
 const char* kOpNames[]   = {"None", "Threshold", "Contrast"};
+const int   kSheetFrames[] = {4, 8, 16};                 // animated-sheet length options
+constexpr int kSheetFrameCount = int(sizeof(kSheetFrames) / sizeof(kSheetFrames[0]));
 } // namespace
 
 StudioScene::StudioScene() { regenerate(); }
@@ -54,6 +57,18 @@ void StudioScene::save_current() {
     assets::write_file(std::string("textures/") + name + ".recipe",
                        std::vector<uint8_t>(rec.begin(), rec.end()));
     collection_.push_back(name);
+}
+
+void StudioScene::export_sheet() {
+    sync_params();
+    const int        frames = kSheetFrames[sheet_idx_];
+    const gfx::Image sheet  = make_sheet(params_, frames);   // seamless-scroll animation
+    char name[32];
+    std::snprintf(name, sizeof(name), "sheet_%02d", sheet_counter_++);
+    // Save under sprites/ where --anim and --sandbox discover animated sheets. The
+    // frame count is self-describing (h/w), so no sidecar is needed to replay it.
+    assets::write_file(std::string("sprites/") + name + ".hrt", gfx::encode_hrt(sheet));
+    sheets_.push_back(name);
 }
 
 void StudioScene::load_saved(const std::string& name) {
@@ -92,7 +107,7 @@ void StudioScene::render(const engine::Context& ctx) {
 
     ui_.begin(&g, in);
 
-    ui_.panel(ui::Rect{12, 12, 232, 300}, "TEXTURE LAB");
+    ui_.panel(ui::Rect{12, 12, 232, 350}, "TEXTURE LAB");
     char buf[48];
     std::snprintf(buf, sizeof(buf), "base: %s", kBaseNames[base_idx_]);
     if (ui_.button(buf)) { base_idx_ = (base_idx_ + 1) % 5; dirty_ = true; }
@@ -107,6 +122,9 @@ void StudioScene::render(const engine::Context& ctx) {
     if (ui_.slider("op amount",  opamt_f_, 0, 1))     dirty_ = true;
     if (ui_.button("Randomize seed")) { seed_ = seed_ * 1664525u + 1013904223u; dirty_ = true; }
     if (ui_.button("Save", true))     save_current();
+    std::snprintf(buf, sizeof(buf), "sheet: %d frames", kSheetFrames[sheet_idx_]);
+    if (ui_.button(buf)) sheet_idx_ = (sheet_idx_ + 1) % kSheetFrameCount;
+    if (ui_.button("Export Sheet"))   export_sheet();       // sprites/sheet_NN.hrt (animated)
 
     ui_.panel(ui::Rect{w_ - 180, 12, 168, 300}, "COLLECTION");
     for (size_t i = 0; i < collection_.size(); ++i) {
