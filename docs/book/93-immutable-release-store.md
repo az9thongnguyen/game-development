@@ -141,7 +141,7 @@ everything on disk." History and listing, if ever needed, will come from an appe
 log, not a directory walk that breaks the moment the store lives behind a web VFS or a
 network.
 
-## What this unlocks, and what is deliberately deferred
+## What this unlocks
 
 With this chapter the content-flow vertical is complete end to end: **create a project →
 declare its content → validate the closure → fingerprint it into a package → publish it
