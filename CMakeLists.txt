@@ -193,6 +193,12 @@ target_compile_definitions(test_font PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_font PRIVATE text_core engine_flags)
 add_test(NAME font COMMAND test_font)
 
+# Anti-aliasing: SSAA coordinate scaling + Wu lines + coverage shapes (no SDL).
+add_executable(test_aa tests/test_aa.cpp src/engine/renderer2d.cpp)
+target_include_directories(test_aa PRIVATE src)
+target_link_libraries(test_aa PRIVATE text_core engine_flags)
+add_test(NAME aa COMMAND test_aa)
+
 # ---- Immediate-mode GUI (subsystem F): editor support -----------------------------
 # Draws via Renderer2D (symbols provided by the linking target); logic runs headless.
 add_library(ui_core STATIC src/engine/ui/ui.cpp)
