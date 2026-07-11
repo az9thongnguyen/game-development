@@ -47,6 +47,26 @@ void Renderer2D::blend_cov(int x, int y, Color c, std::uint8_t coverage) {
     dst = blend(dst, (c & 0x00FFFFFFu) | (a << 24));
 }
 
+// Additive (saturating) deposit at one physical pixel: dst.rgb += c.rgb weighted
+// by (c.alpha * coverage). Unlike blend_cov this brightens rather than covers —
+// stack several and light pools up, the whole point of a glow/light. dst alpha
+// is left alone (the framebuffer stays opaque).
+void Renderer2D::add_cov(int x, int y, Color c, std::uint8_t coverage) {
+    if (coverage == 0) return;
+    if (x < 0 || y < 0 || x >= fb_.width || y >= fb_.height) return;
+    const std::uint32_t w = static_cast<std::uint32_t>(a_of(c)) * coverage / 255u;  // weight 0..255
+    if (w == 0) return;
+    Color& dst = fb_.pixels[y * fb_.pitch + x];
+    std::uint32_t r = r_of(dst) + static_cast<std::uint32_t>(r_of(c)) * w / 255u;
+    std::uint32_t g = g_of(dst) + static_cast<std::uint32_t>(g_of(c)) * w / 255u;
+    std::uint32_t b = b_of(dst) + static_cast<std::uint32_t>(b_of(c)) * w / 255u;
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    dst = rgba(static_cast<std::uint8_t>(r), static_cast<std::uint8_t>(g),
+               static_cast<std::uint8_t>(b), a_of(dst));
+}
+
 // ---- logical primitives (scale by ss_, then hit the sinks) ------------------
 void Renderer2D::clear(Color c) {
     for (int y = 0; y < fb_.height; ++y) {
@@ -63,6 +83,12 @@ void Renderer2D::blend_pixel(int x, int y, Color c) {
     const int bx = x * ss_, by = y * ss_;
     for (int dy = 0; dy < ss_; ++dy)
         for (int dx = 0; dx < ss_; ++dx) blend_cov(bx + dx, by + dy, c, 255);
+}
+
+void Renderer2D::add_pixel(int x, int y, Color c) {
+    const int bx = x * ss_, by = y * ss_;
+    for (int dy = 0; dy < ss_; ++dy)
+        for (int dx = 0; dx < ss_; ++dx) add_cov(bx + dx, by + dy, c, 255);
 }
 
 void Renderer2D::fill_rect(int x, int y, int w, int h, Color c) {
