@@ -211,6 +211,12 @@ target_include_directories(test_ui PRIVATE src)
 target_link_libraries(test_ui PRIVATE ui_core text_core engine_flags)
 add_test(NAME ui COMMAND test_ui)
 
+# Design-system tokens: pure constants, no SDL/renderer needed.
+add_executable(test_theme tests/test_theme.cpp)
+target_include_directories(test_theme PRIVATE src)
+target_link_libraries(test_theme PRIVATE engine_flags)
+add_test(NAME theme COMMAND test_theme)
+
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;
 # A + D + F are used by its scene). Reuses iso_core's A*/TileMap (generic algorithms).
