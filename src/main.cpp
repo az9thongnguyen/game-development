@@ -26,6 +26,7 @@
 #include "games/sandbox/sandbox_scene.hpp"
 #include "games/maplab/maplab_scene.hpp"
 #include "games/fx/fx_scene.hpp"
+#include "games/light/light_scene.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -213,6 +214,18 @@ int main(int argc, char** argv) {
         cfg.highdpi   = true;
         cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<fx::FxScene>());
+    }
+
+    if (mode == "--light") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — 2D lighting";
+        cfg.fb_width  = 960;
+        cfg.fb_height = 600;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        cfg.supersample = 1;   // lights are soft; skip SSAA to keep the per-pixel add cheap
+        return run_window(cfg, std::make_unique<lightdemo::LightScene>());
     }
 
     // Headless test-run worker: polls a BaaS coordinator, runs claimed sandbox
