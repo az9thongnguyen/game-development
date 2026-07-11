@@ -82,6 +82,16 @@ void SandboxScene::toggle_play() {
     else           { world_ = from_scene(snapshot_); playing_ = false; has_sel_ = false; }
 }
 
+void SandboxScene::load_textures() {
+    // ponytail: probe the Lab's fixed studio_NN naming (0..31); swap for a manifest
+    // or dir-scan when the collection outgrows that. Cross-platform (no <filesystem>).
+    for (int i = 0; i < 32; ++i) {
+        char name[16]; std::snprintf(name, sizeof(name), "studio_%02d", i);
+        auto img = gfx::load_image(std::string("textures/") + name + ".hrt");
+        if (img) { tex_names_.push_back(name); tex_[name] = std::move(*img); }
+    }
+}
+
 void SandboxScene::save() const {
     const std::string s = to_scene(world_);
     assets::write_file(kSceneFile, std::vector<uint8_t>(s.begin(), s.end()));
@@ -100,7 +110,7 @@ void SandboxScene::update(double dt, const platform::InputState&) {
 void SandboxScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     w_ = g.width(); h_ = g.height();
-    if (!inited_) { world_.bounds_w = float(w_); world_.bounds_h = float(h_); inited_ = true; }
+    if (!inited_) { world_.bounds_w = float(w_); world_.bounds_h = float(h_); load_textures(); inited_ = true; }
     g.set_font(ctx.font, ui::theme::sz_body);
     g.clear(gfx::rgb(20, 22, 30));
 
@@ -109,8 +119,12 @@ void SandboxScene::render(const engine::Context& ctx) {
     world_.reg.view<Transform2D, Body, Sprite>([&](ecs::Entity e, Transform2D& t, Body& b, Sprite& s) {
         const int cx = int(t.x), cy = int(t.y);
         const int dw = int(b.w * t.scale), dh = int(b.h * t.scale);
-        if (s.round) g.fill_circle(cx, cy, dw / 2, s.color);
-        else         g.fill_rect(cx - dw / 2, cy - dh / 2, dw, dh, s.color);
+        auto tit = s.texture.empty() ? tex_.end() : tex_.find(s.texture);
+        if (tit != tex_.end()) {
+            gfx::Sprite spr{tit->second.pixels.data(), tit->second.w, tit->second.h};
+            g.blit_scaled(spr, cx - dw / 2, cy - dh / 2, dw, dh);
+        } else if (s.round) g.fill_circle(cx, cy, dw / 2, s.color);
+        else                g.fill_rect(cx - dw / 2, cy - dh / 2, dw, dh, s.color);
         // orientation tick so rotation/spin is visible
         const int ex = cx + int(std::cos(t.rot) * dw * 0.5f);
         const int ey = cy + int(std::sin(t.rot) * dw * 0.5f);
@@ -140,7 +154,7 @@ void SandboxScene::render(const engine::Context& ctx) {
 
     // ---- inspector (edit mode + a selection) ----
     if (!playing_ && has_sel_ && world_.reg.valid(sel_)) {
-        ui_.panel(ui::Rect{w_ - 176, 12, 164, 240}, "INSPECTOR");
+        ui_.panel(ui::Rect{w_ - 176, 12, 164, 276}, "INSPECTOR");
         if (Transform2D* t = world_.reg.get<Transform2D>(sel_)) {
             ui_.slider("rot",   t->rot,   -3.14159f, 3.14159f);
             ui_.slider("scale", t->scale, 0.3f, 3.0f);
@@ -158,6 +172,21 @@ void SandboxScene::render(const engine::Context& ctx) {
         if (ui_.button("Recolor")) {
             color_idx_ = (color_idx_ + 1) % kSwatchCount;
             if (Sprite* s = world_.reg.get<Sprite>(sel_)) s->color = kSwatches[color_idx_];
+        }
+        if (!tex_names_.empty()) {
+            if (Sprite* s = world_.reg.get<Sprite>(sel_)) {
+                char lbl[32];
+                std::snprintf(lbl, sizeof(lbl), "Tex: %s", s->texture.empty() ? "none" : s->texture.c_str());
+                if (ui_.button(lbl)) {                 // cycle none -> names[0] -> ... -> none
+                    int idx = -1;
+                    for (size_t k = 0; k < tex_names_.size(); ++k)
+                        if (tex_names_[k] == s->texture) { idx = int(k); break; }
+                    ++idx;
+                    s->texture = idx >= int(tex_names_.size()) ? std::string() : tex_names_[size_t(idx)];
+                }
+            }
+        } else {
+            ui_.label("(make textures in --studio)");
         }
         if (ui_.button("Delete")) { world_.reg.destroy(sel_); has_sel_ = false; }
     } else if (!playing_) {

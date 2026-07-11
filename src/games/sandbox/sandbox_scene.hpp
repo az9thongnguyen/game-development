@@ -8,8 +8,10 @@
 // =============================================================================
 #pragma once
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "engine/image.hpp"
 #include "engine/scene.hpp"
 #include "engine/ui/ui.hpp"
 #include "games/sandbox/world.hpp"
@@ -32,6 +34,7 @@ private:
     void toggle_play();
     void save() const;
     void load();
+    void load_textures();                              // probe the Texture Lab collection
 
     World                    world_;
     std::vector<PaletteItem> palette_;
@@ -47,6 +50,10 @@ private:
     bool        inited_   = false;
     int         color_idx_ = 0;
     int         w_ = 0, h_ = 0;
+
+    // Textures discovered from the Texture Lab collection (name -> decoded image).
+    std::unordered_map<std::string, gfx::Image> tex_;
+    std::vector<std::string>                    tex_names_;
 };
 
 } // namespace sandbox
