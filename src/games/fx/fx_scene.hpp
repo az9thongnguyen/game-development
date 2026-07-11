@@ -7,6 +7,7 @@
 //  particle file — the sim itself is the pure particles_core.
 // =============================================================================
 #pragma once
+#include "engine/anim/tween.hpp"
 #include "engine/fx/particles.hpp"
 #include "engine/scene.hpp"
 #include "engine/ui/ui.hpp"
@@ -22,7 +23,9 @@ public:
 private:
     ParticleSystem sys_;
     ui::Context    ui_;
+    anim::Tween    sweep_;               // ping-pong drive for the emitter X (demo of tween_core)
     bool           fountain_ = true;
+    bool           sweep_on_ = false;    // when on, the fountain sweeps across the screen
     int            w_ = 960, h_ = 600;   // seeded to the window size so frame-1 update is sane
 };
 
