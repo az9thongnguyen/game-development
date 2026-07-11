@@ -67,6 +67,7 @@ adopted execution posture. The two are complementary, not competing.
 | **Project Manifest v1** | Platform spine (Horizon 0, [strategy](docs/strategy/)) — a versioned `game.project` manifest (`project_core`: parse/validate/round-trip, pure & headless) + a shared `launch_entry` seam so `--project <path>` launches a game **from a file** instead of a hard-coded flag; `--project-inspect` is the headless validate/doctor. `assets/projects/creator.gameproject` runs the FPS game with no `src/main.cpp` edit — the first step of the create→…→run golden path | ✅ done |
 | **Resource Closure v1** | Platform spine (Horizon 0) — a manifest **declares its content** (additive `asset <type> <path>` lines) and the launcher enforces **dependency closure**: `resource_core` hand-written FNV-1a `content_hash` (deterministic, wasm-safe), `--project-inspect` reports each asset + hash, and `--project` **refuses to launch** on a missing dependency (hard reject). The seed of the package/preview-parity fingerprint | ✅ done |
 | **Package Manifest v1** | Platform spine (Horizon 0→1 bridge) — `--project-package` emits a deterministic `package1` manifest: identity + content-hashed resources **sorted by path** + a combined `packagehash` (`resource_core::build_package`/`package_hash`). Order-independent, content-sensitive — the **immutable-release-id seed** a preview/rollback compares by hash. `docs/book/92` | ✅ done |
+| **Release Store v1** | Platform spine (Horizon 1) — a **local immutable release store**: `--project-publish` writes the package manifest content-addressed at `releases/<hash>/` and points a **channel** (`preview`/`production`) at it; `--release-promote`/`--release-rollback` move channel pointers; `--release-status` reports them. `release_core` = pure paths + channel format + trust-boundary validators (rollback args become paths); publish is idempotent (re-publish = *verified*) and **refuses to overwrite** a release id with different bytes. Completes the create→…→publish→promote/rollback spine. `docs/book/93` | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -84,6 +85,10 @@ cmake --build build
 ./build/demo --project projects/creator.gameproject   # golden path: launch a game from a game.project manifest
 ./build/demo --project-inspect projects/creator.gameproject  # headless: validate/doctor a manifest (no window)
 ./build/demo --project-package projects/creator.gameproject  # headless: emit the deterministic package manifest (release-id seed)
+./build/demo --project-publish projects/creator.gameproject  # headless: store the release immutably + point the preview channel
+./build/demo --release-status                                # headless: what preview/production point at (+ present?)
+./build/demo --release-promote preview production            # headless: move production onto preview's release
+./build/demo --release-rollback production <release-id>       # headless: aim a channel back at a prior release
 ./build/demo            # M0 engine demo
 ./build/demo --gui      # chess (GUI)     — also: hvh|hvai  easy|medium|hard
 ./build/demo --tui      # chess (terminal)
