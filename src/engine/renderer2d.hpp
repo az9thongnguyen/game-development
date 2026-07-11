@@ -42,6 +42,7 @@ public:
 
     void set_pixel(int x, int y, Color c);    // opaque write, clipped (logical)
     void blend_pixel(int x, int y, Color c);  // alpha blend, clipped (logical)
+    void add_pixel(int x, int y, Color c);    // ADDITIVE (saturating), c's alpha = weight; for glows/lights
 
     void fill_rect(int x, int y, int w, int h, Color c);
     void fill_v_gradient(int x, int y, int w, int h, Color top, Color bottom);  // vertical lerp fill
@@ -84,6 +85,7 @@ private:
     // primitives rasterize in physical space and deposit partial coverage here.
     void fill_phys(int px, int py, int pw, int ph, Color c);           // solid rect
     void blend_cov(int px, int py, Color c, std::uint8_t coverage);    // coverage blend
+    void add_cov(int px, int py, Color c, std::uint8_t coverage);      // additive coverage (glow)
 
     platform::Framebuffer fb_;
     text::Font*           font_    = nullptr;
