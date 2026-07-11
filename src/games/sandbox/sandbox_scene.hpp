@@ -54,6 +54,8 @@ private:
     // Textures discovered from the Texture Lab collection (name -> decoded image).
     std::unordered_map<std::string, gfx::Image> tex_;
     std::vector<std::string>                    tex_names_;
+    std::unordered_map<std::string, int>        sheet_frames_;   // sheet name -> frame count
+    double                                      anim_time_ = 0;  // shared cosmetic clock for flipbooks
 };
 
 } // namespace sandbox
