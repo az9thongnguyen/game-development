@@ -139,6 +139,93 @@ void Renderer2D::draw_line_aa(int lx0, int ly0, int lx1, int ly1, Color c) {
     }
 }
 
+// ---- anti-aliased shapes (analytic coverage) --------------------------------
+namespace {
+// Four corner boxes (top-left origin) + their quarter-disc centres, in physical px.
+struct Corner { int bx, by, cx, cy; };
+inline void corners_of(int px, int py, int pw, int ph, int pr, Corner out[4]) {
+    out[0] = {px,           py,           px + pr,       py + pr};        // TL
+    out[1] = {px + pw - pr, py,           px + pw - pr,  py + pr};        // TR
+    out[2] = {px,           py + ph - pr, px + pr,       py + ph - pr};   // BL
+    out[3] = {px + pw - pr, py + ph - pr, px + pw - pr,  py + ph - pr};   // BR
+}
+} // namespace
+
+void Renderer2D::fill_round_rect(int x, int y, int w, int h, int radius, Color c) {
+    if (w <= 0 || h <= 0) return;
+    if (radius <= 0) { fill_rect(x, y, w, h, c); return; }
+    const int px = x * ss_, py = y * ss_, pw = w * ss_, ph = h * ss_;
+    int pr = radius * ss_;
+    const int maxr = (pw < ph ? pw : ph) / 2;
+    if (pr > maxr) pr = maxr;
+
+    // Solid interior: the full-height middle band + the left/right straight bands.
+    fill_phys(px + pr,      py,      pw - 2 * pr, ph,          c);
+    fill_phys(px,           py + pr, pr,          ph - 2 * pr, c);
+    fill_phys(px + pw - pr, py + pr, pr,          ph - 2 * pr, c);
+
+    // Four AA corner quarter-discs.
+    Corner cs[4]; corners_of(px, py, pw, ph, pr, cs);
+    const float fr = float(pr);
+    for (const Corner& k : cs)
+        for (int Y = k.by; Y < k.by + pr; ++Y)
+            for (int X = k.bx; X < k.bx + pr; ++X) {
+                const float dx = X + 0.5f - k.cx, dy = Y + 0.5f - k.cy;
+                blend_cov(X, Y, c, cov_of(fr + 0.5f - std::sqrt(dx * dx + dy * dy)));
+            }
+}
+
+void Renderer2D::draw_round_rect(int x, int y, int w, int h, int radius, Color c) {
+    if (w <= 0 || h <= 0) return;
+    if (radius <= 0) { draw_rect(x, y, w, h, c); return; }
+    const int px = x * ss_, py = y * ss_, pw = w * ss_, ph = h * ss_, t = ss_;
+    int pr = radius * ss_;
+    const int maxr = (pw < ph ? pw : ph) / 2;
+    if (pr > maxr) pr = maxr;
+
+    fill_phys(px + pr,      py,          pw - 2 * pr, t,           c);   // top
+    fill_phys(px + pr,      py + ph - t, pw - 2 * pr, t,           c);   // bottom
+    fill_phys(px,           py + pr,     t,           ph - 2 * pr, c);   // left
+    fill_phys(px + pw - t,  py + pr,     t,           ph - 2 * pr, c);   // right
+
+    Corner cs[4]; corners_of(px, py, pw, ph, pr, cs);
+    const float fr = float(pr), ft = float(t);
+    for (const Corner& k : cs)
+        for (int Y = k.by; Y < k.by + pr; ++Y)
+            for (int X = k.bx; X < k.bx + pr; ++X) {
+                const float dx = X + 0.5f - k.cx, dy = Y + 0.5f - k.cy;
+                const float d  = std::sqrt(dx * dx + dy * dy);
+                const float ring = clamp01(fr + 0.5f - d) - clamp01(fr - ft + 0.5f - d);
+                if (ring > 0.0f) blend_cov(X, Y, c, cov_of(ring));
+            }
+}
+
+void Renderer2D::fill_circle(int lcx, int lcy, int lr, Color c) {
+    if (lr <= 0) return;
+    const float cx = lcx * float(ss_), cy = lcy * float(ss_), fr = lr * float(ss_);
+    const int x0 = int(std::floor(cx - fr)), x1 = int(std::ceil(cx + fr));
+    const int y0 = int(std::floor(cy - fr)), y1 = int(std::ceil(cy + fr));
+    for (int Y = y0; Y <= y1; ++Y)
+        for (int X = x0; X <= x1; ++X) {
+            const float dx = X + 0.5f - cx, dy = Y + 0.5f - cy;
+            blend_cov(X, Y, c, cov_of(fr + 0.5f - std::sqrt(dx * dx + dy * dy)));
+        }
+}
+
+void Renderer2D::draw_circle(int lcx, int lcy, int lr, Color c) {
+    if (lr <= 0) return;
+    const float cx = lcx * float(ss_), cy = lcy * float(ss_), fr = lr * float(ss_), t = float(ss_);
+    const int x0 = int(std::floor(cx - fr)), x1 = int(std::ceil(cx + fr));
+    const int y0 = int(std::floor(cy - fr)), y1 = int(std::ceil(cy + fr));
+    for (int Y = y0; Y <= y1; ++Y)
+        for (int X = x0; X <= x1; ++X) {
+            const float dx = X + 0.5f - cx, dy = Y + 0.5f - cy;
+            const float d  = std::sqrt(dx * dx + dy * dy);
+            const float ring = clamp01(fr + 0.5f - d) - clamp01(fr - t + 0.5f - d);
+            if (ring > 0.0f) blend_cov(X, Y, c, cov_of(ring));
+        }
+}
+
 void Renderer2D::blit(const Sprite& s, int x, int y) {
     if (!s.pixels) return;
     for (int sy = 0; sy < s.h; ++sy) {
