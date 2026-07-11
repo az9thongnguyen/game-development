@@ -55,6 +55,8 @@ add_library(baas_core OBJECT
   realtime/ws_controller.cc
   replays/replay_service.cc
   replays/replay_controller.cc
+  asset_registry/asset_service.cc
+  asset_registry/asset_controller.cc
   observability/metrics.cc
   app_setup.cc
 )
@@ -97,6 +99,10 @@ add_test(NAME baas_cloudsave COMMAND test_baas_cloudsave)
 add_executable(test_baas_inventory ${CMAKE_SOURCE_DIR}/tests/test_baas_inventory.cc)
 target_link_libraries(test_baas_inventory PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_inventory COMMAND test_baas_inventory)
+
+add_executable(test_baas_assets ${CMAKE_SOURCE_DIR}/tests/test_baas_assets.cc)
+target_link_libraries(test_baas_assets PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_assets COMMAND test_baas_assets)
 
 foreach(svc config analytics events admin replays ratelimit metrics)
   add_executable(test_baas_${svc} ${CMAKE_SOURCE_DIR}/tests/test_baas_${svc}.cc)
