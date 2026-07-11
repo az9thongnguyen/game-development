@@ -46,6 +46,7 @@ material that accompanies the code.
 | **Sandbox v1** | Declarative 2D **sandbox** — drag-drop actors, data-only behaviors (mover/spinner/bouncer/lifetime/spawner) + an `OnOverlap` event→action rule on the generic ECS, deterministic `tick`, Play/Stop via scene snapshot, F5/F9 save/load (`--sandbox`) | ✅ done |
 | **Textured Sprites v1** | The Mini-Studio join — sandbox actors wear Texture Lab `.hrt` textures: a texture name on the pure `Sprite`, a nearest-neighbour `blit_scaled` primitive, cross-platform collection probe, inspector `Tex:` cycle; round-trips through save/snapshot | ✅ done |
 | **Map / Level Lab v1** | Mini Studio — tile-grid **level editor** (`--maplab`): paint/flood-fill on the shared `fps::Map`, `fpsmap1` text format, palette + save/load collection; `--fps` loads the authored level (`maps/level_00.map`) with a default fallback | ✅ done |
+| **Particle System v1** | Engine depth (Track A) — reusable **CPU particle sim** (`particles_core`): deterministic seeded xorshift, fractional-accumulator emission, gravity, swap-pop reap, bounded pool, fade helpers; interactive `--fx` playground (fountain + click-bursts + live sliders) | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -72,6 +73,7 @@ cmake --build build
 ./build/demo --studio   # Mini Studio: procedural Texture Lab (cycle base/op/ramp, sliders, Save → .hrt)
 ./build/demo --sandbox  # declarative sandbox: drag-drop actors, attach behaviors + Texture Lab textures, Play/Stop (F5/F9)
 ./build/demo --maplab   # Map/Level Lab: paint/flood-fill a tile grid, Save → maps/level_NN.map (loaded by --fps)
+./build/demo --fx       # particle playground: fountain + click bursts + live gravity/rate/speed/spread sliders
 ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps, iso, studio)
 ```
 
