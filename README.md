@@ -50,6 +50,7 @@ material that accompanies the code.
 | **Textured Walls v1** | Mini-Studio 3-tool join — `--fps` skins wall ids 1–3 with Texture Lab `textures/wall_N.hrt` (procedural fallback); a Lab-authored level rendered with Lab-authored walls, joined through `assets/` by naming convention | ✅ done |
 | **BaaS Asset Registry v1** | Lean BaaS (Track C) — project-scoped `/v1/assets` (upload/list/download/delete the Mini-Studio `.hrt`/`.map`): `assets` table, `web::asset` service + Drogon controller (api-key gate only), `?kind=` filter, optimistic `If-Match`, SDK `Assets` handle; the Track B→C bridge | ✅ done |
 | **BaaS Test-Runner v1** | Lean BaaS (Track C) — managed headless runs: `/v1/testruns` job coordinator (create/claim/complete, atomic conditional-UPDATE state machine) + a `demo --runner` worker that runs `sandbox1` scenarios deterministically and posts pass/fail; SDK `TestRuns` handle; full loop tested end-to-end | ✅ done |
+| **Tween & Easing v1** | Engine depth (Track A) — the animation interpolation primitive (`tween_core`): 13 named easing curves (`ease()`, clamped, endpoint-pinned; Back/Elastic overshoot) + a deterministic scalar `Tween` (one-shot + no-drift ping-pong); `--fx` "sweep" drives the emitter along a `SineInOut` curve | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -76,7 +77,7 @@ cmake --build build
 ./build/demo --studio   # Mini Studio: procedural Texture Lab (cycle base/op/ramp, sliders, Save → .hrt)
 ./build/demo --sandbox  # declarative sandbox: drag-drop actors, attach behaviors + Texture Lab textures, Play/Stop (F5/F9)
 ./build/demo --maplab   # Map/Level Lab: paint/flood-fill a tile grid, Save → maps/level_NN.map (loaded by --fps)
-./build/demo --fx       # particle playground: fountain + click bursts + live gravity/rate/speed/spread sliders
+./build/demo --fx       # particle playground: fountain + click bursts + live sliders + "sweep" (tween-driven emitter)
 ./build/demo --runner <baas_url> <api_key>   # headless test-run worker: polls the BaaS, runs sandbox scenarios
 ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps, iso, studio)
 ```
