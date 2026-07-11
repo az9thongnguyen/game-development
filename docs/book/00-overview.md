@@ -153,9 +153,21 @@ checks).
 | 65 | **Replay System** (command-stream record/store/playback: the `replays` store, `client.replays()`, colony record→cloud→playback; determinism honestly discussed) |
 | 66 | **Rate limiting** (production hardening: a pure token-bucket limiter, a pre-routing advice keyed by api-key/IP on `/v1/*`, 429s; single-node caveats stated) |
 | 67 | **Observability** (metrics + structured access logs from one pre-sending advice; status/route tallies with cardinality control; admin-gated `/metrics`) |
+| 68 | **Font rendering** (from the 8×8 bitmap to anti-aliased `stb_truetype` glyphs: outlines vs pixels, rasterization = AA, glyph metrics/baseline, the atlas cache) |
+| 69 | **Anti-aliasing I — SSAA** (the supersample seam: physical vs logical framebuffer, downsample on present, logical mouse, free AA for the 3D raycaster, the cost/toggle) |
+| 70 | **Anti-aliasing II — Wu & coverage** (Xiaolin Wu lines; analytic coverage for rounded rects/circles/rings via a tiny distance field) |
+| 71 | **Design systems** (tokens as one source of truth, the one-accent rule, type/spacing/radius scales, elevation + state ramps, applying it to the IMGUI) |
 
 Each chapter follows the same shape: **concept → code walkthrough → run &
 observe → pitfalls → exercises.**
+
+> **UI/UX overhaul (ch.68–71).** The renderer gained a real anti-aliased font
+> (`stb_truetype` + a glyph atlas), universal SSAA plus analytic per-primitive AA
+> (Wu lines, coverage rounded-rects/circles, soft shadows), and a design-system
+> layer (`engine/ui/theme.hpp` tokens + rebuilt widgets). All games inherit it;
+> **colony** and **editor** are the showcases (verified native and in-browser).
+> Native 2D scenes render at `supersample=2`; the web build stays at `1×` (per-
+> primitive AA + AA fonts still apply) so WASM keeps a smooth frame rate.
 
 ## 6. Milestone roadmap
 
