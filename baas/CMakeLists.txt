@@ -57,6 +57,8 @@ add_library(baas_core OBJECT
   replays/replay_controller.cc
   asset_registry/asset_service.cc
   asset_registry/asset_controller.cc
+  test_runner/testrun_service.cc
+  test_runner/testrun_controller.cc
   observability/metrics.cc
   app_setup.cc
 )
@@ -104,6 +106,10 @@ add_executable(test_baas_assets ${CMAKE_SOURCE_DIR}/tests/test_baas_assets.cc)
 target_link_libraries(test_baas_assets PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_assets COMMAND test_baas_assets)
 
+add_executable(test_baas_testruns ${CMAKE_SOURCE_DIR}/tests/test_baas_testruns.cc)
+target_link_libraries(test_baas_testruns PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_testruns COMMAND test_baas_testruns)
+
 foreach(svc config analytics events admin replays ratelimit metrics)
   add_executable(test_baas_${svc} ${CMAKE_SOURCE_DIR}/tests/test_baas_${svc}.cc)
   target_link_libraries(test_baas_${svc} PRIVATE baas_core CURL::libcurl engine_flags)
@@ -112,8 +118,12 @@ endforeach()
 
 # End-to-end: the real SDK (libcurl transport) against a live server. Links the
 # SDK + the server + curl (for the healthz probe in the harness).
-add_executable(test_sdk_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_live.cc)
-target_link_libraries(test_sdk_live PRIVATE gbaas_sdk baas_core CURL::libcurl engine_flags)
+# test_sdk_live also drives the full test-runner loop, so it compiles the worker
+# (process_one) + registry.cpp and links runner_core (run_scenario + sandbox sim).
+add_executable(test_sdk_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_live.cc
+  ${CMAKE_SOURCE_DIR}/src/games/runner/worker.cpp
+  ${CMAKE_SOURCE_DIR}/src/engine/ecs/registry.cpp)
+target_link_libraries(test_sdk_live PRIVATE gbaas_sdk baas_core runner_core CURL::libcurl engine_flags)
 add_test(NAME sdk_live COMMAND test_sdk_live)
 
 # End-to-end realtime: the SDK's NATIVE ws:// transport against a live server.

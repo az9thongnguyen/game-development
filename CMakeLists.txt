@@ -106,9 +106,11 @@ add_executable(demo
   src/games/sandbox/sandbox_scene.cpp
   src/games/maplab/maplab_scene.cpp
   src/games/fx/fx_scene.cpp
+  src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core sandbox_core maplab_core particles_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core runner_core)
+# (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
 # ---- Tests (CTest) -----------------------------------------------------------
@@ -340,6 +342,25 @@ add_executable(test_particles tests/test_particles.cpp
 target_include_directories(test_particles PRIVATE src)
 target_link_libraries(test_particles PRIVATE engine_flags)
 add_test(NAME particles COMMAND test_particles)
+
+# ---- Test-runner worker core (Track C): runs a sandbox scenario headlessly ----
+# Pure (no SDK/no Drogon): reuses the sandbox sim to execute + check a scenario.
+add_library(runner_core STATIC
+  src/games/runner/runner.cpp
+)
+target_include_directories(runner_core PUBLIC src)
+target_link_libraries(runner_core PUBLIC sandbox_core PRIVATE engine_flags)
+
+# test_runner compiles the sandbox sources directly (dependency-free, like test_sandbox).
+add_executable(test_runner tests/test_runner.cpp
+  src/games/runner/runner.cpp
+  src/games/sandbox/world.cpp
+  src/games/sandbox/serialize.cpp
+  src/engine/ecs/registry.cpp
+)
+target_include_directories(test_runner PRIVATE src)
+target_link_libraries(test_runner PRIVATE engine_flags)
+add_test(NAME runner COMMAND test_runner)
 
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
