@@ -24,4 +24,9 @@ bool Flipbook::done() const {
     return !loop && frames > 0 && fps > 0.0f && t * fps >= static_cast<float>(frames);
 }
 
+int frames_in_sheet(int w, int h) {
+    if (w > 0 && h > w && h % w == 0) return h / w;
+    return 1;
+}
+
 } // namespace anim
