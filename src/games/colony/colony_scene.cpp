@@ -3,6 +3,8 @@
 // =============================================================================
 #include "games/colony/colony_scene.hpp"
 
+#include "engine/ui/theme.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -298,6 +300,7 @@ void ColonyScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     w_ = g.width();
     h_ = g.height();
+    g.set_font(ctx.font, ui::theme::sz_body);   // AA UI text (falls back to 8x8 if null)
     if (ctx.dt > 0.0) fps_ = fps_ * 0.92 + (1.0 / ctx.dt) * 0.08;
 
     cache_.reload_changed();                 // D: hot-reload the sprite if the file changed
@@ -352,7 +355,7 @@ void ColonyScene::render(const engine::Context& ctx) {
     in.released = ctx.input.released(MouseButton::Left);
 
     ui_.begin(&g, in);
-    ui_.panel(ui::Rect{12, 12, 210, 588}, "COLONY");
+    ui_.panel(ui::Rect{12, 12, 236, 736}, "COLONY");
     char line[64];
     std::snprintf(line, sizeof(line), "agents: %d   fps: %d", sim_.agent_count(), static_cast<int>(fps_ + 0.5));
     ui_.label(line);
@@ -411,24 +414,30 @@ void ColonyScene::render(const engine::Context& ctx) {
     }
     ui_.end();
 
-    // ---- BaaS: the leaderboard panel (raw-drawn, read-only) ----
-    const int  bx = 240, by = 12, bw = 264;
+    // ---- BaaS: the leaderboard panel (read-only, same design language) ----
+    const int  bx = 260, by = 12, bw = 288;
     const int  rows = board_.entries.empty() ? 1 : static_cast<int>(board_.entries.size());
-    const int  bh = 30 + rows * 14 + 8;
+    const int  bh = 44 + rows * 20 + ui::theme::space_md;
     const bool over_board = board_open_ && ctx.input.mouse_x >= bx && ctx.input.mouse_x < bx + bw &&
                             ctx.input.mouse_y >= by && ctx.input.mouse_y < by + bh;
     if (board_open_) {
-        g.fill_rect(bx, by, bw, bh, gfx::rgb(20, 24, 34));
-        g.draw_text(bx + 8, by + 8, "LEADERBOARD  colony_high", gfx::rgb(220, 220, 120), 1);
-        int yy = by + 26;
+        g.drop_shadow(bx, by, bw, bh, ui::theme::radius_md, 0, 4, 10, gfx::rgba(0, 0, 0, 90));
+        g.fill_round_rect(bx, by, bw, bh, ui::theme::radius_md, ui::theme::elevated);
+        g.draw_round_rect(bx, by, bw, bh, ui::theme::radius_md, ui::theme::border);
+        const int px = bx + ui::theme::space_md;
+        g.set_font_size(ui::theme::sz_title);
+        g.draw_text(px, by + ui::theme::space_md, "Leaderboard", ui::theme::text);
+        g.fill_rect(px, by + 36, bw - 2 * ui::theme::space_md, 1, ui::theme::border);
+        int yy = by + 44;
+        g.set_font_size(ui::theme::sz_body);
         if (board_.entries.empty()) {
-            g.draw_text(bx + 8, yy, "no scores yet", gfx::rgb(150, 160, 180), 1);
+            g.draw_text(px, yy, "no scores yet", ui::theme::text_muted);
         }
         for (const auto& e : board_.entries) {
             char row[80];
-            std::snprintf(row, sizeof(row), "%2d. %-12.12s %lld", e.rank, e.display_name.c_str(), e.value);
-            g.draw_text(bx + 8, yy, row, gfx::rgb(200, 210, 225), 1);
-            yy += 14;
+            std::snprintf(row, sizeof(row), "%2d.  %-12.12s  %lld", e.rank, e.display_name.c_str(), e.value);
+            g.draw_text(px, yy, row, ui::theme::text_dim);
+            yy += 20;
         }
     }
 
@@ -440,11 +449,13 @@ void ColonyScene::render(const engine::Context& ctx) {
     if (online_ && (!motd_.empty() || !event_name_.empty())) {
         std::string banner = motd_;
         if (!event_name_.empty()) banner += "   [LIVE: " + event_name_ + "]";
-        g.draw_text(12, h_ - 30, banner.c_str(), gfx::rgb(210, 205, 130), 1);
+        g.set_font_size(ui::theme::sz_body);
+        g.draw_text(bx, h_ - 44, banner.c_str(), ui::theme::warn);
     }
-    g.draw_text(12, h_ - 16,
-                "BaaS: auth/leaderboard/cloud-save/inventory/config/analytics/events  (native + web)  -  ESC:quit",
-                gfx::rgb(150, 160, 180), 1);
+    g.set_font_size(ui::theme::sz_caption);
+    g.draw_text(bx, h_ - 22,
+                "BaaS: auth / leaderboard / cloud-save / inventory / config / analytics / events   (native + web)   ESC: quit",
+                ui::theme::text_muted);
 }
 
 } // namespace colony

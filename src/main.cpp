@@ -36,6 +36,15 @@ void parse_chess_opts(int argc, char** argv, int from, bool& vs_ai, int& depth) 
     }
 }
 
+// SSAA factor for 2D scenes. Native gets full 2× supersampling; the web build
+// stays at 1× (per-primitive AA + AA fonts still apply) because 4× software fill
+// in WASM is too costly for a smooth frame rate.
+#ifdef __EMSCRIPTEN__
+constexpr int kAA = 1;
+#else
+constexpr int kAA = 2;
+#endif
+
 int run_window(const platform::Config& cfg, std::unique_ptr<engine::Scene> scene) {
     if (!platform::init(cfg)) return 1;
     platform::init_audio();
@@ -72,6 +81,7 @@ int main(int argc, char** argv) {
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<chess::ChessScene>(vs_ai, depth));
     }
 
@@ -116,6 +126,7 @@ int main(int argc, char** argv) {
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<iso::IsoScene>());
     }
 
@@ -127,17 +138,19 @@ int main(int argc, char** argv) {
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<editor::EditorScene>());
     }
 
     if (mode == "--colony") {
         platform::Config cfg;
         cfg.title     = "hand-engine — colony (ECS + jobs + UI)";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
+        cfg.fb_width  = 1000;
+        cfg.fb_height = 760;   // room for the taller design-system panel
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<colony::ColonyScene>());
     }
 
@@ -146,6 +159,6 @@ int main(int argc, char** argv) {
     cfg.title     = "hand-engine — M0";
     cfg.fb_width  = 480;
     cfg.fb_height = 270;
-    cfg.scale     = 2;
+    cfg.scale     = 2;   // retro: nearest scaling, no SSAA (keep the chunky M0 look)
     return run_window(cfg, std::make_unique<demo::DemoScene>());
 }
