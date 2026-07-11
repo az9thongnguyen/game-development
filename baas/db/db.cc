@@ -107,6 +107,16 @@ CREATE TABLE IF NOT EXISTS replays (
   data TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS assets (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT '',
+  data TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, name)
+);
 )SQL";
 
 bool is_blank(const std::string& s) {
