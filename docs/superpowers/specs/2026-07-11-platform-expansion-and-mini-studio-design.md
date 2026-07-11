@@ -164,8 +164,10 @@ authoring; web is preview-only.** IDBFS persistence is future work (noted, not b
 ### 2.7 Testing (`tests/test_studio.cpp`, CTest suite `studio`)
 - **Determinism:** `generate(p) == generate(p)` byte-for-byte; changing `seed` changes
   output.
-- **Seamlessness:** with `tileable=true`, edge column 0 == column w-1 and row 0 ==
-  row h-1 (exact for value/Perlin lattice wrap).
+- **Seamlessness:** tested as noise **periodicity** — `noise(u,v)==noise(u+1,v)` and
+  `noise(u,v)==noise(u,v+1)` (period 1.0). This is the correct invariant (the last
+  rendered column is `u=(w-1)/w`, not `u=1`, so edge-column equality would be wrong);
+  period-1 continuity is exactly what makes adjacent tiles seamless.
 - **Round-trip:** `decode_hrt(encode_hrt(img)) == img` (closes the image seam).
 - **Recipe round-trip:** `parse(serialize(p)) == p`.
 - **fBm sanity:** output stays in [0,1]; more octaves ⇒ strictly ≥ variance of 1 octave.
