@@ -128,6 +128,27 @@ static void test_scene_with_behaviors_roundtrip() {
     const std::string once = to_scene(w);
     CHECK(to_scene(from_scene(once)) == once);          // proto sub-records round-trip
 }
+// ---- textured sprites: a texture is a name that round-trips through the codec ----
+static void test_spawn_copies_texture() {
+    World w; Archetype a; a.texture = "studio_03";
+    ecs::Entity e = w.spawn(a, 0, 0);
+    CHECK(w.reg.get<Sprite>(e)->texture == "studio_03");
+    Archetype b; ecs::Entity e2 = w.spawn(b, 0, 0);      // default is untextured
+    CHECK(w.reg.get<Sprite>(e2)->texture.empty());
+}
+static void test_archetype_codec_texture() {
+    Archetype a; a.texture = "studio_07"; a.mover = true; a.vx = 5;
+    Archetype b = parse_archetype(archetype_tokens(a));
+    CHECK(b.texture == "studio_07" && b.mover && b.vx == 5);
+}
+static void test_scene_roundtrip_texture() {
+    World w; Archetype a; a.texture = "studio_02"; w.spawn(a, 10, 20);
+    const std::string s = to_scene(w);
+    CHECK(s.find("tex=studio_02") != std::string::npos);  // token present
+    CHECK(to_scene(from_scene(s)) == s);                   // round-trips
+    World u; Archetype b; u.spawn(b, 0, 0);                // untextured emits no token
+    CHECK(to_scene(u).find("tex=") == std::string::npos);
+}
 static void test_snapshot_restore() {
     World w; Archetype ball; ball.mover = true; ball.vx = 40; ball.bouncer = true;
     w.spawn(ball, 50, 50);
@@ -148,6 +169,9 @@ int main() {
     test_archetype_codec();
     test_scene_roundtrip();
     test_scene_with_behaviors_roundtrip();
+    test_spawn_copies_texture();
+    test_archetype_codec_texture();
+    test_scene_roundtrip_texture();
     test_snapshot_restore();
     if (g_failures == 0) std::printf("sandbox: all tests passed\n");
     else                 std::printf("sandbox: %d FAILURE(S)\n", g_failures);

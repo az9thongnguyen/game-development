@@ -12,7 +12,7 @@ ecs::Entity World::spawn(const Archetype& a, float x, float y) {
     ecs::Entity e = reg.create();
     reg.add<Transform2D>(e, {x, y, 0, 1});
     reg.add<Body>(e, {a.w, a.h});
-    reg.add<Sprite>(e, {a.color, a.round});
+    reg.add<Sprite>(e, {a.color, a.round, a.texture});
     if (a.mover)    reg.add<Mover>(e, {a.vx, a.vy});
     if (a.spinner)  reg.add<Spinner>(e, {a.omega});
     if (a.bouncer)  reg.add<Bouncer>(e, {});
