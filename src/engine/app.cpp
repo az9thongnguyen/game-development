@@ -44,7 +44,7 @@ void App::frame(double dt) {
     // Render once, after the logic has caught up. `alpha` is how far we are into
     // the next not-yet-simulated step; scenes can use it to interpolate motion so
     // rendering looks smooth even though logic ticks at a fixed rate.
-    gfx::Renderer2D renderer(platform::framebuffer());
+    gfx::Renderer2D renderer(platform::framebuffer(), platform::supersample());
     Context ctx{ renderer, platform::input(), dt, time_, accumulator_ / kFixedDt, ui_font_.get() };
     scene_->render(ctx);
 }
