@@ -28,6 +28,10 @@ struct Image {
 // composes with the asset cache (which reads the bytes itself) and is unit-testable.
 std::optional<Image> decode_hrt(const std::vector<uint8_t>& bytes);
 
+// Encode an Image into .hrt bytes (inverse of decode_hrt): "HRT1" | BE w | BE h |
+// R,G,B,A per pixel. Pure — the caller persists via assets::write_file.
+std::vector<uint8_t> encode_hrt(const Image& img);
+
 // Load an .hrt image via the asset seam (reads the file, then decode_hrt).
 std::optional<Image> load_image(const std::string& path);
 

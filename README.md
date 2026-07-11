@@ -42,6 +42,7 @@ material that accompanies the code.
 | **BaaS S8** | Replay System — per-user immutable named recordings (`/v1/replays`, project+user scoped, 512 KiB cap); `client.replays()` in the SDK (over the existing HTTP transport); colony records its command stream → cloud → command-stream playback. | ✅ done |
 | **BaaS S9** | Production hardening — thread-safe token-bucket **rate limiter** + Drogon pre-routing advice on `/v1/*` (per api-key/IP, 429 on excess, `/healthz` & static exempt); on by default (burst 120, 60/s, env-tunable). Unit + integration tested. | ✅ done |
 | **BaaS S10** | Observability — pre-sending advice counts every response (total, by status-class, by normalized route) + structured access log with latency; admin-gated `GET /metrics` (JSON). Unit + integration tested. | ✅ done |
+| **Studio v1** | Mini Studio — procedural **Texture Lab**: hand-written seamless noise (value/Perlin/fBm), `.hrt` export + re-editable recipes, in-session collection (`--studio`) | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -65,7 +66,8 @@ cmake --build build
 ./build/demo --iso      # M4 isometric farm sim (1-0 brushes, LMB paint, RMB walk farmer, F5/F9 save/load)
 ./build/demo --editor   # F editor: immediate-mode GUI + physics sandbox (click to drop bodies)
 ./build/demo --colony   # integration: iso agent sim on ECS + jobs + frame alloc + asset cache + GUI
-ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps, iso)
+./build/demo --studio   # Mini Studio: procedural Texture Lab (cycle base/op/ramp, sliders, Save → .hrt)
+ctest --test-dir build --output-on-failure   # unit tests (math, render3d, viz3d, chess, fps, iso, studio)
 ```
 
 For a sanitizer build (catches memory + undefined-behavior bugs during dev):
