@@ -64,6 +64,7 @@ adopted execution posture. The two are complementary, not competing.
 | **Sprite Animation v1** | Engine depth (Track A) — `anim::Flipbook` frame-index player (in `tween_core`): steps a sheet at `fps`, loops (bounded `t`, no drift) or holds one-shot. Vertical sheet packing → each frame is a contiguous `gfx::Sprite` drawn by the existing `blit_scaled` (zero new renderer code); `--anim` demo plays a generated 8-frame spinner (`sprites/spin_8.hrt`) with fps/loop/restart | ✅ done |
 | **Sandbox Animated Actors v1** | Track A×B join — sandbox actors carry a sheet animation: `frames`/`fps` on the shared `Sprite`/`Archetype` (emitted by the `sandbox1` codec only when animated), drawn by a scene-wide cosmetic `anim_time_` clock, authored by cycling **Tex** to a sheet with an `anim fps` slider; round-trips through save/snapshot | ✅ done |
 | **Studio Sheet Export v1** | Track B — the Texture Lab exports **animated sheets**: `make_sheet` turns any tileable recipe into an N-frame seamless-scroll loop (`sprites/sheet_NN.hrt`); frame count self-describes via aspect ratio (`anim::frames_in_sheet` = h/w), so `--anim` and `--sandbox` auto-discover Studio output — the animation pipeline is now self-hosting (no script) | ✅ done |
+| **Project Manifest v1** | Platform spine (Horizon 0, [strategy](docs/strategy/)) — a versioned `game.project` manifest (`project_core`: parse/validate/round-trip, pure & headless) + a shared `launch_entry` seam so `--project <path>` launches a game **from a file** instead of a hard-coded flag; `--project-inspect` is the headless validate/doctor. `assets/projects/creator.gameproject` runs the FPS game with no `src/main.cpp` edit — the first step of the create→…→run golden path | ✅ done |
 
 ## Prerequisites (macOS)
 
@@ -78,6 +79,8 @@ brew install cmake sdl2
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
+./build/demo --project projects/creator.gameproject   # golden path: launch a game from a game.project manifest
+./build/demo --project-inspect projects/creator.gameproject  # headless: validate/doctor a manifest (no window)
 ./build/demo            # M0 engine demo
 ./build/demo --gui      # chess (GUI)     — also: hvh|hvai  easy|medium|hard
 ./build/demo --tui      # chess (terminal)
