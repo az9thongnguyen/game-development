@@ -13,6 +13,13 @@ See [`requirements.md`](requirements.md) for the full vision and milestones, and
 the **guidebook** in [`docs/book/`](docs/book/) for the step-by-step learning
 material that accompanies the code.
 
+For the longer product direction — how this hand-written codebase grows into one
+inspectable, self-hostable game-creation platform — see
+[`docs/strategy/`](docs/strategy/) (market, gap analysis, target architecture,
+outcome-gated roadmap, metrics, and competitive watchlist). `requirements.md` owns
+the original *learning* vision; `docs/strategy/` owns the *product* direction and its
+adopted execution posture. The two are complementary, not competing.
+
 ## Roadmap (milestones)
 
 | MS | What | Status |
