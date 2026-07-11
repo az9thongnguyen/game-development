@@ -8,11 +8,13 @@
 // =============================================================================
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/app.hpp"
 #include "engine/assets.hpp"
 #include "engine/project/project.hpp"
+#include "engine/resource/resource.hpp"
 #include "platform/platform.hpp"
 
 #include "demo/demo_scene.hpp"
@@ -110,18 +112,39 @@ int launch_project(const std::string& path, bool inspect_only) {
     }
     const auto errs = engine::validate(*proj, kKnownEntries);
 
+    // Dependency closure: every declared asset must resolve through assets::. Missing
+    // is a hard reject; resolved assets are content-hashed for the inspect report and
+    // the future package manifest.
+    std::vector<std::string> missing;
+    std::vector<std::pair<engine::AssetRef, std::string>> resolved;  // (ref, hash hex)
+    for (const auto& a : proj->assets) {
+        if (auto ab = assets::load_file(a.path)) {
+            const uint64_t h = engine::content_hash(std::vector<uint8_t>(ab->begin(), ab->end()));
+            resolved.push_back({a, engine::hash_hex(h)});
+        } else {
+            missing.push_back(a.path);
+        }
+    }
+
     if (inspect_only) {
         std::printf("project: %s\n  name   %s\n  schema %d\n  entry  %s\n",
                     path.c_str(), proj->name.c_str(), proj->schema, proj->entry.c_str());
-        if (errs.empty()) { std::printf("  status OK\n"); return 0; }
-        std::printf("  status %zu problem(s):\n", errs.size());
+        for (const auto& r : resolved)
+            std::printf("  asset  %-8s %s  [%s]\n",
+                        r.first.type.c_str(), r.first.path.c_str(), r.second.c_str());
+        for (const auto& m : missing)
+            std::printf("  asset  MISSING  %s\n", m.c_str());
+        if (errs.empty() && missing.empty()) { std::printf("  status OK\n"); return 0; }
+        std::printf("  status %zu problem(s):\n", errs.size() + missing.size());
         for (const auto& e : errs) std::printf("    - %s\n", e.c_str());
+        for (const auto& m : missing) std::printf("    - missing asset: %s\n", m.c_str());
         return 1;
     }
 
-    if (!errs.empty()) {
+    if (!errs.empty() || !missing.empty()) {
         std::fprintf(stderr, "project: '%s' failed validation:\n", path.c_str());
         for (const auto& e : errs) std::fprintf(stderr, "  - %s\n", e.c_str());
+        for (const auto& m : missing) std::fprintf(stderr, "  - missing asset: %s\n", m.c_str());
         return 1;
     }
     return launch_entry(proj->entry);

@@ -112,7 +112,7 @@ add_executable(demo
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
@@ -379,6 +379,21 @@ add_executable(test_project tests/test_project.cpp
 target_include_directories(test_project PRIVATE src)
 target_link_libraries(test_project PRIVATE engine_flags)
 add_test(NAME project COMMAND test_project)
+
+# Content hashing (Horizon 0 resource identity): the deterministic fingerprint a
+# package manifest / preview-parity check needs. Pure, headless, unit-tested.
+add_library(resource_core STATIC
+  src/engine/resource/resource.cpp
+)
+target_include_directories(resource_core PUBLIC src)
+target_link_libraries(resource_core PRIVATE engine_flags)
+
+add_executable(test_resource tests/test_resource.cpp
+  src/engine/resource/resource.cpp
+)
+target_include_directories(test_resource PRIVATE src)
+target_link_libraries(test_resource PRIVATE engine_flags)
+add_test(NAME resource COMMAND test_resource)
 
 add_executable(test_flipbook tests/test_flipbook.cpp
   src/engine/anim/flipbook.cpp
