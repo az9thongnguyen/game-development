@@ -48,7 +48,10 @@ class Renderer3D {
 public:
     Renderer3D() = default;
 
-    // Bind this frame's framebuffer, clear the color buffer, reset depth to +inf.
+    // Bind this frame's framebuffer + reset depth to +inf. The `clear` overload also
+    // clears the colour buffer; the no-arg one leaves colour intact so the scene can
+    // paint a gradient sky first.
+    void begin(gfx::Renderer2D& fb);
     void begin(gfx::Renderer2D& fb, gfx::Color clear);
     void set_camera(const math::mat4& view, const math::mat4& proj);
     void set_cull(bool on) { cull_ = on; }

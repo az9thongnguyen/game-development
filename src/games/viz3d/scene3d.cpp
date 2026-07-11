@@ -7,6 +7,7 @@
 
 #include "engine/color.hpp"
 #include "engine/math.hpp"
+#include "engine/ui/theme.hpp"
 
 namespace viz3d {
 
@@ -83,7 +84,8 @@ void Scene3D::render(const engine::Context& ctx) {
     const math::mat4 view = use_fly_ ? fly_.view() : orbit_.view();
     const math::mat4 proj = use_fly_ ? fly_.proj(aspect) : orbit_.proj(aspect);
 
-    r3_.begin(g, gfx::rgb(22, 24, 30));      // dark sky
+    g.fill_v_gradient(0, 0, W, H, gfx::rgb(34, 40, 56), gfx::rgb(13, 14, 19));  // sky → ground
+    r3_.begin(g);                                                              // keep the gradient
     r3_.set_camera(view, proj);
     r3_.set_cull(cull_);
 
@@ -113,9 +115,11 @@ void Scene3D::render(const engine::Context& ctx) {
     std::snprintf(line, sizeof(line), "mode:%s  cam:%s  cull:%s  fps:%d",
                   mname, use_fly_ ? "FLY" : "ORBIT", cull_ ? "ON" : "OFF",
                   static_cast<int>(fps_ + 0.5));
-    g.draw_text(8, 8, "3D CORE  -  drag:orbit  W/S:zoom  ENTER:mode  SPACE:cull  RMB:camera  ESC:quit",
-                gfx::colors::white, 1);
-    g.draw_text(8, 22, line, gfx::rgb(180, 220, 255), 1);
+    g.set_font(ctx.font, ui::theme::sz_caption);
+    g.draw_text(8, 8, "3D CORE    drag: orbit    W/S: zoom    ENTER: mode    SPACE: cull    RMB: camera    ESC: quit",
+                ui::theme::text_dim);
+    g.set_font_size(ui::theme::sz_body);
+    g.draw_text(8, 24, line, ui::theme::accent_hover);
 }
 
 } // namespace viz3d

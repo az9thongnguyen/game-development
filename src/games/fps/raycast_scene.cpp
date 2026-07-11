@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "engine/color.hpp"
+#include "engine/ui/theme.hpp"
 #include "games/fps/raycast.hpp"
 
 namespace fps {
@@ -109,8 +110,10 @@ void RaycastScene::render(const engine::Context& ctx) {
     const int W = g.width(), H = g.height();
     if (static_cast<int>(zbuf_.size()) != W) zbuf_.assign(W, 0.0);
 
-    g.fill_rect(0, 0,     W, H / 2,     gfx::rgb(48, 52, 66));  // ceiling
-    g.fill_rect(0, H / 2, W, H - H / 2, gfx::rgb(26, 26, 28));  // floor
+    // Sky/ground gradients toward the horizon give depth (walls already fog with
+    // distance below), so the far plane reads as receding rather than a flat band.
+    g.fill_v_gradient(0, 0,     W, H / 2,     gfx::rgb(46, 52, 70), gfx::rgb(20, 22, 30));  // ceiling
+    g.fill_v_gradient(0, H / 2, W, H - H / 2, gfx::rgb(22, 22, 24), gfx::rgb(44, 41, 37));  // floor
 
     // ---- walls (also records per-column depth for sprite occlusion) ----
     for (int x = 0; x < W; ++x) {
@@ -198,8 +201,9 @@ void RaycastScene::render(const engine::Context& ctx) {
         }
     }
 
-    g.draw_text(8, 8, "FPS RAYCASTER  -  WASD move, arrows turn, SPACE shoot, ESC quit",
-                gfx::colors::white, 1);
+    g.set_font(ctx.font, ui::theme::sz_caption);
+    g.draw_text(8, 8, "FPS RAYCASTER    WASD: move    arrows: turn    SPACE: shoot    ESC: quit",
+                ui::theme::text_dim);
 }
 
 } // namespace fps
