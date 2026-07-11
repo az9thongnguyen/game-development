@@ -107,6 +107,18 @@ static void test_map_serialize() {
     CHECK(!from_text("fpsmap1\nsize 3 2\nrow 1 1 1\n"));      // too few rows
     CHECK(!from_text("fpsmap1\nsize 3 2\nrow 1 1\nrow 1 1\n")); // short row
     CHECK(!from_text("fpsmap1\nsize 0 0\n"));                 // empty grid
+
+    // spawn: unset by default, round-trips when set, and old (spawn-less) files parse.
+    CHECK(r->spawn_cx == -1);                                 // no spawn line → unset
+    Map ms = m; ms.spawn_cx = 2; ms.spawn_cy = 1; ms.spawn_dir = 1.5f;
+    const std::string ss = to_text(ms);
+    CHECK(ss.find("spawn 2 1") != std::string::npos);         // token emitted
+    auto rs = from_text(ss);
+    CHECK(rs && rs->spawn_cx == 2 && rs->spawn_cy == 1 && rs->spawn_dir == 1.5f);
+    CHECK(to_text(*rs) == ss);                                // stable round-trip with spawn
+    // an out-of-range spawn is rejected (grid stays valid, spawn stays unset)
+    auto rbad = from_text("fpsmap1\nsize 3 2\nrow 1 1 1\nrow 1 0 2\nspawn 9 9 0\n");
+    CHECK(rbad && rbad->spawn_cx == -1);
 }
 
 int main() {

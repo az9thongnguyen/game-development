@@ -4,6 +4,7 @@
 #include "games/maplab/maplab_scene.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 #include "engine/assets.hpp"
@@ -16,6 +17,9 @@ using platform::MouseButton;
 
 namespace {
 const char* kMapDir = "maps/";
+const char* kToolNames[]   = {"Paint", "Fill", "Spawn"};
+const char* kFacingNames[] = {"E", "S", "W", "N"};       // idx * pi/2 (map +y is South/down)
+constexpr float kHalfPi = 1.57079632679489661923f;
 
 // Palette: cell id -> (label, editor colour). id>3 falls back to a magenta.
 struct PalEntry { const char* label; gfx::Color color; };
@@ -92,6 +96,16 @@ void MaplabScene::render(const engine::Context& ctx) {
         }
     g.draw_rect(origin_x_, origin_y_, map_.w * cell_px_, map_.h * cell_px_, gfx::rgb(70, 74, 88));
 
+    // ---- spawn marker (a dot with a facing tick), if the level defines one ----
+    if (map_.spawn_cx >= 0 && map_.spawn_cy >= 0) {
+        const int scx = origin_x_ + map_.spawn_cx * cell_px_ + cell_px_ / 2;
+        const int scy = origin_y_ + map_.spawn_cy * cell_px_ + cell_px_ / 2;
+        const int r   = std::max(3, cell_px_ / 2 - 2);
+        g.fill_circle(scx, scy, r, gfx::rgb(120, 240, 140));
+        g.draw_line(scx, scy, scx + int(std::cos(map_.spawn_dir) * r * 1.4f),
+                              scy + int(std::sin(map_.spawn_dir) * r * 1.4f), gfx::rgb(18, 30, 22));
+    }
+
     // hovered-cell highlight
     int hx, hy;
     const bool hover = cell_at(ctx.input.mouse_x, ctx.input.mouse_y, hx, hy);
@@ -113,8 +127,18 @@ void MaplabScene::render(const engine::Context& ctx) {
         std::snprintf(lbl, sizeof(lbl), "%s%s", brush_ == i ? "> " : "", kPalette[i].label);
         if (ui_.button(lbl)) brush_ = uint8_t(i);
     }
-    if (ui_.button(fill_mode_ ? "Tool: Fill" : "Tool: Paint")) fill_mode_ = !fill_mode_;
-    if (ui_.button("New"))  map_ = bordered(24, 16);
+    char toolbtn[24];
+    std::snprintf(toolbtn, sizeof(toolbtn), "Tool: %s", kToolNames[tool_]);
+    if (ui_.button(toolbtn)) tool_ = (tool_ + 1) % 3;
+    if (tool_ == 2) {                                   // Spawn: pick the facing
+        char facebtn[24];
+        std::snprintf(facebtn, sizeof(facebtn), "Facing: %s", kFacingNames[facing_]);
+        if (ui_.button(facebtn)) {
+            facing_ = (facing_ + 1) % 4;
+            if (map_.spawn_cx >= 0) map_.spawn_dir = facing_ * kHalfPi;
+        }
+    }
+    if (ui_.button("New"))  { map_ = bordered(24, 16); }
     if (ui_.button("Save")) save();
 
     if (!collection_.empty()) {
@@ -129,13 +153,16 @@ void MaplabScene::render(const engine::Context& ctx) {
 
     // ---- canvas interaction (only when the UI didn't consume the mouse) ----
     if (!ui_.hovering_ui() && hover) {
-        if (fill_mode_) { if (in.pressed) flood_fill(map_, hx, hy, brush_); }
-        else if (in.down) set_cell(map_, hx, hy, brush_);   // drag to paint
+        if (tool_ == 1) { if (in.pressed) flood_fill(map_, hx, hy, brush_); }         // Fill
+        else if (tool_ == 2) {                                                        // Spawn
+            if (in.pressed) { map_.spawn_cx = hx; map_.spawn_cy = hy; map_.spawn_dir = facing_ * kHalfPi; }
+        }
+        else if (in.down) set_cell(map_, hx, hy, brush_);                             // Paint (drag)
     }
 
     g.set_font_size(ui::theme::sz_caption);
     g.draw_text(gutter, h_ - 20,
-                "pick a cell type - Paint drags / Fill floods - New clears - Save -> maps/level_NN.map (load in --fps)",
+                "Paint drags / Fill floods / Spawn sets the --fps player start (Facing cycles) - Save -> maps/level_NN.map",
                 ui::theme::text_muted);
 }
 
