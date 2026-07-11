@@ -149,6 +149,18 @@ static void test_scene_roundtrip_texture() {
     World u; Archetype b; u.spawn(b, 0, 0);                // untextured emits no token
     CHECK(to_scene(u).find("tex=") == std::string::npos);
 }
+// ---- animated sprites: frames/fps ride the archetype and round-trip ----
+static void test_animated_sprite_roundtrip() {
+    World w; Archetype a; a.texture = "spin_8"; a.frames = 8; a.fps = 12;
+    ecs::Entity e = w.spawn(a, 30, 40);
+    CHECK(w.reg.get<Sprite>(e)->frames == 8 && w.reg.get<Sprite>(e)->fps == 12);
+    const std::string s = to_scene(w);
+    CHECK(s.find("frames=8") != std::string::npos && s.find("fps=12") != std::string::npos);
+    CHECK(to_scene(from_scene(s)) == s);                    // round-trips
+    // A static sprite (frames==1) emits no anim tokens.
+    World u; Archetype b; b.texture = "studio_00"; u.spawn(b, 0, 0);
+    CHECK(to_scene(u).find("frames=") == std::string::npos);
+}
 static void test_snapshot_restore() {
     World w; Archetype ball; ball.mover = true; ball.vx = 40; ball.bouncer = true;
     w.spawn(ball, 50, 50);
@@ -172,6 +184,7 @@ int main() {
     test_spawn_copies_texture();
     test_archetype_codec_texture();
     test_scene_roundtrip_texture();
+    test_animated_sprite_roundtrip();
     test_snapshot_restore();
     if (g_failures == 0) std::printf("sandbox: all tests passed\n");
     else                 std::printf("sandbox: %d FAILURE(S)\n", g_failures);
