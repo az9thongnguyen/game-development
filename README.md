@@ -46,6 +46,7 @@ material that accompanies the code.
 | **Sandbox v1** | Declarative 2D **sandbox** — drag-drop actors, data-only behaviors (mover/spinner/bouncer/lifetime/spawner) + an `OnOverlap` event→action rule on the generic ECS, deterministic `tick`, Play/Stop via scene snapshot, F5/F9 save/load (`--sandbox`) | ✅ done |
 | **Textured Sprites v1** | The Mini-Studio join — sandbox actors wear Texture Lab `.hrt` textures: a texture name on the pure `Sprite`, a nearest-neighbour `blit_scaled` primitive, cross-platform collection probe, inspector `Tex:` cycle; round-trips through save/snapshot | ✅ done |
 | **Map / Level Lab v1** | Mini Studio — tile-grid **level editor** (`--maplab`): paint/flood-fill on the shared `fps::Map`, `fpsmap1` text format, palette + save/load collection; `--fps` loads the authored level (`maps/level_00.map`) with a default fallback | ✅ done |
+| **Map Lab Spawn v1** | Mini Studio — levels own the **player start**: `fpsmap1` gains an optional `spawn CX CY DIR` line (backward compatible), the Lab adds a **Spawn** tool + Facing cycle + on-grid marker, and `--fps` reads the authored start instead of a hard-coded (3.5,8.5) — fixes the spawn-in-a-wall trap | ✅ done |
 | **Particle System v1** | Engine depth (Track A) — reusable **CPU particle sim** (`particles_core`): deterministic seeded xorshift, fractional-accumulator emission, gravity, swap-pop reap, bounded pool, fade helpers; interactive `--fx` playground (fountain + click-bursts + live sliders) | ✅ done |
 | **Textured Walls v1** | Mini-Studio 3-tool join — `--fps` skins wall ids 1–3 with Texture Lab `textures/wall_N.hrt` (procedural fallback); a Lab-authored level rendered with Lab-authored walls, joined through `assets/` by naming convention | ✅ done |
 | **BaaS Asset Registry v1** | Lean BaaS (Track C) — project-scoped `/v1/assets` (upload/list/download/delete the Mini-Studio `.hrt`/`.map`): `assets` table, `web::asset` service + Drogon controller (api-key gate only), `?kind=` filter, optimistic `If-Match`, SDK `Assets` handle; the Track B→C bridge | ✅ done |
@@ -81,7 +82,7 @@ cmake --build build
 ./build/demo --colony   # integration: iso agent sim on ECS + jobs + frame alloc + asset cache + GUI
 ./build/demo --studio   # Mini Studio: procedural Texture Lab (Save → .hrt; Export Sheet → animated sprites/sheet_NN.hrt)
 ./build/demo --sandbox  # declarative sandbox: drag-drop actors, attach behaviors + textures (+ animated sheets), Play/Stop (F5/F9)
-./build/demo --maplab   # Map/Level Lab: paint/flood-fill a tile grid, Save → maps/level_NN.map (loaded by --fps)
+./build/demo --maplab   # Map/Level Lab: paint/flood-fill a tile grid + place the player Spawn, Save → maps/level_NN.map (loaded by --fps)
 ./build/demo --fx       # particle playground: fountain + click bursts + live sliders + "sweep" (tween-driven emitter)
 ./build/demo --light    # 2D lighting: dark room, additive radial lights; mouse light follows, sliders for radius/intensity
 ./build/demo --audio    # audio mixer: tone buttons + "chord" (sums 4 voices) + master volume + live waveform

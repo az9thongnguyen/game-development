@@ -20,6 +20,12 @@ struct Map {
     int                  h = 0;
     std::vector<uint8_t> cells;  // row-major; 0 = empty, >0 = wall id
 
+    // Player start authored in the Lab: cell (spawn_cx, spawn_cy), facing spawn_dir
+    // radians. spawn_cx < 0 means "unset" — the raycaster keeps its own default.
+    int                  spawn_cx = -1;
+    int                  spawn_cy = -1;
+    float                spawn_dir = 0.0f;
+
     uint8_t at(int x, int y) const {
         if (x < 0 || y < 0 || x >= w || y >= h) return 1;  // outside = wall
         return cells[static_cast<size_t>(y) * w + x];
