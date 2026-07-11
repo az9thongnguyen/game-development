@@ -267,6 +267,26 @@ target_include_directories(test_viz3d PRIVATE src)
 target_link_libraries(test_viz3d PRIVATE viz3d_core render3d_core engine_flags)
 add_test(NAME viz3d COMMAND test_viz3d)
 
+# ---- Mini Studio (Track B): procedural content authoring — PURE core (no SDL) ----
+# noise -> texture_gen -> recipe. Testable headless; the --studio scene links it.
+add_library(studio_core STATIC
+  src/games/studio/noise.cpp
+  src/games/studio/texture_gen.cpp
+  src/games/studio/recipe.cpp
+)
+target_include_directories(studio_core PUBLIC src)
+target_link_libraries(studio_core PRIVATE engine_flags)
+
+# test_studio compiles image.cpp + assets.cpp directly so the encode/decode + recipe
+# round-trips stay dependency-free (round-trips use in-memory buffers, no disk).
+add_executable(test_studio tests/test_studio.cpp
+  src/engine/image.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_studio PRIVATE src)
+target_link_libraries(test_studio PRIVATE studio_core engine_flags)
+add_test(NAME studio COMMAND test_studio)
+
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
 add_library(chess_core STATIC
