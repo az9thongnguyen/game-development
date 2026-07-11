@@ -69,6 +69,22 @@ void Renderer2D::fill_rect(int x, int y, int w, int h, Color c) {
     fill_phys(x * ss_, y * ss_, w * ss_, h * ss_, c);
 }
 
+// Vertical gradient (top→bottom), one lerp per PHYSICAL row so it's smooth even at
+// small logical sizes. Used for scene backgrounds / raycaster sky & ground.
+void Renderer2D::fill_v_gradient(int x, int y, int w, int h, Color top, Color bottom) {
+    if (w <= 0 || h <= 0) return;
+    const int px = x * ss_, py = y * ss_, pw = w * ss_, ph = h * ss_;
+    const int r0 = r_of(top),    g0 = g_of(top),    b0 = b_of(top);
+    const int r1 = r_of(bottom), g1 = g_of(bottom), b1 = b_of(bottom);
+    for (int yy = 0; yy < ph; ++yy) {
+        const float t = ph > 1 ? static_cast<float>(yy) / static_cast<float>(ph - 1) : 0.0f;
+        const Color c = rgb(static_cast<std::uint8_t>(r0 + (r1 - r0) * t),
+                            static_cast<std::uint8_t>(g0 + (g1 - g0) * t),
+                            static_cast<std::uint8_t>(b0 + (b1 - b0) * t));
+        fill_phys(px, py + yy, pw, 1, c);
+    }
+}
+
 void Renderer2D::draw_rect(int x, int y, int w, int h, Color c) {
     if (w <= 0 || h <= 0) return;
     const int t = ss_;                                 // 1 logical px = ss physical px thick
