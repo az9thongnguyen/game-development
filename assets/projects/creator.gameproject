@@ -2,3 +2,7 @@ gameproject1
 name Creator Demo (FPS + Labs)
 schema 1
 entry fps
+asset map maps/level_00.map
+asset texture textures/wall_1.hrt
+asset texture textures/wall_2.hrt
+asset texture textures/wall_3.hrt

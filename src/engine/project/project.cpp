@@ -36,6 +36,9 @@ std::optional<Project> parse_project(const std::string& text) {
             p.schema = v;
         } else if (key == "entry") {
             ls >> p.entry;
+        } else if (key == "asset") {
+            AssetRef a;
+            if (ls >> a.type >> a.path) p.assets.push_back(a);  // well-formed decls only
         }
         // unknown keys: ignored (forward-compatible additive fields)
     }
@@ -50,6 +53,8 @@ std::string to_text(const Project& p) {
         << "name " << p.name << "\n"
         << "schema " << p.schema << "\n"
         << "entry " << p.entry << "\n";
+    for (const auto& a : p.assets)
+        out << "asset " << a.type << " " << a.path << "\n";
     return out.str();
 }
 

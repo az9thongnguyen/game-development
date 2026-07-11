@@ -27,10 +27,19 @@ namespace engine {
 // purely additive; validate() rejects anything newer with an actionable error.
 inline constexpr int kProjectSchema = 1;
 
+// A declared content dependency: a typed, asset-relative path the project ships.
+// Optional and repeatable ("asset <type> <path>"); the launcher checks each resolves
+// (dependency closure) before it will build/launch.
+struct AssetRef {
+    std::string type;         // e.g. "map", "texture", "sprite"
+    std::string path;         // asset-relative path resolved through assets::
+};
+
 struct Project {
-    std::string name;         // display name (required)
-    int         schema = 0;   // manifest schema version (required, <= kProjectSchema)
-    std::string entry;        // entry scene id, e.g. "fps" (required)
+    std::string name;             // display name (required)
+    int         schema = 0;       // manifest schema version (required, <= kProjectSchema)
+    std::string entry;            // entry scene id, e.g. "fps" (required)
+    std::vector<AssetRef> assets; // declared content dependencies (optional)
 };
 
 // Parse the text form. Returns nullopt only on a syntactic failure that makes the
