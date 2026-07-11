@@ -21,7 +21,8 @@ namespace sandbox {
 struct Transform2D { float x = 0, y = 0, rot = 0, scale = 1; };  // center px, radians
 struct Body        { float w = 24, h = 24; };                    // AABB full size, px
 struct Sprite      { gfx::Color color = gfx::rgb(220, 200, 120); bool round = false;
-                     std::string texture; };                     // "" = flat colour
+                     std::string texture;                         // "" = flat colour
+                     int frames = 1; float fps = 8.0f; };         // >1 = animated vertical sheet
 struct Mover       { float vx = 0, vy = 0; };                    // px/s
 struct Spinner     { float omega = 0; };                         // rad/s
 struct Bouncer     {};                                           // tag: reflect at bounds
@@ -43,6 +44,8 @@ struct Archetype {
     bool  lifetime = false; float ttl = 2.0f;
     int   tag = 0;
     std::string texture;    // "" = flat colour; else a Texture Lab asset name (studio_NN)
+    int   frames = 1;       // >1 = the texture is a vertical N-frame sheet, animated
+    float fps = 8.0f;       // playback rate when frames>1
 };
 
 // Behaviors that own a proto live outside Archetype (added after spawn).

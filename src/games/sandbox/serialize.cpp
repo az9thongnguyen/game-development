@@ -76,6 +76,7 @@ std::string archetype_tokens(const Archetype& a) {
     if (a.bouncer)  s += " bouncer";
     if (a.lifetime) s += " lifetime=" + fmt_f(a.ttl);
     if (!a.texture.empty()) s += " tex=" + a.texture;
+    if (a.frames > 1)       s += " frames=" + std::to_string(a.frames) + " fps=" + fmt_f(a.fps);
     return s;
 }
 
@@ -98,6 +99,8 @@ Archetype parse_archetype(const std::string& tokens) {
         else if (k == "bouncer") a.bouncer = true;
         else if (k == "lifetime"){ a.lifetime = true; a.ttl = to_f(v); }
         else if (k == "tex")     a.texture = v;
+        else if (k == "frames")  a.frames = to_i(v);
+        else if (k == "fps")     a.fps = to_f(v);
     }
     return a;
 }
@@ -112,7 +115,7 @@ std::string to_scene(const World& w) {
     mw.reg.view<Transform2D>([&](ecs::Entity e, Transform2D& t) {
         Archetype a;
         if (Body*    b = mw.reg.get<Body>(e))    { a.w = b->w; a.h = b->h; }
-        if (Sprite*  s = mw.reg.get<Sprite>(e))  { a.color = s->color; a.round = s->round; a.texture = s->texture; }
+        if (Sprite*  s = mw.reg.get<Sprite>(e))  { a.color = s->color; a.round = s->round; a.texture = s->texture; a.frames = s->frames; a.fps = s->fps; }
         if (Mover*   m = mw.reg.get<Mover>(e))   { a.mover = true; a.vx = m->vx; a.vy = m->vy; }
         if (Spinner* s = mw.reg.get<Spinner>(e)) { a.spinner = true; a.omega = s->omega; }
         if (mw.reg.has<Bouncer>(e))              a.bouncer = true;
