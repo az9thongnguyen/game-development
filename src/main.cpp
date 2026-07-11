@@ -23,6 +23,7 @@
 #include "games/editor/editor_scene.hpp"
 #include "games/colony/colony_scene.hpp"
 #include "games/studio/studio_scene.hpp"
+#include "games/sandbox/sandbox_scene.hpp"
 
 namespace {
 
@@ -167,6 +168,18 @@ int main(int argc, char** argv) {
         cfg.highdpi   = true;
         cfg.supersample = kAA;
         return run_window(cfg, std::make_unique<studio::StudioScene>());
+    }
+
+    if (mode == "--sandbox") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — sandbox";
+        cfg.fb_width  = 960;
+        cfg.fb_height = 600;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        cfg.supersample = kAA;
+        return run_window(cfg, std::make_unique<sandbox::SandboxScene>());
     }
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
