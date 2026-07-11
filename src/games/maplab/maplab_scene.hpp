@@ -31,7 +31,8 @@ private:
     ui::Context ui_;
 
     uint8_t     brush_    = 1;                       // current cell id to paint
-    bool        fill_mode_ = false;                  // false = Paint, true = Flood
+    int         tool_     = 0;                        // 0 = Paint, 1 = Fill, 2 = Spawn
+    int         facing_   = 0;                        // spawn facing: 0 E, 1 S, 2 W, 3 N
     int         save_counter_ = 0;
     std::vector<std::string> collection_;            // saved level names
 

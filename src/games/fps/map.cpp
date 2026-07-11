@@ -26,6 +26,7 @@ Map default_map() {
     // Four corner pillars (wall id 3).
     set(2, 2, 3); set(13, 2, 3); set(2, 13, 3); set(13, 13, 3);
 
+    m.spawn_cx = 3; m.spawn_cy = 8; m.spawn_dir = 0.0f;  // matches the legacy (3.5,8.5,+x) start
     return m;
 }
 
@@ -37,6 +38,9 @@ std::string to_text(const Map& m) {
             s += " " + std::to_string(int(m.cells[static_cast<size_t>(y) * m.w + x]));
         s += "\n";
     }
+    if (m.spawn_cx >= 0 && m.spawn_cy >= 0)              // optional; omitted when unset
+        s += "spawn " + std::to_string(m.spawn_cx) + " " + std::to_string(m.spawn_cy)
+           + " " + std::to_string(m.spawn_dir) + "\n";
     return s;
 }
 
@@ -54,6 +58,13 @@ std::optional<Map> from_text(const std::string& s) {
             int v;
             if (!(in >> v) || v < 0 || v > 255) return std::nullopt;
             m.cells[static_cast<size_t>(y) * m.w + x] = static_cast<uint8_t>(v);
+        }
+    }
+    // Optional trailing spawn line (older files without it stay unset → default start).
+    if (in >> tok && tok == "spawn") {
+        int cx, cy; float dir;
+        if ((in >> cx >> cy >> dir) && cx >= 0 && cy >= 0 && cx < m.w && cy < m.h) {
+            m.spawn_cx = cx; m.spawn_cy = cy; m.spawn_dir = dir;
         }
     }
     return m;
