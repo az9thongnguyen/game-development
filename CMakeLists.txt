@@ -309,6 +309,21 @@ target_include_directories(test_sandbox PRIVATE src)
 target_link_libraries(test_sandbox PRIVATE engine_flags)
 add_test(NAME sandbox COMMAND test_sandbox)
 
+# ---- Map/Level Lab (Track B): tile-grid editor — PURE edit-op core (no SDL) ----
+# set_cell / fill_rect / flood_fill on fps::Map (the one shared grid model).
+add_library(maplab_core STATIC
+  src/games/maplab/edit.cpp
+)
+target_include_directories(maplab_core PUBLIC src)
+target_link_libraries(maplab_core PRIVATE engine_flags)
+
+add_executable(test_maplab tests/test_maplab.cpp
+  src/games/maplab/edit.cpp
+)
+target_include_directories(test_maplab PRIVATE src)
+target_link_libraries(test_maplab PRIVATE engine_flags)
+add_test(NAME maplab COMMAND test_maplab)
+
 # ---- Chess core (M1): UI-agnostic library, shared by tests + frontends --------
 # Plain C++ — NO engine/SDL dependency (engine_flags only carries warning flags).
 add_library(chess_core STATIC
