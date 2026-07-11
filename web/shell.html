@@ -46,6 +46,9 @@
       '3d':   ['--3d'],
       viz3d:  ['--viz3d'],
       fps:    ['--fps'],
+      // Golden path: launch the reference game from a game.project manifest — the same
+      // named project the native build runs, so web/native pick the scene identically.
+      project: ['--project', 'projects/creator.gameproject'],
       demo:   []
     };
     var mode = new URLSearchParams(location.search).get('mode') || 'gui';

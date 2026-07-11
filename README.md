@@ -120,12 +120,15 @@ source ~/emsdk/emsdk_env.sh                 # per shell: puts emcc/emcmake on PA
 emcmake cmake -B build-web
 cmake --build build-web --target demo       # → build-web/demo.{html,js,wasm,data}
 cd build-web && python3 -m http.server 8765 # WASM must be served over http
-# open http://localhost:8765/demo.html
+# open http://localhost:8765/demo.html            # default scene
+# open http://localhost:8765/demo.html?mode=project  # golden path: FPS from the game.project manifest
 ```
 
 The web build runs the **same** engine/game code; only the platform `run()` loop is
-`#ifdef`'d to `emscripten_set_main_loop`. Pick the scene by editing
-`Module.arguments` in [`web/shell.html`](web/shell.html) (e.g. `['--3d']` or `['--iso']`).
+`#ifdef`'d to `emscripten_set_main_loop`. Pick the scene with `?mode=…` (see
+`argsByMode` in [`web/shell.html`](web/shell.html)); `?mode=project` launches the same
+`projects/creator.gameproject` the native `--project` path runs, so web and native
+select the scene identically.
 
 ### Native webserver (requirements §11 — optional, separate process)
 
