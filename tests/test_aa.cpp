@@ -115,6 +115,22 @@ int main() {
         CHECK(frac > 0);                              // an anti-aliased edge exists
     }
 
+    // --- drop shadow: darkens pixels around the rect but stays translucent ---
+    {
+        constexpr int W = 20, H = 20;
+        constexpr std::uint32_t GREY = 0xFF888888;
+        std::vector<std::uint32_t> buf(W * H, GREY);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        Renderer2D r(fb, 1);
+        auto R = [&](int x, int y) { return int((buf[y * W + x] >> 16) & 0xFF); };
+
+        r.drop_shadow(6, 6, 8, 5, 2, /*dx*/0, /*dy*/2, /*spread*/3, 0xFF000000);
+        int partial = 0;
+        for (auto p : buf) { const int rr = (p >> 16) & 0xFF; if (rr > 0 && rr < 0x88) ++partial; }
+        CHECK(partial > 0);                          // a soft, translucent penumbra exists
+        CHECK(R(19, 0) == 0x88);                      // far corner untouched
+    }
+
     if (g_failures == 0) std::printf("aa: all tests passed\n");
     else                 std::printf("aa: %d FAILURE(S)\n", g_failures);
     return g_failures;

@@ -211,6 +211,19 @@ target_include_directories(test_ui PRIVATE src)
 target_link_libraries(test_ui PRIVATE ui_core text_core engine_flags)
 add_test(NAME ui COMMAND test_ui)
 
+# Design-system tokens: pure constants, no SDL/renderer needed.
+add_executable(test_theme tests/test_theme.cpp)
+target_include_directories(test_theme PRIVATE src)
+target_link_libraries(test_theme PRIVATE engine_flags)
+add_test(NAME theme COMMAND test_theme)
+
+# Golden: render a representative UI offscreen (ss=2), check solid fills + AA + PPM.
+add_executable(test_ui_golden tests/test_ui_golden.cpp src/engine/renderer2d.cpp src/engine/assets.cpp)
+target_include_directories(test_ui_golden PRIVATE src)
+target_compile_definitions(test_ui_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_ui_golden PRIVATE ui_core text_core engine_flags)
+add_test(NAME ui_golden COMMAND test_ui_golden)
+
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;
 # A + D + F are used by its scene). Reuses iso_core's A*/TileMap (generic algorithms).

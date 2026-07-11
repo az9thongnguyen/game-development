@@ -55,6 +55,12 @@ public:
     void fill_circle(int cx, int cy, int r, Color c);
     void draw_circle(int cx, int cy, int r, Color c);                       // ~1px AA outline
 
+    // Soft drop shadow for a rounded rect: `spread` concentric translucent layers,
+    // offset by (dx,dy), approximate a blur. Draw it BEFORE the panel (the panel
+    // covers the centre; only the penumbra shows). `c` is the shadow colour; its
+    // alpha is the total darkness, divided across layers.
+    void drop_shadow(int x, int y, int w, int h, int radius, int dx, int dy, int spread, Color c);
+
     void blit(const Sprite& s, int x, int y);  // alpha-blended sprite
 
     // Text. With a font set (set_font), draw_text renders anti-aliased glyphs;
