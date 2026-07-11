@@ -63,6 +63,8 @@ inline constexpr int sz_display = 28;
 
 // ---- Elevation: a soft drop shadow (offset + spread + base alpha) -----------
 struct Shadow { int dx, dy, spread; std::uint8_t a; };
-inline constexpr Shadow shadow_panel{0, 4, 10, 90};
+// Subtle + tight: reads as clean elevation even at ss=1 (few px for the gradient)
+// and against a near-black background where a big halo would look muddy.
+inline constexpr Shadow shadow_panel{0, 3, 5, 70};
 
 } // namespace ui::theme
