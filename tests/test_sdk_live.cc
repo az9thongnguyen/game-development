@@ -136,6 +136,29 @@ int main() {
         CHECK(pump(c, done));
         CHECK(tk && *tk);
 
+        // asset registry round-trip (project-scoped; api key only)
+        gbaas::Result<gbaas::AssetMeta> am;
+        done = false;
+        c.assets().put("level_00.map", "level", "fpsmap1\nsize 2 1\nrow 1 1\n",
+                       [&](gbaas::Result<gbaas::AssetMeta> r) { am = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(am && am->version == 1 && am->kind == "level");
+        gbaas::Result<gbaas::Asset> ag;
+        done = false;
+        c.assets().get("level_00.map", [&](gbaas::Result<gbaas::Asset> r) { ag = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(ag && ag->data == "fpsmap1\nsize 2 1\nrow 1 1\n");
+        gbaas::Result<std::vector<gbaas::AssetMeta>> al;
+        done = false;
+        c.assets().list([&](gbaas::Result<std::vector<gbaas::AssetMeta>> r) { al = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(al && al->size() == 1 && (*al)[0].name == "level_00.map");
+        gbaas::Result<bool> ard;
+        done = false;
+        c.assets().remove("level_00.map", [&](gbaas::Result<bool> r) { ard = r; done = true; });
+        CHECK(pump(c, done));
+        CHECK(ard && *ard);
+
         drogon::app().quit();
     });
 

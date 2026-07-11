@@ -70,6 +70,20 @@ struct Item {
     long long   qty = 0;
 };
 
+struct AssetMeta {
+    std::string name;
+    std::string kind;
+    long long   version = 0;
+    long long   size    = 0;
+};
+
+struct Asset {
+    std::string name;
+    std::string kind;
+    long long   version = 0;
+    std::string data;
+};
+
 struct ReplayMeta {
     long long   id = 0;
     std::string name;
@@ -152,6 +166,21 @@ public:
         Client* c_;
     };
 
+    // Project-scoped shared assets (textures/levels made in the Mini-Studio). Needs
+    // only the api key — no login — since assets belong to the game, not a player.
+    class Assets {
+    public:
+        void put(const std::string& name, const std::string& kind, const std::string& data,
+                 std::function<void(Result<AssetMeta>)> cb);
+        void get(const std::string& name, std::function<void(Result<Asset>)> cb);
+        void list(std::function<void(Result<std::vector<AssetMeta>>)> cb);
+        void remove(const std::string& name, std::function<void(Result<bool>)> cb);
+    private:
+        friend class Client;
+        explicit Assets(Client* c) : c_(c) {}
+        Client* c_;
+    };
+
     class Inventory {
     public:
         void grant(const std::string& item, long long amount, std::function<void(Result<Item>)> cb);
@@ -211,6 +240,7 @@ public:
     Auth        auth() { return Auth(this); }
     Leaderboard leaderboard(std::string key) { return Leaderboard(this, std::move(key)); }
     Saves       saves() { return Saves(this); }
+    Assets      assets() { return Assets(this); }
     Inventory   inventory() { return Inventory(this); }
     RemoteConfig config() { return RemoteConfig(this); }
     Analytics    analytics() { return Analytics(this); }
