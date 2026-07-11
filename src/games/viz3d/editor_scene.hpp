@@ -36,7 +36,7 @@ private:
 
     geo::Mesh cube_, sphere_, plane_, cylinder_, grid_, axes_;
 
-    r3d::Mode mode_      = r3d::Mode::SolidFlat;
+    r3d::Mode mode_      = r3d::Mode::SolidGouraud;   // smooth by default (ENTER cycles)
     bool      show_grid_ = true;
     bool      show_axes_ = true;
     bool      cull_      = true;

@@ -173,6 +173,8 @@ observe → pitfalls → exercises.**
 > **3D scenes** (`--3d`/`--viz3d`/`--fps`) were polished too: AA HUD text, a
 > vertical sky→ground gradient background (`fill_v_gradient`) for depth, SSAA on the
 > rasterizer scenes, and horizon gradients + existing distance-fog on the raycaster.
+> Default shading is now **Gouraud** (smooth spheres) — with `make_cube` emitting
+> per-face normals so cubes stay crisp (ENTER still cycles wire/flat/gouraud).
 
 ## 6. Milestone roadmap
 
