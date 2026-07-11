@@ -104,9 +104,10 @@ add_executable(demo
   src/games/colony/colony_scene.cpp
   src/games/studio/studio_scene.cpp
   src/games/sandbox/sandbox_scene.cpp
+  src/games/maplab/maplab_scene.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core sandbox_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core sandbox_core maplab_core)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
 # ---- Tests (CTest) -----------------------------------------------------------
