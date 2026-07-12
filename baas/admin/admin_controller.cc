@@ -78,10 +78,13 @@ void AdminController::setConfig(const drogon::HttpRequestPtr& req,
         return;
     }
     try {
-        cfg::set(pid, key, (*body)["value"].asString());
+        // Audited LiveOps change: records old→new and returns the prior value so the
+        // operator (or the dashboard) can revert without a client redeployment.
+        const auto prev = cfg::set_audited(pid, key, (*body)["value"].asString(), "admin");
         Json::Value out;
-        out["key"]   = key;
-        out["value"] = (*body)["value"].asString();
+        out["key"]      = key;
+        out["value"]    = (*body)["value"].asString();
+        if (prev) out["previous"] = *prev;   // present unless the key was newly created
         cb(drogon::HttpResponse::newHttpJsonResponse(out));
     } catch (const std::exception&) {
         cb(make_error(500, "internal", "config set failed"));
@@ -93,9 +96,11 @@ void AdminController::deleteConfig(const drogon::HttpRequestPtr& req,
                                   std::string key) {
     const long pid = req->attributes()->get<long>(kProjectId);
     try {
-        if (!cfg::remove(pid, key)) { cb(make_error(404, "not_found", "no such key")); return; }
+        const auto prev = cfg::remove_audited(pid, key, "admin");
+        if (!prev) { cb(make_error(404, "not_found", "no such key")); return; }
         Json::Value out;
-        out["deleted"] = true;
+        out["deleted"]  = true;
+        out["previous"] = *prev;   // returned so the delete is revertible via a set
         cb(drogon::HttpResponse::newHttpJsonResponse(out));
     } catch (const std::exception&) {
         cb(make_error(500, "internal", "config delete failed"));

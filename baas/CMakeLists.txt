@@ -92,6 +92,11 @@ add_executable(test_baas_migrations ${CMAKE_SOURCE_DIR}/tests/test_baas_migratio
 target_link_libraries(test_baas_migrations PRIVATE baas_core engine_flags)
 add_test(NAME baas_migrations COMMAND test_baas_migrations)
 
+# LiveOps: reversible, audited remote-config change (H2 exit gate) — pure DB.
+add_executable(test_baas_liveops ${CMAKE_SOURCE_DIR}/tests/test_baas_liveops.cc)
+target_link_libraries(test_baas_liveops PRIVATE baas_core engine_flags)
+add_test(NAME baas_liveops COMMAND test_baas_liveops)
+
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
