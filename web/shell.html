@@ -49,6 +49,10 @@
       // Golden path: launch the reference game from a game.project manifest — the same
       // named project the native build runs, so web/native pick the scene identically.
       project: ['--project', 'projects/creator.gameproject'],
+      // The platform shells, browser-rendered from the same manifest (the web VFS is
+      // read-only, so channels show "unset" → the Hub recommends "publish").
+      hubui:  ['--hub-ui', 'projects/creator.gameproject'],
+      shell:  ['--shell',  'projects/creator.gameproject'],
       demo:   []
     };
     var mode = new URLSearchParams(location.search).get('mode') || 'gui';
