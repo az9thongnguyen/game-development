@@ -41,6 +41,9 @@ assets/channels/
 # CI/smoke-scaffolded projects (ephemeral)
 assets/ci_*.gameproject
 
+# release_ops test scratch base (temp asset root)
+test_ops_tmp/
+
 # BaaS backend (Slice #1): local secrets + dev databases
 baas/config.json
 *.db

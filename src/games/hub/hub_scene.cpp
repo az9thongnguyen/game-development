@@ -7,6 +7,7 @@
 
 #include "engine/color.hpp"
 #include "engine/hub/hub_build.hpp"
+#include "engine/release/ops.hpp"
 
 namespace hubui {
 
@@ -17,8 +18,15 @@ HubScene::HubScene(std::string project_path)
 
 void HubScene::rebuild() { view_ = engine::build_hub_view(path_, known_entries_); }
 
-void HubScene::update(double /*dt*/, const platform::InputState& in) {
-    if (in.pressed(platform::Key::R)) rebuild();   // pick up edits / release-verb changes
+void HubScene::update(double dt, const platform::InputState& in) {
+    if (flash_t_ > 0) flash_t_ -= dt;
+
+    // The Hub as a controller: keys drive the shared engine::release ops, then refresh.
+    auto did = [&](const engine::OpResult& r) { flash_ = r.message; flash_t_ = 5.0; rebuild(); };
+    if      (in.pressed(platform::Key::Space)) did(engine::publish(path_, "development", "hub", known_entries_));
+    else if (in.pressed(platform::Key::Num1))  did(engine::promote("development", "preview", "hub"));
+    else if (in.pressed(platform::Key::Num2))  did(engine::promote("preview", "production", "hub"));
+    else if (in.pressed(platform::Key::R))     rebuild();   // pick up external edits
 }
 
 void HubScene::render(const engine::Context& ctx) {
@@ -45,8 +53,12 @@ void HubScene::render(const engine::Context& ctx) {
         y += (i == 0) ? 42 : 26;
     }
 
+    if (flash_t_ > 0 && !flash_.empty()) {
+        g.set_font_size(16);
+        g.draw_text(24, h_ - 52, flash_.c_str(), gfx::rgb(120, 220, 140));
+    }
     g.set_font_size(14);
-    g.draw_text(24, h_ - 26, "R: refresh   —   edit the project or run release verbs, then refresh",
+    g.draw_text(24, h_ - 26, "Space: publish→dev    1: promote→preview    2: promote→production    R: refresh",
                 gfx::rgb(120, 128, 140));
 }
 

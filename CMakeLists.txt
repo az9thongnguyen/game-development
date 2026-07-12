@@ -110,10 +110,11 @@ add_executable(demo
   src/games/audio/audio_scene.cpp
   src/games/anim/anim_scene.cpp
   src/games/hub/hub_scene.cpp
+  src/games/studio_shell/studio_shell_scene.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
@@ -411,6 +412,26 @@ add_executable(test_release tests/test_release.cpp
 target_include_directories(test_release PRIVATE src)
 target_link_libraries(test_release PRIVATE engine_flags)
 add_test(NAME release COMMAND test_release)
+
+# Release operations (publish/promote/rollback) as callable functions returning a
+# structured result — shared by the CLI and the graphical Hub Scene. Reads/writes through
+# assets:: (symbols provided by the final demo link). Tested end-to-end against a temp base.
+add_library(release_ops_core STATIC
+  src/engine/release/ops.cpp
+)
+target_include_directories(release_ops_core PUBLIC src)
+target_link_libraries(release_ops_core PRIVATE engine_flags)
+
+add_executable(test_release_ops tests/test_release_ops.cpp
+  src/engine/release/ops.cpp
+  src/engine/release/release.cpp
+  src/engine/project/project.cpp
+  src/engine/resource/resource.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_release_ops PRIVATE src)
+target_link_libraries(test_release_ops PRIVATE engine_flags)
+add_test(NAME release_ops COMMAND test_release_ops)
 
 # Hub shell view model (Horizon 1): the "next recommended action" decision over a
 # project's aggregate project+release state. Pure/headless; the graphical Scene is later.
