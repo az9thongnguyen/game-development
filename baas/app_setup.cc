@@ -3,12 +3,14 @@
 // =============================================================================
 #include "baas/app_setup.h"
 
+#include <cctype>
 #include <chrono>
 #include <functional>
 #include <string>
 
 #include <drogon/drogon.h>
 #include <json/json.h>
+#include <sodium.h>
 
 #include "baas/app_config.h"
 #include "baas/common/context_keys.h"
@@ -17,6 +19,28 @@
 #include "baas/observability/metrics.h"
 
 namespace web {
+namespace {
+
+// A short random correlation id (16 hex chars) for a request with no inbound one.
+std::string new_request_id() {
+    unsigned char buf[8];
+    randombytes_buf(buf, sizeof buf);
+    char hex[sizeof buf * 2 + 1];
+    sodium_bin2hex(hex, sizeof hex, buf, sizeof buf);
+    return std::string(hex);
+}
+
+// Sanitize a caller-supplied X-Request-Id before it reaches logs/headers: cap the
+// length and replace anything outside [A-Za-z0-9_-] with '_' (prevents log-forging via
+// embedded newlines and keeps the echoed header header-safe).
+std::string sanitize_request_id(std::string s) {
+    if (s.size() > 64) s.resize(64);
+    for (char& c : s)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_')) c = '_';
+    return s;
+}
+
+}  // namespace
 
 void register_routes() {
     // A shared monotonic origin so the stamp + pre-sending advices measure the same
@@ -33,6 +57,18 @@ void register_routes() {
         [elapsed](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&&,
                   drogon::AdviceChainCallback&& pass) {
             req->attributes()->insert("t_start", elapsed());
+            pass();
+        });
+
+    // ---- (1b) correlation id: adopt an inbound X-Request-Id (sanitized) or mint one.
+    // Registered before the rate-limit advice so even a 429'd request carries an id in
+    // its access log and response header — every response is traceable end to end.
+    drogon::app().registerPreRoutingAdvice(
+        [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&&,
+           drogon::AdviceChainCallback&& pass) {
+            std::string rid = req->getHeader("x-request-id");
+            rid = rid.empty() ? new_request_id() : sanitize_request_id(rid);
+            req->attributes()->insert("request_id", rid);
             pass();
         });
 
@@ -60,10 +96,12 @@ void register_routes() {
         [elapsed](const drogon::HttpRequestPtr& req, const drogon::HttpResponsePtr& resp) {
             const int status = static_cast<int>(resp->getStatusCode());
             Metrics::instance().record(req->path(), status);
+            const std::string rid = req->attributes()->get<std::string>("request_id");
+            resp->addHeader("X-Request-Id", rid);   // echo so the caller can correlate
             const double dur_ms =
                 (elapsed() - req->attributes()->get<double>("t_start")) * 1000.0;
-            LOG_INFO << req->methodString() << " " << req->path() << " " << status << " "
-                     << dur_ms << "ms";
+            LOG_INFO << "[" << rid << "] " << req->methodString() << " " << req->path() << " "
+                     << status << " " << dur_ms << "ms";
         });
 
     // Liveness probe — no auth, dependency-free; used by tests + orchestration.
