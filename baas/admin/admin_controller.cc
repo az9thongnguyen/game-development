@@ -13,6 +13,7 @@
 #include "baas/common/context_keys.h"
 #include "baas/common/errors.h"
 #include "baas/live_events/events_service.h"
+#include "baas/rbac/rbac.h"
 #include "baas/remote_config/config_service.h"
 #include "baas/store/store_service.h"
 
@@ -208,6 +209,48 @@ void AdminController::defineOffer(const drogon::HttpRequestPtr& req,
         cb(drogon::HttpResponse::newHttpJsonResponse(out));
     } catch (const std::exception&) {
         cb(make_error(500, "internal", "offer upsert failed"));
+    }
+}
+
+void AdminController::createOperator(const drogon::HttpRequestPtr& req,
+                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+    const long pid  = req->attributes()->get<long>(kProjectId);
+    const auto body = req->getJsonObject();
+    if (!body || !(*body)["name"].isString() || !(*body)["role"].isString()) {
+        cb(make_error(400, "invalid_json", "expected {\"name\":\"..\",\"role\":\"viewer|admin|owner\"}"));
+        return;
+    }
+    const auto role = rbac::role_from_string((*body)["role"].asString());
+    if (!role) { cb(make_error(400, "invalid_role", "role must be viewer, admin, or owner")); return; }
+    try {
+        const auto key = rbac::create_operator(pid, (*body)["name"].asString(), *role, "admin");
+        if (!key) { cb(make_error(409, "operator_exists", "bad name or duplicate operator")); return; }
+        Json::Value out;
+        out["name"] = (*body)["name"].asString();
+        out["role"] = (*body)["role"].asString();
+        out["key"]  = *key;   // shown once; store it now
+        cb(drogon::HttpResponse::newHttpJsonResponse(out));
+    } catch (const std::exception&) {
+        cb(make_error(500, "internal", "operator create failed"));
+    }
+}
+
+void AdminController::listOperators(const drogon::HttpRequestPtr& req,
+                                   std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+    const long pid = req->attributes()->get<long>(kProjectId);
+    try {
+        Json::Value arr(Json::arrayValue);
+        for (const auto& op : rbac::list_operators(pid)) {
+            Json::Value j;
+            j["name"] = op.name;
+            j["role"] = rbac::role_name(op.role);
+            arr.append(j);
+        }
+        Json::Value out;
+        out["operators"] = arr;
+        cb(drogon::HttpResponse::newHttpJsonResponse(out));
+    } catch (const std::exception&) {
+        cb(make_error(500, "internal", "operator list failed"));
     }
 }
 
