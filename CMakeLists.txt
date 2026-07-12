@@ -27,6 +27,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---- Options -----------------------------------------------------------------
 option(ENGINE_SANITIZE "Enable Address + UndefinedBehavior sanitizers (dev)" OFF)
+# The SDL2 desktop 'demo' is the ONLY target that needs SDL2. Turn it OFF to build a
+# backend-only tree (the BaaS + SDL-free *_core libs/tests) without SDL2 installed —
+# e.g. inside a server container. Configure never requires SDL2 when this is OFF.
+option(ENGINE_BUILD_DESKTOP "Build the SDL2 desktop 'demo' executable" ON)
 
 # ---- SDL2 (web build, M5: staged + untested) ---------------------------------
 # On the web, SDL2 is provided by Emscripten's port via a compile/link flag, NOT
@@ -41,6 +45,10 @@ if(EMSCRIPTEN)
                    "--shell-file=${CMAKE_SOURCE_DIR}/web/shell.html")
   set(CMAKE_EXECUTABLE_SUFFIX ".html")   # emcc emits demo.html + demo.js + demo.wasm
   set(SDL2_LINK "")
+elseif(NOT ENGINE_BUILD_DESKTOP)
+  # Backend-only build: no desktop 'demo', so SDL2 is not needed and not searched for.
+  set(SDL2_LINK "")
+  message(STATUS "ENGINE_BUILD_DESKTOP=OFF — skipping SDL2 + the desktop 'demo' target")
 else()
   # ---- Find SDL2 (desktop platform backend) ----------------------------------
   # Strategy: prefer SDL2's own CMake config package; fall back to pkg-config.
@@ -84,6 +92,9 @@ if(ENGINE_SANITIZE)
 endif()
 
 # ---- Executable (sources added as the engine grows) --------------------------
+# Built for the desktop (needs SDL2) or the web (Emscripten's SDL port). A backend-only
+# build (ENGINE_BUILD_DESKTOP=OFF, non-web) skips it — see the option above.
+if(EMSCRIPTEN OR ENGINE_BUILD_DESKTOP)
 add_executable(demo
   src/main.cpp
   src/platform/backend_sdl.cpp
@@ -117,6 +128,7 @@ target_include_directories(demo PRIVATE src)
 target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
+endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
 
 # ---- Tests (CTest) -----------------------------------------------------------
 # Dependency-free unit tests for the engine core (no SDL needed). Run with:
