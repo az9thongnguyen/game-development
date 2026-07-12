@@ -1,0 +1,15 @@
+# Keep the Docker build context small + reproducible: never ship local build trees,
+# git history, the web build, or IDE cruft into the image build.
+build/
+build-*/
+web-build/
+.git/
+.github/
+*.o
+*.a
+.DS_Store
+assets/releases/
+assets/channels/
+assets/*_save.txt
+test_ops_tmp/
+resume

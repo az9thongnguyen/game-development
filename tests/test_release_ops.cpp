@@ -12,6 +12,7 @@
 #include "engine/release/release.hpp"
 
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -31,7 +32,10 @@ static void write(const std::string& path, const std::string& text) {
 }
 
 int main() {
-    // Isolate to a scratch base so the test never touches the real store.
+    // Isolate to a scratch base so the test never touches the real store, and START
+    // from a clean slate — leftover state from a prior run (a release already in the
+    // store) would turn the first publish into a "verified" no-op and fail the test.
+    std::filesystem::remove_all("test_ops_tmp");
     assets::set_base_path("test_ops_tmp");
     const std::vector<std::string> known = {"fps"};
 
