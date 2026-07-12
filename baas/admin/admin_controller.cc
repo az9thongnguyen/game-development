@@ -171,4 +171,18 @@ void AdminController::listUsers(const drogon::HttpRequestPtr& req,
     }
 }
 
+void AdminController::rotateSecret(const drogon::HttpRequestPtr& req,
+                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+    // Reached only after SecretKeyFilter proved the caller holds the CURRENT secret.
+    const long pid = req->attributes()->get<long>(kProjectId);
+    try {
+        const std::string secret = admin::rotate_secret(pid);
+        Json::Value out;
+        out["secret_key"] = secret;   // shown once; the previous secret stops working now
+        cb(drogon::HttpResponse::newHttpJsonResponse(out));
+    } catch (const std::exception&) {
+        cb(make_error(500, "internal", "secret rotation failed"));
+    }
+}
+
 }  // namespace web

@@ -192,6 +192,16 @@ Closes the H2 exit gate's second clause ("measures a release") — the last one:
 survives a failure drill (ch.98) · measures a release (ch.100) · reversible LiveOps change
 without client redeployment (ch.99). Full baas suite **23/23**.
 
+### Horizon 2 — secret rotation (DONE, `docs/book/101`) [hardening beyond the exit gate]
+The "secret rotation" half of the RBAC/audit item: `admin::rotate_secret(pid)` mints a fresh
+project secret, swaps the stored argon2id hash, audits `secret.rotate`, returns the new secret
+once. Endpoint `POST /v1/admin/secret/rotate` behind ApiKeyFilter+SecretKeyFilter — reachable
+only by a caller proving it holds the *current* secret (self-service rotation, not admin
+override). Old secret dies the instant the UPDATE lands. Test `test_baas_secret_rotation` (pure
+DB): new verifies, **old no longer verifies**, rotation audited. Still open in RBAC (named, not
+faked): multi-operator roles (owner/admin/viewer, needs an operators table) + short-lived
+credentials (token issuance design).
+
 **H2 honest boundary (toolchain-checked, not assumed):** the persistence *mechanism* is
 buildable and tested here because the toolchain is present (Drogon + SQLite + libsodium).
 **Live PostgreSQL is the one genuine block**: the Homebrew Drogon bottle is built without
