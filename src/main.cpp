@@ -187,6 +187,38 @@ int package_project(const std::string& path) {
     return 0;
 }
 
+// Create (the first verb of the canonical loop): scaffold a new, valid, launchable
+// game.project manifest — no hand-remembering the format. Reuses project_core::to_text,
+// validates before writing (a scaffold that can't launch is a bug, not a starting point),
+// and refuses to clobber an existing file. ponytail: the real create UX is the deferred
+// Studio shell; this is the headless stand-in that completes the CLI golden path.
+int new_project(const std::string& out_path, const std::string& entry, const std::string& name) {
+    engine::Project p;
+    p.name   = name;
+    p.schema = engine::kProjectSchema;
+    p.entry  = entry;
+    const auto errs = engine::validate(p, kKnownEntries);   // known entry + non-empty name, fail-closed
+    if (!errs.empty()) {
+        std::fprintf(stderr, "project-new: cannot scaffold a launchable project:\n");
+        for (const auto& e : errs) std::fprintf(stderr, "  - %s\n", e.c_str());
+        return 1;
+    }
+    if (assets::load_file(out_path)) {   // creating, not overwriting
+        std::fprintf(stderr, "project-new: '%s' already exists — refusing to overwrite\n", out_path.c_str());
+        return 1;
+    }
+    const std::string text = engine::to_text(p);
+    if (!assets::write_file(out_path, std::vector<uint8_t>(text.begin(), text.end()))) {
+        std::fprintf(stderr, "project-new: cannot write '%s'\n", out_path.c_str());
+        return 1;
+    }
+    std::printf("created %s\n  name  %s\n  entry %s\n"
+                "  next  demo --project %s   (or --project-inspect / --project-publish)\n"
+                "  add content by appending  asset <type> <path>  lines\n",
+                out_path.c_str(), name.c_str(), entry.c_str(), out_path.c_str());
+    return 0;
+}
+
 // Publish: package a project and store its manifest immutably by content hash, then
 // point a channel (default "preview") at it. Idempotent — re-publishing identical
 // content is a verified no-op; a differing manifest at the same release id is refused
@@ -379,6 +411,16 @@ int main(int argc, char** argv) {
     if (mode == "--project-package") {
         if (argc < 3) { std::fprintf(stderr, "usage: demo --project-package <path>\n"); return 1; }
         return package_project(argv[2]);
+    }
+
+    // Headless: scaffold a new launchable game.project manifest (the "create" verb).
+    if (mode == "--project-new") {
+        if (argc < 4) {
+            std::fprintf(stderr, "usage: demo --project-new <out-path> <entry> [name]\n");
+            return 1;
+        }
+        const std::string out = argv[2], entry = argv[3];
+        return new_project(out, entry, argc > 4 ? argv[4] : entry);   // default name = entry id
     }
 
     // Headless: package a project and store it immutably by content hash, pointing a

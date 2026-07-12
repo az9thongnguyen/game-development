@@ -161,6 +161,32 @@ the scene. `test_project` locks the core contract; the full CTest suite stays gr
 (48/48). The pile of `--flag` scenes now has its first *project*, and every later slice —
 resource IDs, packaged preview, immutable releases — has a root to hang from.
 
+## The create verb (closing the loop's front)
+
+Once the *rest* of the golden path existed — inspect, package, publish, verify, run — one
+verb was still missing at the front: **create**. The strategy's canonical loop starts
+"new project → create → …", and until you could make a project without hand-typing the
+manifest format, the loop had no first-class entry. `--project-new <out-path> <entry>
+[name]` fills it, and it is almost nothing because the pure core already had the pieces:
+
+```cpp
+engine::Project p{name, engine::kProjectSchema, entry, /*assets*/{}};
+if (!engine::validate(p, kKnownEntries).empty()) return 1;   // never scaffold an unlaunchable project
+if (assets::load_file(out_path)) return 1;                   // create, don't clobber
+assets::write_file(out_path, to_text(p));                    // reuse the round-trip serializer
+```
+
+Two guards make it trustworthy rather than a convenience: it **validates before writing**
+(a scaffold that can't launch is a bug handed to a beginner, not a starting point — so an
+unknown `entry` is refused with the known list), and it **refuses to overwrite** an
+existing file (creating is not the same as clobbering). That it reuses `to_text` — the
+same serializer `test_project` already round-trip-tests — means the file it writes is
+guaranteed to parse back to the same project. The scaffolded manifest immediately runs the
+whole downstream loop: `--project-inspect` reports `status OK`, `--project-publish` stores
+it, `--project-verify` reports parity. `ponytail:` this is the headless stand-in for the
+real create experience — a Studio shell — which the roadmap files under a later horizon;
+the CLI verb closes the loop today without pretending to be that UI.
+
 ## Exercises
 
 1. Add an optional `assets <dir>` field. Parse and round-trip it, but do **not** validate
