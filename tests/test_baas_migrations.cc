@@ -33,10 +33,11 @@ int main() {
     // A fresh database applies every migration in order and records each one.
     web::db::run_migrations(db);
     auto applied = web::db::applied_migrations(db);
-    CHECK(applied.size() == 3);
+    CHECK(applied.size() == 4);
     CHECK(applied[0].version == 1 && applied[0].name == "initial schema");
     CHECK(applied[1].version == 2 && applied[1].name == "audit log");
     CHECK(applied[2].version == 3 && applied[2].name == "analytics release column");
+    CHECK(applied[3].version == 4 && applied[3].name == "idempotency keys");
     CHECK(!applied[0].applied_at.empty());
 
     // Migration 2 really created the table: an insert into it must succeed.
@@ -55,7 +56,7 @@ int main() {
 
     // Running migrations again is a no-op: no duplicate version rows, no error.
     web::db::run_migrations(db);
-    CHECK(web::db::applied_migrations(db).size() == 3);
+    CHECK(web::db::applied_migrations(db).size() == 4);
     // ...and the audit rows survived (idempotent migrations do not wipe data).
     CHECK(web::audit::recent(42, 10).size() == 1);
 

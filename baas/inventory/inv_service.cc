@@ -18,6 +18,30 @@ Error* validate(const std::string& item, long long amount, Error& scratch) {
 }
 }  // namespace
 
+namespace {
+// Idempotency store, currently used only by grant. Two tiny helpers over the
+// idempotency_keys table (migration 4). ponytail: lookup-then-record has a hair-thin
+// double-apply window under two *concurrent* first uses of one key; single-writer SQLite
+// serializes execSqlSync so it is effectively closed today. When a multi-writer backend
+// (Postgres) is adopted, switch to a claim-first INSERT; when a SECOND endpoint needs
+// idempotency, graduate these to baas/common/idempotency.
+std::optional<long long> idem_lookup(long project_id, const std::string& key) {
+    const auto rows = db::client()->execSqlSync(
+        "SELECT result FROM idempotency_keys WHERE project_id=? AND idem_key=?",
+        project_id, key);
+    if (rows.empty()) return std::nullopt;
+    return rows[0]["result"].as<long long>();
+}
+void idem_record(long project_id, const std::string& key, long long result) {
+    // ON CONFLICT DO NOTHING (portable across SQLite ≥3.24 and Postgres): a racing
+    // duplicate is a harmless no-op, first writer wins.
+    db::client()->execSqlSync(
+        "INSERT INTO idempotency_keys(project_id, idem_key, result) VALUES(?,?,?) "
+        "ON CONFLICT(project_id, idem_key) DO NOTHING",
+        project_id, key, result);
+}
+}  // namespace
+
 bool valid_item(const std::string& item) {
     if (item.empty() || item.size() > 64) return false;
     for (char c : item)
@@ -42,9 +66,17 @@ std::vector<Item> list(long project_id, long user_id) {
     return out;
 }
 
-Result grant(long project_id, long user_id, const std::string& item, long long amount) {
+Result grant(long project_id, long user_id, const std::string& item, long long amount,
+             const std::string& idem_key) {
     Error scratch;
     if (Error* e = validate(item, amount, scratch)) return {std::nullopt, *e};
+
+    // Idempotent retry: if this key already produced a result, replay it — do not grant
+    // again. (The replayed qty is the item's total after the original grant.)
+    if (!idem_key.empty()) {
+        if (auto prior = idem_lookup(project_id, idem_key))
+            return {Item{item, *prior}, std::nullopt};
+    }
 
     auto       db  = db::client();
     const auto ex  = db->execSqlSync(
@@ -62,6 +94,7 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
             "WHERE project_id=? AND user_id=? AND item=?",
             qty, project_id, user_id, item);
     }
+    if (!idem_key.empty()) idem_record(project_id, idem_key, qty);   // remember for retries
     return {Item{item, qty}, std::nullopt};
 }
 
