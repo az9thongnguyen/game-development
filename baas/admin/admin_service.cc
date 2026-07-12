@@ -37,6 +37,14 @@ NewProject create_project(const std::string& name) {
     return {id, name, pub, sec};
 }
 
+std::string rotate_secret(long project_id) {
+    const std::string sec = rand_token("sk_", 16);
+    db::client()->execSqlSync("UPDATE projects SET secret_key_hash=? WHERE id=?",
+                              pw::hash(sec), project_id);
+    audit::record(project_id, "admin", "secret.rotate", "project secret rotated");
+    return sec;   // returned once; the old secret no longer verifies
+}
+
 std::vector<ProjectInfo> list_projects() {
     const auto rows =
         db::client()->execSqlSync("SELECT id, name, public_key FROM projects ORDER BY id ASC");

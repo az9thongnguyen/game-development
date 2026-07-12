@@ -24,6 +24,7 @@ public:
     ADD_METHOD_TO(AdminController::createEvent,  "/v1/admin/events",          drogon::Post, "web::ApiKeyFilter", "web::SecretKeyFilter");
     ADD_METHOD_TO(AdminController::analytics,    "/v1/admin/analytics/summary", drogon::Get, "web::ApiKeyFilter", "web::SecretKeyFilter");
     ADD_METHOD_TO(AdminController::listUsers,    "/v1/admin/users",           drogon::Get,  "web::ApiKeyFilter", "web::SecretKeyFilter");
+    ADD_METHOD_TO(AdminController::rotateSecret, "/v1/admin/secret/rotate",   drogon::Post, "web::ApiKeyFilter", "web::SecretKeyFilter");
     METHOD_LIST_END
 
     void createProject(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
@@ -33,6 +34,7 @@ public:
     void createEvent(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
     void analytics(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
     void listUsers(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    void rotateSecret(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
 };
 
 }  // namespace web
