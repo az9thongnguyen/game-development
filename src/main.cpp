@@ -6,8 +6,10 @@
 //    demo --gui [hvh|hvai] [easy|medium|hard]  -> chess (large, crisp window)
 //    demo --tui [hvh|hvai] [easy|medium|hard]  -> chess in the terminal
 // =============================================================================
+#include <ctime>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -219,12 +221,45 @@ int new_project(const std::string& out_path, const std::string& entry, const std
     return 0;
 }
 
+// Write text to `path` atomically: stage in a sibling ".tmp", then rename over the
+// target. A crash mid-write leaves the old file intact and the ".tmp" as garbage —
+// never a half-written release manifest or a torn channel pointer (exit gate: a publish
+// cannot expose a partial release).
+bool write_atomic(const std::string& path, const std::string& text) {
+    const std::string tmp = path + ".tmp";
+    return assets::write_file(tmp, std::vector<uint8_t>(text.begin(), text.end())) &&
+           assets::rename(tmp, path);
+}
+
+// Read a channel's current release id (validated), or nullopt if unset/malformed.
+std::optional<std::string> read_channel(const std::string& channel) {
+    auto bytes = assets::load_file(engine::channel_path(channel));
+    if (!bytes) return std::nullopt;
+    return engine::parse_channel(std::string(bytes->begin(), bytes->end()));
+}
+
+// Append one line to the append-only release audit log: what moved, to what, from what,
+// and why. Every channel move goes through here so promote/rollback are auditable and the
+// predecessor is always recorded (so a bad release can be rolled back to a known-good id).
+void record_audit(const std::string& action, const std::string& channel,
+                  const std::string& release, const std::string& prev, const std::string& reason) {
+    engine::AuditEntry e;
+    e.epoch   = static_cast<long long>(std::time(nullptr));
+    e.action  = action;
+    e.channel = channel;
+    e.release = release;
+    e.prev    = prev;
+    e.reason  = reason;
+    const std::string line = engine::audit_line(e);
+    assets::append_file(engine::audit_log_path(), std::vector<uint8_t>(line.begin(), line.end()));
+}
+
 // Publish: package a project and store its manifest immutably by content hash, then
-// point a channel (default "preview") at it. Idempotent — re-publishing identical
+// point a channel (default "development") at it. Idempotent — re-publishing identical
 // content is a verified no-op; a differing manifest at the same release id is refused
-// (an immutable release's bytes never change). Writes through the assets:: seam, so
-// natively it lands under assets/releases and assets/channels.
-int publish_project(const std::string& path, const std::string& channel) {
+// (an immutable release's bytes never change). Manifest + channel are written atomically,
+// and the move is recorded in the audit log. Writes through the assets:: seam.
+int publish_project(const std::string& path, const std::string& channel, const std::string& reason) {
     if (!engine::valid_channel_name(channel)) {
         std::fprintf(stderr, "release: invalid channel name '%s'\n", channel.c_str());
         return 1;
@@ -246,34 +281,27 @@ int publish_project(const std::string& path, const std::string& channel) {
             return 1;
         }
         verified = true;                // immutable release already present and byte-identical
-    } else if (!assets::write_file(mpath, pkg_bytes)) {
+    } else if (!write_atomic(mpath, pkg)) {
         std::fprintf(stderr, "release: cannot write %s\n", mpath.c_str());
         return 1;
     }
 
-    const std::string cser = engine::serialize_channel(hex);
-    if (!assets::write_file(engine::channel_path(channel),
-                            std::vector<uint8_t>(cser.begin(), cser.end()))) {
+    const std::string prev = read_channel(channel).value_or("");
+    if (!write_atomic(engine::channel_path(channel), engine::serialize_channel(hex))) {
         std::fprintf(stderr, "release: cannot update channel '%s'\n", channel.c_str());
         return 1;
     }
+    record_audit("publish", channel, hex, prev, reason);
     std::printf("%s %s\n  release %s\n  channel %s -> %s\n",
                 verified ? "verified" : "published", r->proj.name.c_str(),
                 hex.c_str(), channel.c_str(), hex.c_str());
     return 0;
 }
 
-// Read a channel's current release id (validated), or nullopt if unset/malformed.
-std::optional<std::string> read_channel(const std::string& channel) {
-    auto bytes = assets::load_file(engine::channel_path(channel));
-    if (!bytes) return std::nullopt;
-    return engine::parse_channel(std::string(bytes->begin(), bytes->end()));
-}
-
 // Promote: point the target channel at whatever release the source channel currently
-// holds (e.g. preview -> production). The release must exist in the store — no
-// dangling promotion.
-int promote_release(const std::string& from, const std::string& to) {
+// holds (e.g. development -> preview -> production). The release must exist in the store
+// — no dangling promotion. Atomic + audited, with the target's predecessor recorded.
+int promote_release(const std::string& from, const std::string& to, const std::string& reason) {
     if (!engine::valid_channel_name(from) || !engine::valid_channel_name(to)) {
         std::fprintf(stderr, "release: invalid channel name\n");
         return 1;
@@ -285,20 +313,20 @@ int promote_release(const std::string& from, const std::string& to) {
                      from.c_str(), hex->c_str());
         return 1;
     }
-    const std::string cser = engine::serialize_channel(*hex);
-    if (!assets::write_file(engine::channel_path(to),
-                            std::vector<uint8_t>(cser.begin(), cser.end()))) {
+    const std::string prev = read_channel(to).value_or("");
+    if (!write_atomic(engine::channel_path(to), engine::serialize_channel(*hex))) {
         std::fprintf(stderr, "release: cannot update channel '%s'\n", to.c_str());
         return 1;
     }
+    record_audit("promote", to, *hex, prev, reason);
     std::printf("promoted %s -> %s (%s)\n", from.c_str(), to.c_str(), hex->c_str());
     return 0;
 }
 
 // Rollback: point a channel at an explicit prior release id, which must exist in the
-// store. The id comes from an operator (from --release-status or a prior publish), so
-// it is validated as a trust-boundary input before it becomes a path.
-int rollback_channel(const std::string& channel, const std::string& hex) {
+// store. The id comes from an operator (from --release-status/--release-log), so it is
+// validated as a trust-boundary input before it becomes a path. Atomic + audited.
+int rollback_channel(const std::string& channel, const std::string& hex, const std::string& reason) {
     if (!engine::valid_channel_name(channel)) {
         std::fprintf(stderr, "release: invalid channel name '%s'\n", channel.c_str());
         return 1;
@@ -311,26 +339,50 @@ int rollback_channel(const std::string& channel, const std::string& hex) {
         std::fprintf(stderr, "release: no such release %s\n", hex.c_str());
         return 1;
     }
-    const std::string cser = engine::serialize_channel(hex);
-    if (!assets::write_file(engine::channel_path(channel),
-                            std::vector<uint8_t>(cser.begin(), cser.end()))) {
+    const std::string prev = read_channel(channel).value_or("");
+    if (!write_atomic(engine::channel_path(channel), engine::serialize_channel(hex))) {
         std::fprintf(stderr, "release: cannot update channel '%s'\n", channel.c_str());
         return 1;
     }
+    record_audit("rollback", channel, hex, prev, reason);
     std::printf("rolled back %s -> %s\n", channel.c_str(), hex.c_str());
     return 0;
 }
+
+// The channels with defined promotion semantics: publish lands in development, promote
+// forward to preview (shareable) then production (live). Other names are still allowed
+// ad hoc by publish/promote/rollback; these are just the ones --release-status reports.
+const char* const kChannels[] = {"development", "preview", "production"};
 
 // Status: print the release each well-known channel points at, and whether that
 // release is present in the store. Reads fixed channel files — no directory scan
 // (the "collection database" smell the strategy warns against).
 int release_status() {
-    static const char* const kChannels[] = {"preview", "production"};
     for (const char* ch : kChannels) {
         auto hex = read_channel(ch);
         if (!hex) { std::printf("%-11s unset\n", ch); continue; }
         const bool present = assets::load_file(engine::release_manifest_path(*hex)).has_value();
         std::printf("%-11s %s  [%s]\n", ch, hex->c_str(), present ? "present" : "MISSING");
+    }
+    return 0;
+}
+
+// Log: print the append-only audit history (optionally filtered to one channel). Reads
+// the log file forward — never scans the store directory.
+int release_log(const std::string& channel_filter) {
+    auto bytes = assets::load_file(engine::audit_log_path());
+    if (!bytes) { std::printf("(no releases published yet)\n"); return 0; }
+    std::istringstream in(std::string(bytes->begin(), bytes->end()));
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        auto e = engine::parse_audit_line(line);
+        if (!e) continue;                                             // skip a malformed line, keep going
+        if (!channel_filter.empty() && e->channel != channel_filter) continue;
+        std::printf("%-10lld %-8s %-11s %s <- %s%s%s\n",
+                    e->epoch, e->action.c_str(), e->channel.c_str(), e->release.c_str(),
+                    e->prev.empty() ? "(none)" : e->prev.c_str(),
+                    e->reason.empty() ? "" : "  # ", e->reason.c_str());
     }
     return 0;
 }
@@ -424,27 +476,32 @@ int main(int argc, char** argv) {
     }
 
     // Headless: package a project and store it immutably by content hash, pointing a
-    // channel (default "preview") at it — the Horizon 1 local release store.
+    // channel (default "development") at it — the Horizon 1 local release store.
     if (mode == "--project-publish") {
-        if (argc < 3) { std::fprintf(stderr, "usage: demo --project-publish <path> [channel]\n"); return 1; }
-        return publish_project(argv[2], argc > 3 ? argv[3] : "preview");
+        if (argc < 3) { std::fprintf(stderr, "usage: demo --project-publish <path> [channel] [reason]\n"); return 1; }
+        return publish_project(argv[2], argc > 3 ? argv[3] : "development", argc > 4 ? argv[4] : "");
     }
 
     // Headless: move the <to> channel onto the release the <from> channel holds.
     if (mode == "--release-promote") {
-        if (argc < 4) { std::fprintf(stderr, "usage: demo --release-promote <from> <to>\n"); return 1; }
-        return promote_release(argv[2], argv[3]);
+        if (argc < 4) { std::fprintf(stderr, "usage: demo --release-promote <from> <to> [reason]\n"); return 1; }
+        return promote_release(argv[2], argv[3], argc > 4 ? argv[4] : "");
     }
 
     // Headless: point <channel> back at an explicit prior release id.
     if (mode == "--release-rollback") {
-        if (argc < 4) { std::fprintf(stderr, "usage: demo --release-rollback <channel> <release-id>\n"); return 1; }
-        return rollback_channel(argv[2], argv[3]);
+        if (argc < 4) { std::fprintf(stderr, "usage: demo --release-rollback <channel> <release-id> [reason]\n"); return 1; }
+        return rollback_channel(argv[2], argv[3], argc > 4 ? argv[4] : "");
     }
 
     // Headless: print what each channel points at and whether the release is present.
     if (mode == "--release-status") {
         return release_status();
+    }
+
+    // Headless: print the append-only audit history (optionally filtered to one channel).
+    if (mode == "--release-log") {
+        return release_log(argc > 2 ? argv[2] : "");
     }
 
     // Headless: preview parity (P2) — does the project package to the release a channel

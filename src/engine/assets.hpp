@@ -30,6 +30,15 @@ std::optional<std::vector<uint8_t>> load_file(const std::string& path);
 // in ONE place, without any caller change.
 bool write_file(const std::string& path, const std::vector<uint8_t>& bytes);
 
+// Append raw bytes to a file (creating it, and any parent dirs, if absent). Used for
+// append-only logs (e.g. the release audit log). Returns false if the write fails.
+bool append_file(const std::string& path, const std::vector<uint8_t>& bytes);
+
+// Atomically move `from` onto `to` (both base-relative; parent dirs of `to` created).
+// std::filesystem::rename is atomic on one filesystem — this is how a release manifest
+// or channel pointer is published without ever exposing a half-written file. False on error.
+bool rename(const std::string& from, const std::string& to);
+
 // Last-modified time as implementation-defined ticks (for hot-reload change
 // detection), or 0 if the file is missing or the platform can't report it (e.g. the
 // web has no filesystem watch). Only meaningful when compared against a prior value.

@@ -57,6 +57,29 @@ bool write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
     return static_cast<bool>(f);  // false if the stream errored mid-write
 }
 
+bool append_file(const std::string& path, const std::vector<uint8_t>& bytes) {
+    const std::filesystem::path full = std::filesystem::path(g_base) / path;
+    std::error_code ec;
+    if (full.has_parent_path()) std::filesystem::create_directories(full.parent_path(), ec);
+
+    std::ofstream f(full, std::ios::binary | std::ios::app);
+    if (!f) return false;
+    if (!bytes.empty()) {
+        f.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+    }
+    return static_cast<bool>(f);
+}
+
+bool rename(const std::string& from, const std::string& to) {
+    const std::filesystem::path a = std::filesystem::path(g_base) / from;
+    const std::filesystem::path b = std::filesystem::path(g_base) / to;
+    std::error_code ec;
+    if (b.has_parent_path()) std::filesystem::create_directories(b.parent_path(), ec);
+    std::filesystem::rename(a, b, ec);   // atomic on the same filesystem
+    return !ec;
+}
+
 std::int64_t mtime(const std::string& path) {
     const std::string full = g_base + "/" + path;
     std::error_code   ec;
