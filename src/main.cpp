@@ -16,6 +16,7 @@
 
 #include "engine/app.hpp"
 #include "engine/assets.hpp"
+#include "engine/hub/hub.hpp"
 #include "engine/project/project.hpp"
 #include "engine/release/release.hpp"
 #include "engine/resource/resource.hpp"
@@ -413,6 +414,61 @@ int verify_project(const std::string& path, const std::string& channel) {
     return 2;
 }
 
+// Assemble the hub view for one project: parse (bail only if unreadable/unparseable —
+// a NOT-shippable project is a state the hub must *show*, not refuse), then aggregate
+// validation/closure problems, the current source package hash, and each channel's
+// state relative to that source. The pure recommend() turns this into a next action.
+std::optional<engine::HubView> build_hub_view(const std::string& path) {
+    auto bytes = assets::load_file(path);
+    if (!bytes) { std::fprintf(stderr, "hub: cannot read '%s'\n", path.c_str()); return std::nullopt; }
+    auto proj = engine::parse_project(std::string(bytes->begin(), bytes->end()));
+    if (!proj) { std::fprintf(stderr, "hub: '%s' is not a valid gameproject1 manifest\n", path.c_str()); return std::nullopt; }
+
+    engine::HubView v;
+    v.name = proj->name; v.entry = proj->entry; v.schema = proj->schema;
+
+    const auto errs = engine::validate(*proj, kKnownEntries);
+    std::vector<engine::PackagedResource> resources;
+    std::vector<std::string> missing;
+    collect_resources(*proj, resources, missing);
+    for (const auto& e : errs)    v.problems.push_back(e);
+    for (const auto& m : missing) v.problems.push_back("missing asset: " + m);
+    v.shippable = v.problems.empty();
+    if (v.shippable) v.local_package = engine::hash_hex(engine::package_hash(resources));
+
+    for (const char* ch : kChannels) {
+        engine::HubChannel c;
+        c.name = ch;
+        if (auto rel = read_channel(ch)) {
+            c.release       = *rel;
+            c.present       = assets::load_file(engine::release_manifest_path(*rel)).has_value();
+            c.matches_local = !v.local_package.empty() && *rel == v.local_package;
+        }
+        v.channels.push_back(c);
+    }
+    return v;
+}
+
+// The Hub shell (view/controller), headless: one project's aggregate status across the
+// project + release domain, ending in the single next recommended action. The graphical
+// Scene is a later slice; the aggregation + recommendation is the testable essence.
+int hub_dashboard(const std::string& path) {
+    auto v = build_hub_view(path);
+    if (!v) return 1;
+    std::printf("hub: %s\n  entry   %s\n  schema  %d\n  status  %s\n",
+                v->name.c_str(), v->entry.c_str(), v->schema,
+                v->shippable ? "shippable" : "NOT shippable");
+    for (const auto& p : v->problems) std::printf("    - %s\n", p.c_str());
+    if (v->shippable) std::printf("  package %s\n", v->local_package.c_str());
+    for (const auto& c : v->channels) {
+        if (c.release.empty()) { std::printf("  %-11s unset\n", c.name.c_str()); continue; }
+        std::printf("  %-11s %s  [%s%s]\n", c.name.c_str(), c.release.c_str(),
+                    c.present ? "present" : "MISSING", c.matches_local ? ", ==source" : "");
+    }
+    std::printf("  next    %s\n", engine::recommend(*v).c_str());
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -509,6 +565,12 @@ int main(int argc, char** argv) {
     if (mode == "--project-verify") {
         if (argc < 4) { std::fprintf(stderr, "usage: demo --project-verify <path> <channel>\n"); return 1; }
         return verify_project(argv[2], argv[3]);
+    }
+
+    // Headless: the Hub shell — one project's aggregate status + next recommended action.
+    if (mode == "--hub") {
+        if (argc < 3) { std::fprintf(stderr, "usage: demo --hub <path>\n"); return 1; }
+        return hub_dashboard(argv[2]);
     }
 
     if (mode == "--3d") {
