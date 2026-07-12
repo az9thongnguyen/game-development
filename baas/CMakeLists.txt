@@ -102,6 +102,11 @@ add_executable(test_baas_release_metrics ${CMAKE_SOURCE_DIR}/tests/test_baas_rel
 target_link_libraries(test_baas_release_metrics PRIVATE baas_core engine_flags)
 add_test(NAME baas_release_metrics COMMAND test_baas_release_metrics)
 
+# Secret rotation: mint-new + invalidate-old + audit (H2 RBAC) — pure DB.
+add_executable(test_baas_secret_rotation ${CMAKE_SOURCE_DIR}/tests/test_baas_secret_rotation.cc)
+target_link_libraries(test_baas_secret_rotation PRIVATE baas_core engine_flags)
+add_test(NAME baas_secret_rotation COMMAND test_baas_secret_rotation)
+
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
