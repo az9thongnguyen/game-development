@@ -62,4 +62,5 @@ jobs:
           ./build/demo --release-promote preview production "ci ship"
           ./build/demo --release-status
           ./build/demo --release-log         # append-only audit history
+          ./build/demo --hub projects/creator.gameproject   # aggregate status + next recommended action
           test "$(find assets/releases assets/channels -name '*.tmp' | wc -l)" -eq 0  # atomic writes leave no .tmp
