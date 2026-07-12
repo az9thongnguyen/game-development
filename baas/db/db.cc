@@ -13,12 +13,12 @@ namespace {
 
 DbClientPtr g_client;
 
-// The one and only schema migration for Slice #1. Kept as an embedded string
-// (not a runtime .sql file) so there is no startup file-path dependency. When a
-// SECOND migration is needed (later slices), replace this with a real versioned
-// migration mechanism (a table of applied versions + ordered files). Portable
-// SQL: runs on SQLite now and is kept conservative for Postgres later.
-constexpr const char* kSchemaSql = R"SQL(
+// Migration 1 — the original Slice-#1 schema. Kept as an embedded string (not a
+// runtime .sql file) so there is no startup file-path dependency. Every statement is
+// CREATE ... IF NOT EXISTS, so re-running it on a pre-versioning database is a no-op
+// (that is what lets an old DB adopt the versioned engine cleanly). Portable SQL:
+// runs on SQLite now and stays conservative for the documented Postgres build.
+constexpr const char* kMigration1 = R"SQL(
 CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
@@ -129,6 +129,34 @@ CREATE TABLE IF NOT EXISTS testruns (
 );
 )SQL";
 
+// Migration 2 — audit log (H2 RBAC/audit foundation). An append-only record of
+// mutating admin/operator actions, so "who changed what, when" is answerable after
+// the fact. project_id is nullable for platform-level actions with no single subject.
+constexpr const char* kMigration2Audit = R"SQL(
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_audit_project ON audit_log(project_id, id);
+)SQL";
+
+// The ordered, append-only migration list. To evolve the schema, append a new entry
+// with the next version — never edit or renumber a shipped one. run_migrations applies
+// exactly those a given database is behind on.
+struct Migration {
+    int         version;
+    const char* name;
+    const char* sql;
+};
+constexpr Migration kMigrations[] = {
+    {1, "initial schema", kMigration1},
+    {2, "audit log", kMigration2Audit},
+};
+
 bool is_blank(const std::string& s) {
     for (char c : s)
         if (!std::isspace(static_cast<unsigned char>(c))) return false;
@@ -169,7 +197,35 @@ DbClientPtr make_db_client(const std::string& url) {
 }
 
 void run_migrations(const DbClientPtr& db) {
-    exec_each_statement(db, kSchemaSql);
+    // The ledger of applied migrations. Created first so a fresh DB and an old
+    // pre-versioning DB both start from "version 0 applied".
+    db->execSqlSync(
+        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+        "  version INTEGER PRIMARY KEY,"
+        "  name TEXT NOT NULL,"
+        "  applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+
+    int current = 0;
+    const auto max_row =
+        db->execSqlSync("SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations");
+    if (!max_row.empty()) current = max_row[0]["v"].as<int>();
+
+    for (const auto& m : kMigrations) {
+        if (m.version <= current) continue;   // already applied — skip
+        exec_each_statement(db, m.sql);
+        db->execSqlSync("INSERT INTO schema_migrations(version, name) VALUES(?,?)",
+                        m.version, std::string(m.name));
+    }
+}
+
+std::vector<MigrationRecord> applied_migrations(const DbClientPtr& db) {
+    std::vector<MigrationRecord> out;
+    const auto rows = db->execSqlSync(
+        "SELECT version, name, applied_at FROM schema_migrations ORDER BY version ASC");
+    for (const auto& r : rows)
+        out.push_back({r["version"].as<int>(), r["name"].as<std::string>(),
+                       r["applied_at"].as<std::string>()});
+    return out;
 }
 
 std::string seed(const DbClientPtr& db) {
