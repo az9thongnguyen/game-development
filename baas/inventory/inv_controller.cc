@@ -80,9 +80,13 @@ void InventoryController::get(const drogon::HttpRequestPtr& req,
 void InventoryController::grant(const drogon::HttpRequestPtr& req,
                               std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                               std::string item) {
-    const long pid = req->attributes()->get<long>(kProjectId);
-    const long uid = req->attributes()->get<long>(kUserId);
-    adjust(req, cb, [&](long long amount) { return inv::grant(pid, uid, item, amount); });
+    const long        pid = req->attributes()->get<long>(kProjectId);
+    const long        uid = req->attributes()->get<long>(kUserId);
+    // Optional idempotency: a client retrying a timed-out grant sends the same
+    // Idempotency-Key and is not double-credited. Capped so a stray header can't bloat a row.
+    std::string idem = req->getHeader("idempotency-key");
+    if (idem.size() > 64) idem.resize(64);
+    adjust(req, cb, [&](long long amount) { return inv::grant(pid, uid, item, amount, idem); });
 }
 
 void InventoryController::consume(const drogon::HttpRequestPtr& req,

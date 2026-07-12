@@ -202,6 +202,24 @@ DB): new verifies, **old no longer verifies**, rotation audited. Still open in R
 faked): multi-operator roles (owner/admin/viewer, needs an operators table) + short-lived
 credentials (token issuance design).
 
+### Horizon 2 — idempotency keys (DONE, `docs/book/102`) [correctness hardening]
+The "idempotency" half of economy foundations, on the op where it bites hardest (grant):
+- **Migration 4** `idempotency_keys(project_id, idem_key, result, UNIQUE(project_id,idem_key))`.
+- `inv::grant(...)` gains an optional `idem_key`: a retried grant with the same key **replays**
+  the first result instead of crediting again (no double-grant on a network retry). Records
+  with `ON CONFLICT DO NOTHING` (portable); only records *successes* (a rejected grant leaves
+  the key free). Controller reads the `Idempotency-Key` header (capped 64).
+- **Test** `test_baas_idempotency` (pure DB): same key → not double-credited; different key →
+  applies; no key → applies; bad-amount key not poisoned. `baas_inventory` HTTP green.
+- ponytail ceiling named: lookup-then-record has a thin concurrent-first-use window, closed by
+  single-writer SQLite today; claim-first INSERT is the Postgres upgrade.
+
+**Deployment profile (Dockerfile) — deferred with reason:** root CMake `pkg_check_modules(SDL2
+REQUIRED)` at *configure* time couples the whole project to SDL2, so a backend-only image would
+awkwardly need SDL2 just to configure `baas`. That deserves a build-system split (make SDL2
+optional when only baas targets are requested) FIRST — a broad, risky change not done on
+momentum. Docker IS installed (29.6.1); the slice is real but gated on that refactor.
+
 **H2 honest boundary (toolchain-checked, not assumed):** the persistence *mechanism* is
 buildable and tested here because the toolchain is present (Drogon + SQLite + libsodium).
 **Live PostgreSQL is the one genuine block**: the Homebrew Drogon bottle is built without
