@@ -14,6 +14,7 @@
 #include "baas/common/errors.h"
 #include "baas/live_events/events_service.h"
 #include "baas/remote_config/config_service.h"
+#include "baas/store/store_service.h"
 
 namespace web {
 namespace {
@@ -182,6 +183,31 @@ void AdminController::rotateSecret(const drogon::HttpRequestPtr& req,
         cb(drogon::HttpResponse::newHttpJsonResponse(out));
     } catch (const std::exception&) {
         cb(make_error(500, "internal", "secret rotation failed"));
+    }
+}
+
+void AdminController::defineOffer(const drogon::HttpRequestPtr& req,
+                                 std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                 std::string sku) {
+    const long pid  = req->attributes()->get<long>(kProjectId);
+    const auto body = req->getJsonObject();
+    if (!body || !(*body)["currency"].isString() || !(*body)["item"].isString() ||
+        !(*body)["cost"].isIntegral() || !(*body)["amount"].isIntegral()) {
+        cb(make_error(400, "invalid_json",
+                      "expected {\"currency\":\"..\",\"cost\":N,\"item\":\"..\",\"amount\":N}"));
+        return;
+    }
+    try {
+        const bool ok = store::upsert(pid, sku, (*body)["currency"].asString(),
+                                      (*body)["cost"].asInt64(), (*body)["item"].asString(),
+                                      (*body)["amount"].asInt64(), "admin");
+        if (!ok) { cb(make_error(400, "invalid_offer", "bad sku, item, cost, or amount")); return; }
+        Json::Value out;
+        out["sku"] = sku;
+        out["ok"]  = true;
+        cb(drogon::HttpResponse::newHttpJsonResponse(out));
+    } catch (const std::exception&) {
+        cb(make_error(500, "internal", "offer upsert failed"));
     }
 }
 
