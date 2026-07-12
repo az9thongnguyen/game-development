@@ -53,11 +53,13 @@ jobs:
           ./build/demo --project-new assets/ci_new.gameproject fps "CI New"
           ./build/demo --project-inspect ci_new.gameproject   # scaffolded manifest must inspect OK
 
-      - name: Release-store smoke (publish → verify → status → promote)
+      - name: Release-store smoke (publish → verify → promote dev→preview→prod → audit)
         run: |
-          ./build/demo --project-publish projects/creator.gameproject
-          ./build/demo --project-publish projects/creator.gameproject   # idempotent: second publish is a verified no-op
-          ./build/demo --project-verify projects/creator.gameproject preview   # preview parity (P2): must exit 0
+          ./build/demo --project-publish projects/creator.gameproject development "ci"
+          ./build/demo --project-publish projects/creator.gameproject development "ci"  # idempotent: verified no-op
+          ./build/demo --project-verify projects/creator.gameproject development         # preview parity (P2): must exit 0
+          ./build/demo --release-promote development preview "ci promote"
+          ./build/demo --release-promote preview production "ci ship"
           ./build/demo --release-status
-          ./build/demo --release-promote preview production
-          ./build/demo --release-status
+          ./build/demo --release-log         # append-only audit history
+          test "$(find assets/releases assets/channels -name '*.tmp' | wc -l)" -eq 0  # atomic writes leave no .tmp

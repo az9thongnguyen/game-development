@@ -79,6 +79,30 @@ that seed. Shipped as one coherent slice (pure core + wired verbs + lifecycle sm
 content → validate closure → package (fingerprint) → **publish immutably → promote /
 rollback by moving a pointer** — native + web + CI.
 
+### Horizon 1 — release-ops hardening (DONE, `docs/book/94`, exit gates 3/5/7)
+Closed the three ways the naïve store was not production-shaped, per the roadmap's own
+"stabilize commands before UI" risk note:
+- **Gate 3 (atomic):** `write_atomic` (stage `.tmp` → `assets::rename`) for the release
+  manifest and channel pointers — a crash never exposes a torn/partial release; pointer
+  is written last so a half-publish leaves an unreferenced immutable release, not a
+  dangling channel. New seam primitive `assets::rename`. CI asserts zero `.tmp` litter.
+- **Gate 5 (audited):** append-only `releases/audit.log` — every publish/promote/rollback
+  records `epoch action channel release <prev|-> reason`. Pure `audit_line`/`parse_audit_line`
+  (fail-closed, reason-last-so-it-can-have-spaces). `--release-log [channel]` reads it
+  *forward* (no directory scan). New seam primitive `assets::append_file`.
+- **Gate 7 (predecessor):** each move records the id it displaced; because releases are
+  immutable that predecessor is still in the store → a bad release always has a known-good
+  rollback target. Proven in the smoke (publish v1 → bad v2 → rollback to v1, v1 present).
+- **Channel semantics:** development → preview → production; publish defaults to
+  `development` (publish low, promote up); promotion copies a pointer (bit-identical).
+- `tests/test_release.cpp` extended (audit round-trip + fail-closed); suite 50/50.
+
+**Remaining Horizon 1 (honest boundary):** the **Hub/Studio UI shell** (a real subsystem —
+now safe to design *on top of* a stabilized release domain; deserves its own brainstorming
+pass, not a momentum bolt-on), a **hosted artifact adapter** (evidence-gated ops; local
+adapter proves the mechanics), and **BaaS HTTP-contract conformance** (lives in `baas/`,
+not the engine).
+
 ### Deferred from Horizon 1 (each with a trigger)
 - **Release log / history listing** — append-only file when a UI/audit needs to enumerate
   past releases; never a directory scan.

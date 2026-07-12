@@ -37,4 +37,26 @@ std::optional<std::string> parse_channel(const std::string& text) {
     return hex;
 }
 
+std::string audit_log_path() { return "releases/audit.log"; }
+
+std::string audit_line(const AuditEntry& e) {
+    // reason is last so it may contain spaces; predecessor "-" means "was unset".
+    return std::to_string(e.epoch) + " " + e.action + " " + e.channel + " " +
+           e.release + " " + (e.prev.empty() ? "-" : e.prev) +
+           (e.reason.empty() ? "" : " " + e.reason) + "\n";
+}
+
+std::optional<AuditEntry> parse_audit_line(const std::string& line) {
+    std::istringstream in(line);
+    AuditEntry e;
+    std::string prev;
+    if (!(in >> e.epoch >> e.action >> e.channel >> e.release >> prev)) return std::nullopt;
+    if (!valid_hash_hex(e.release)) return std::nullopt;               // release is always a real id
+    if (prev != "-" && !valid_hash_hex(prev)) return std::nullopt;      // predecessor is "-" or a real id
+    e.prev = (prev == "-") ? "" : prev;
+    std::getline(in, e.reason);
+    if (!e.reason.empty() && e.reason.front() == ' ') e.reason.erase(0, 1);  // drop the single separator space
+    return e;
+}
+
 } // namespace engine
