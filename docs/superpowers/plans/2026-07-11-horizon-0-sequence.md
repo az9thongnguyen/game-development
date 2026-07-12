@@ -175,10 +175,22 @@ redeployment"), reusing the audit log from the persistence slice (compose, don't
   audited delete. `baas_config`/`baas_admin` HTTP tests still green. No new table, no config
   history subsystem (YAGNI — the audit row answers "what was it just before").
 
-**H2 exit gate status:** clause 1 "survives a failure drill" ✓ (persistence drill), clause 3
-"reversible LiveOps change" ✓ (this slice). **Clause 2 "measures a release" is the remaining
-open piece** — needs the client to tag telemetry with its release id and the analytics summary
-to slice by it; a real slice, not rushed on momentum.
+### Horizon 2 — measuring a release (DONE, `docs/book/100`)
+Closes the H2 exit gate's second clause ("measures a release") — the last one:
+- **Migration 3** (`ALTER TABLE analytics_events ADD COLUMN release`): the engine's first
+  *alter* (not a `CREATE IF NOT EXISTS`), the operation a versioned engine actually exists for
+  — run twice it would error "duplicate column"; the ledger applies it exactly once. Portable
+  (sqlite+pg), backfills existing rows with `''`.
+- **`analytics::record(..., release="")` + `summary_by_release`** (`GROUP BY release, name`):
+  events carry the client's release id; the admin summary compares one release vs another.
+  Controller reads an optional capped `"release"` field (bound param, injection-safe).
+- **Test** `test_baas_release_metrics` (pure DB): release A (5 sessions/2 errors) vs release B
+  (3 sessions/9 errors) — asserts B's error spike is attributed + visible, the exact signal
+  "measure a release" exists for. `baas_analytics` HTTP path still green.
+
+**H2 exit gate — ALL THREE CLAUSES MET for the SQLite runtime** (executed, not asserted):
+survives a failure drill (ch.98) · measures a release (ch.100) · reversible LiveOps change
+without client redeployment (ch.99). Full baas suite **23/23**.
 
 **H2 honest boundary (toolchain-checked, not assumed):** the persistence *mechanism* is
 buildable and tested here because the toolchain is present (Drogon + SQLite + libsodium).
