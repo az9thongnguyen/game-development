@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using namespace engine;
 
@@ -66,6 +67,27 @@ int main() {
 
     // Everything in sync.
     CHECK(recommend(shippable(H, H, H, H)) == "in sync: production matches your source");
+
+    // --- hub_lines: same content the CLI and the Scene both render ---
+    auto lines = hub_lines(shippable(H, H, H, ""));
+    CHECK(!lines.empty());
+    CHECK(lines.front() == "Hub  Demo");                         // title first
+    CHECK(lines.back() == "next: promote: preview -> production"); // recommendation last
+    bool has_pkg = false, has_dev = false;
+    for (const auto& l : lines) {
+        if (l == "package " + H) has_pkg = true;
+        if (l.rfind("development", 0) == 0 && l.find("==source") != std::string::npos) has_dev = true;
+    }
+    CHECK(has_pkg);   // shippable → package line present
+    CHECK(has_dev);   // development points at source → "==source" flag
+
+    // not-shippable view surfaces the problem as a line and recommends fix
+    HubView broken; broken.name = "X"; broken.shippable = false; broken.problems = {"missing asset: a.map"};
+    auto blines = hub_lines(broken);
+    CHECK(blines.back() == "next: fix: missing asset: a.map");
+    bool prob_line = false;
+    for (const auto& l : blines) if (l == "  - missing asset: a.map") prob_line = true;
+    CHECK(prob_line);
 
     if (g_failures == 0) std::printf("hub: all tests passed\n");
     else                 std::printf("hub: %d FAILURE(S)\n", g_failures);
