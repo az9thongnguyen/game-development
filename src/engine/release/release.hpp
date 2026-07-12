@@ -39,4 +39,26 @@ std::optional<std::string> parse_channel(const std::string& text);  // nullopt o
 bool valid_channel_name(const std::string& name);  // nonempty, <=64, [A-Za-z0-9_-] only
 bool valid_hash_hex(const std::string& hex);        // exactly 16 lowercase hex chars
 
+// The append-only audit log every channel move is recorded in — a *log*, read
+// forward, never a directory scan. One line per publish / promote / rollback.
+std::string audit_log_path();   // "releases/audit.log"
+
+// One audit record: who moved which channel, to what, from what, and why.
+struct AuditEntry {
+    long long   epoch = 0;   // seconds since the Unix epoch (0 in tests is fine)
+    std::string action;      // "publish" | "promote" | "rollback"
+    std::string channel;     // the channel that moved
+    std::string release;     // the release id it now points at (16-hex)
+    std::string prev;        // predecessor id it pointed at before ("" if unset)
+    std::string reason;      // free operator text (may be empty; may contain spaces)
+};
+
+// Canonical one line + '\n': "<epoch> <action> <channel> <release> <prev|-> <reason>".
+// A missing predecessor is written as "-"; the reason is the rest of the line.
+std::string audit_line(const AuditEntry& e);
+
+// Parse one audit line back. nullopt if malformed (fewer than 5 fields, or a field
+// that should be a release id is not 16-hex) — the same fail-closed contract as parse_channel.
+std::optional<AuditEntry> parse_audit_line(const std::string& line);
+
 } // namespace engine

@@ -62,6 +62,31 @@ int main() {
     CHECK(!valid_channel_name("a.b"));                // dot (no traversal chars at all)
     CHECK(!valid_channel_name(std::string(65, 'x'))); // over length cap
 
+    // --- audit log ---
+    CHECK(audit_log_path() == "releases/audit.log");
+
+    const std::string h2 = "244d6ca9ecf5439e";   // a second well-formed id (a predecessor)
+
+    // round-trip with a predecessor and a spaced reason
+    AuditEntry e{1700000000LL, "promote", "production", h, h2, "ship the fix"};
+    auto rt = parse_audit_line(audit_line(e));
+    CHECK(rt.has_value());
+    CHECK(rt->epoch == 1700000000LL && rt->action == "promote" && rt->channel == "production");
+    CHECK(rt->release == h && rt->prev == h2 && rt->reason == "ship the fix");
+
+    // missing predecessor serializes as "-" and parses back to empty
+    AuditEntry e2{1LL, "publish", "development", h, "", ""};
+    const std::string l2 = audit_line(e2);
+    CHECK(l2 == "1 publish development cbf29ce484222325 -\n");   // no trailing reason, prev == "-"
+    auto rt2 = parse_audit_line(l2);
+    CHECK(rt2.has_value() && rt2->prev.empty() && rt2->reason.empty());
+
+    // fail closed
+    CHECK(!parse_audit_line("").has_value());                         // empty
+    CHECK(!parse_audit_line("1 promote prod").has_value());           // too few fields
+    CHECK(!parse_audit_line("1 promote prod notahash -").has_value()); // release not 16-hex
+    CHECK(!parse_audit_line("1 promote prod cbf29ce484222325 zz").has_value()); // bad predecessor
+
     if (g_failures == 0) std::printf("release: all tests passed\n");
     else                 std::printf("release: %d FAILURE(S)\n", g_failures);
     return g_failures;
