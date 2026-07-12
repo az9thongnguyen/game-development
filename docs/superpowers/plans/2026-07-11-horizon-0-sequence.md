@@ -234,6 +234,21 @@ The "atomic transactions" half of economy foundations, the sibling of idempotenc
 - Economy still ahead (named, not faked): currency/catalog model (priced items vs caller-supplied
   cost), receipt validation (platform-integration, not hand-built) — come when a ref game sells.
 
+### Horizon 2 — store catalog (DONE, `docs/book/105`) [economy — menu item C]
+Priced offers the server owns, so the client buys a SKU not a caller-supplied cost:
+- **Migration 5** `catalog(project_id, sku, currency, cost, item, amount, UNIQUE(pid,sku))`.
+- `store::Offer/get/list/upsert` (upsert audited `catalog.upsert`, rejects non-positive
+  cost/amount); **`store::buy`** resolves the SKU → delegates to the atomic idempotent
+  `inv::purchase` (ch.103) — inherits transaction/rollback/idempotency, adds only the price
+  lookup + unknown-SKU 404. Reuse-before-write in its purest form.
+- Endpoints: admin `PUT /v1/admin/catalog/{sku}` (secret-gated, defineOffer); client
+  `GET /v1/store/catalog` (api-key) + `POST /v1/store/buy/{sku}` (api-key+JWT, forwards
+  Idempotency-Key). New `StoreController` (self-registering).
+- **Test** `test_baas_catalog` (pure DB): define offer; buy spends/grants catalog amounts;
+  zero-cost/bad-sku rejected; unknown SKU 404 no spend; unaffordable → inherited rollback;
+  idempotent retry; **re-price then buy uses new price** (server owns price = a LiveOps lever).
+- Economy still ahead: real-money receipt validation (platform-integration, when a ref game sells).
+
 ### Horizon 2 — request correlation ids (DONE, `docs/book/104`) [telemetry — menu item D]
 Every response now carries an `X-Request-Id` (adopt an inbound one for cross-proxy tracing, or
 mint 16 random hex). A pre-routing advice (registered before rate-limit, so even a 429 has an id)
