@@ -236,6 +236,13 @@ void run_migrations(const DbClientPtr& db) {
         db->execSqlSync("SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations");
     if (!max_row.empty()) current = max_row[0]["v"].as<int>();
 
+    // ponytail: a migration's statements + its ledger insert are NOT wrapped in one
+    // transaction — each execSqlSync autocommits. That is safe for migrations 1-4 because
+    // each is either a single statement or made of CREATE ... IF NOT EXISTS blocks, so a
+    // crash mid-migration re-applies harmlessly on the next boot (the ledger row was never
+    // written). INVARIANT for any new migration: it must be a single statement OR every
+    // statement idempotent. If you need a multi-statement NON-idempotent migration, wrap
+    // exec_each_statement + the ledger insert in `db->newTransaction()` so it is all-or-nothing.
     for (const auto& m : kMigrations) {
         if (m.version <= current) continue;   // already applied — skip
         exec_each_statement(db, m.sql);

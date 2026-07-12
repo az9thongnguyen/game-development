@@ -71,10 +71,18 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
     Error scratch;
     if (Error* e = validate(item, amount, scratch)) return {std::nullopt, *e};
 
+    // Scope the client key to (user, item): the SAME Idempotency-Key from a different user,
+    // or for a different item, must NOT collide and replay the wrong grant. `item` is
+    // validated above to [A-Za-z0-9_-] (no '|') and user_id is numeric, so the
+    // "<uid>|<item>|" prefix is unambiguous and the arbitrary client key follows it.
+    const std::string scoped_key =
+        idem_key.empty() ? std::string()
+                         : std::to_string(user_id) + "|" + item + "|" + idem_key;
+
     // Idempotent retry: if this key already produced a result, replay it — do not grant
     // again. (The replayed qty is the item's total after the original grant.)
-    if (!idem_key.empty()) {
-        if (auto prior = idem_lookup(project_id, idem_key))
+    if (!scoped_key.empty()) {
+        if (auto prior = idem_lookup(project_id, scoped_key))
             return {Item{item, *prior}, std::nullopt};
     }
 
@@ -94,7 +102,7 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
             "WHERE project_id=? AND user_id=? AND item=?",
             qty, project_id, user_id, item);
     }
-    if (!idem_key.empty()) idem_record(project_id, idem_key, qty);   // remember for retries
+    if (!scoped_key.empty()) idem_record(project_id, scoped_key, qty);   // remember for retries
     return {Item{item, qty}, std::nullopt};
 }
 
