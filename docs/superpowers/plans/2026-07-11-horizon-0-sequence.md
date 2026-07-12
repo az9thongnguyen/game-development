@@ -110,12 +110,20 @@ stabilized (the roadmap's precondition), so the UI logic sits on solid ground:
   graphical Scene is deferred to the unblocked pixel path — the decision is the tested part.
 - `tests/test_hub.cpp` (`hub` CTest); suite **51/51**; CI runs `--hub`.
 
-**Remaining Horizon 1 (honest boundary):** the **graphical Studio/Hub UI** (docked panels,
-thumbnails — a real subsystem; now safe to design *on top of* the stabilized domain +
-tested view model, deserves its own brainstorming pass, and its pixel path is currently
-gated on the browser tooling), a **hosted artifact adapter** (evidence-gated ops; the local
-adapter proves the mechanics), and **BaaS HTTP-contract conformance** (lives in `baas/`,
-not the engine).
+### Horizon 1 — graphical Hub Scene (DONE, `docs/book/96`)
+`--hub-ui [path]` renders the hub in a window, sharing ONE pure `hub_core::hub_lines(HubView)`
+with the headless `--hub` (CLI and window cannot drift — the roadmap's "Hub and CI surface
+identical diagnostics", satisfied by construction). Three layers, each tested at its level:
+pure decision/display (`hub.cpp`, unit test), impure assembly (`hub_build_core`, CI smoke),
+thin render (`HubScene`, manual visual accept). Read-only for now (shows the recommended
+verb; you run it via CLI, press R to refresh). Suite 51/51.
+
+**Remaining Horizon 1 (honest boundary):** the **full Studio shell** (docked panels,
+thumbnails, and *interactive* mutation — which needs the domain ops extracted from main.cpp
+behind a callable interface; a real subsystem deserving its own brainstorming pass), a
+**hosted artifact adapter** (evidence-gated ops; the local adapter proves the mechanics),
+and **BaaS HTTP-contract conformance** (lives in `baas/`, not the engine). Two pixel-level
+manual accepts stand open: web `?mode=project` and `--hub-ui` (both need eyes on a window).
 
 ### Deferred from Horizon 1 (each with a trigger)
 - **Release log / history listing** — append-only file when a UI/audit needs to enumerate

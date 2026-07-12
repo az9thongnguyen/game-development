@@ -109,10 +109,11 @@ add_executable(demo
   src/games/light/light_scene.cpp
   src/games/audio/audio_scene.cpp
   src/games/anim/anim_scene.cpp
+  src/games/hub/hub_scene.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core hub_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 
@@ -425,6 +426,17 @@ add_executable(test_hub tests/test_hub.cpp
 target_include_directories(test_hub PRIVATE src)
 target_link_libraries(test_hub PRIVATE engine_flags)
 add_test(NAME hub COMMAND test_hub)
+
+# Hub view assembler (impure): reads a project + release store through the assets:: seam
+# into a HubView, shared by the CLI (--hub) and the graphical Hub Scene (--hub-ui). Its
+# assets:: symbols are provided by the final demo target (like renderer3d/Renderer2D).
+add_library(hub_build_core STATIC
+  src/engine/hub/hub_build.cpp
+)
+target_include_directories(hub_build_core PUBLIC src)
+# Only needs the headers to compile; the project/resource/release/hub + assets:: symbols
+# are provided by the final demo link (which links those cores directly).
+target_link_libraries(hub_build_core PRIVATE engine_flags)
 
 add_executable(test_flipbook tests/test_flipbook.cpp
   src/engine/anim/flipbook.cpp

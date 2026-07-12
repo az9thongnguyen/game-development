@@ -11,6 +11,11 @@ const HubChannel* find(const HubView& v, const std::string& name) {
         if (c.name == name) return &c;
     return nullptr;
 }
+
+// Left-pad a channel name to a fixed column so pointers line up in both renderings.
+std::string pad(const std::string& s) {
+    return s.size() >= 11 ? s : s + std::string(11 - s.size(), ' ');
+}
 }  // namespace
 
 std::string recommend(const HubView& v) {
@@ -33,6 +38,23 @@ std::string recommend(const HubView& v) {
     if (!prod || prod->release != prev->release)
         return "promote: preview -> production";
     return "in sync: production matches your source";
+}
+
+std::vector<std::string> hub_lines(const HubView& v) {
+    std::vector<std::string> out;
+    out.push_back("Hub  " + v.name);
+    out.push_back("entry " + v.entry + "   schema " + std::to_string(v.schema) +
+                  "   " + (v.shippable ? "shippable" : "NOT shippable"));
+    for (const auto& p : v.problems) out.push_back("  - " + p);
+    if (v.shippable) out.push_back("package " + v.local_package);
+    for (const auto& c : v.channels) {
+        if (c.release.empty()) { out.push_back(pad(c.name) + " unset"); continue; }
+        out.push_back(pad(c.name) + " " + c.release + "  [" +
+                      std::string(c.present ? "present" : "MISSING") +
+                      (c.matches_local ? ", ==source" : "") + "]");
+    }
+    out.push_back("next: " + recommend(v));
+    return out;
 }
 
 } // namespace engine
