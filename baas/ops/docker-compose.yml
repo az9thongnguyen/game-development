@@ -1,0 +1,31 @@
+# =============================================================================
+#  baas/ops/docker-compose.yml  —  run the Game BaaS backend locally/self-hosted
+# =============================================================================
+#  From the repo root:  docker compose -f baas/ops/docker-compose.yml up --build
+#  Secrets are REQUIRED (the ':?' fails fast if unset) — never run with the insecure
+#  dev defaults in production:
+#     export BAAS_JWT_SECRET=$(openssl rand -hex 32)
+#     export BAAS_ADMIN_SECRET=$(openssl rand -hex 32)
+# =============================================================================
+services:
+  baas:
+    build:
+      context: ../..                     # repo root — the backend needs the whole source tree
+      dockerfile: baas/ops/Dockerfile
+    image: hand-baas:latest
+    ports:
+      - "8080:8080"
+    environment:
+      BAAS_JWT_SECRET: ${BAAS_JWT_SECRET:?set BAAS_JWT_SECRET to a strong random value}
+      BAAS_ADMIN_SECRET: ${BAAS_ADMIN_SECRET:?set BAAS_ADMIN_SECRET to a strong random value}
+    volumes:
+      - baas-data:/app/data              # persist the SQLite DB across restarts
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  baas-data:
