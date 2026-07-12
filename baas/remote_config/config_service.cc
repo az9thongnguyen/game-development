@@ -3,6 +3,7 @@
 // =============================================================================
 #include "baas/remote_config/config_service.h"
 
+#include "baas/admin/audit.h"
 #include "baas/db/db.h"
 
 namespace web::cfg {
@@ -40,6 +41,24 @@ bool remove(long project_id, const std::string& key) {
     const auto r = db::client()->execSqlSync(
         "DELETE FROM config WHERE project_id=? AND key=?", project_id, key);
     return r.affectedRows() > 0;
+}
+
+std::optional<std::string> set_audited(long project_id, const std::string& key,
+                                       const std::string& value, const std::string& actor) {
+    const auto old = get(project_id, key);
+    set(project_id, key, value);
+    audit::record(project_id, actor, "config.set",
+                  "key=" + key + " old=" + old.value_or("<unset>") + " new=" + value);
+    return old;
+}
+
+std::optional<std::string> remove_audited(long project_id, const std::string& key,
+                                          const std::string& actor) {
+    const auto old = get(project_id, key);
+    if (!old) return std::nullopt;   // nothing to delete — no audit noise
+    remove(project_id, key);
+    audit::record(project_id, actor, "config.delete", "key=" + key + " old=" + *old);
+    return old;
 }
 
 }  // namespace web::cfg

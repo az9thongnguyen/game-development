@@ -26,4 +26,17 @@ std::optional<std::string> get(long project_id, const std::string& key);
 void set(long project_id, const std::string& key, const std::string& value);   // upsert
 bool remove(long project_id, const std::string& key);                          // true if deleted
 
+// Audited LiveOps change: upsert `key`, record the old→new transition in the audit
+// log, and return the previous value (nullopt if the key was unset). The return value
+// is what an operator sets back to revert — this is what makes a LiveOps change
+// *reversible* (H2 exit gate) and auditable. Clients keep reading via /v1/config, so
+// the change takes effect with no client redeployment.
+std::optional<std::string> set_audited(long project_id, const std::string& key,
+                                       const std::string& value, const std::string& actor);
+
+// Audited delete: record the removed key's old value (so it is revertible via set)
+// and return it; nullopt if there was no such key.
+std::optional<std::string> remove_audited(long project_id, const std::string& key,
+                                          const std::string& actor);
+
 }  // namespace web::cfg
