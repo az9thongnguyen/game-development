@@ -43,6 +43,14 @@ void AnalyticsController::track(const drogon::HttpRequestPtr& req,
         return;
     }
 
+    // Optional release attribution: the client's release id (content hash / build id),
+    // capped so a stray field can't bloat the row. Stored via a bound param (injection-safe).
+    std::string release;
+    if (body->isMember("release") && (*body)["release"].isString()) {
+        release = (*body)["release"].asString();
+        if (release.size() > 64) release.resize(64);
+    }
+
     // Best-effort attribution: use the Bearer user if present and matching this project.
     long              uid  = 0;
     const std::string auth = req->getHeader("authorization");
@@ -52,7 +60,7 @@ void AnalyticsController::track(const drogon::HttpRequestPtr& req,
     }
 
     try {
-        analytics::record(pid, uid, name, props);
+        analytics::record(pid, uid, name, props, release);
         Json::Value out;
         out["ok"] = true;
         cb(drogon::HttpResponse::newHttpJsonResponse(out));

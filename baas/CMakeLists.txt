@@ -97,6 +97,11 @@ add_executable(test_baas_liveops ${CMAKE_SOURCE_DIR}/tests/test_baas_liveops.cc)
 target_link_libraries(test_baas_liveops PRIVATE baas_core engine_flags)
 add_test(NAME baas_liveops COMMAND test_baas_liveops)
 
+# Release metrics: per-release analytics attribution (H2 exit gate) — pure DB.
+add_executable(test_baas_release_metrics ${CMAKE_SOURCE_DIR}/tests/test_baas_release_metrics.cc)
+target_link_libraries(test_baas_release_metrics PRIVATE baas_core engine_flags)
+add_test(NAME baas_release_metrics COMMAND test_baas_release_metrics)
+
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
