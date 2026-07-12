@@ -12,7 +12,7 @@
 // =============================================================================
 #pragma once
 #include <string>
-#include <vector>
+#include <vector>  // HubView.channels/problems and hub_lines() return vectors
 
 namespace engine {
 
@@ -38,5 +38,11 @@ struct HubView {
 // The single next recommended action for a project, derived from its aggregate state.
 // Pure — the decision brain of the hub, tested independently of I/O and rendering.
 std::string recommend(const HubView& v);
+
+// The hub's display as a list of plain text lines (title, status, problems, package,
+// each channel, and the "next:" recommendation). Pure, so the CLI dashboard and the
+// graphical Hub Scene render the *same* content — one source of truth for what the hub
+// says, tested without a window.
+std::vector<std::string> hub_lines(const HubView& v);
 
 } // namespace engine
