@@ -44,6 +44,7 @@ add_library(baas_core OBJECT
   inventory/inv_controller.cc
   store/store_service.cc
   store/store_controller.cc
+  rbac/rbac.cc
   remote_config/config_service.cc
   remote_config/config_controller.cc
   analytics/analytics_service.cc
@@ -123,6 +124,11 @@ add_test(NAME baas_purchase COMMAND test_baas_purchase)
 add_executable(test_baas_catalog ${CMAKE_SOURCE_DIR}/tests/test_baas_catalog.cc)
 target_link_libraries(test_baas_catalog PRIVATE baas_core engine_flags)
 add_test(NAME baas_catalog COMMAND test_baas_catalog)
+
+# RBAC: operators + roles + authenticate + authorize (H2 RBAC) — pure DB.
+add_executable(test_baas_rbac ${CMAKE_SOURCE_DIR}/tests/test_baas_rbac.cc)
+target_link_libraries(test_baas_rbac PRIVATE baas_core engine_flags)
+add_test(NAME baas_rbac COMMAND test_baas_rbac)
 
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)

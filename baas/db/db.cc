@@ -193,12 +193,30 @@ CREATE TABLE IF NOT EXISTS catalog (
 );
 )SQL";
 
+// Migration 6 — project operators with roles (RBAC foundation). Each operator has a
+// name, their own hashed key (per-operator credential, distinct from the single project
+// secret), and a role (viewer < admin < owner). This is the multi-operator half of the
+// RBAC/audit item — a single project secret cannot express "this teammate may read metrics
+// but not rotate secrets."
+constexpr const char* kMigration6Operators = R"SQL(
+CREATE TABLE IF NOT EXISTS operators (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL,
+  role TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, name)
+);
+)SQL";
+
 constexpr Migration kMigrations[] = {
     {1, "initial schema", kMigration1},
     {2, "audit log", kMigration2Audit},
     {3, "analytics release column", kMigration3ReleaseCol},
     {4, "idempotency keys", kMigration4Idempotency},
     {5, "store catalog", kMigration5Catalog},
+    {6, "operators", kMigration6Operators},
 };
 
 bool is_blank(const std::string& s) {
