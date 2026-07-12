@@ -144,6 +144,15 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS ix_audit_project ON audit_log(project_id, id);
 )SQL";
 
+// Migration 3 — a `release` column on analytics events, so telemetry can be attributed
+// to the release that produced it ("measures a release", H2 exit gate). ALTER TABLE ADD
+// COLUMN with a NOT NULL default is portable across SQLite and Postgres, and — unlike
+// migrations 1 and 2 — it evolves an EXISTING table, which is the real reason a versioned
+// migration engine exists (a re-run of a CREATE IF NOT EXISTS is free; a second ALTER is not).
+constexpr const char* kMigration3ReleaseCol = R"SQL(
+ALTER TABLE analytics_events ADD COLUMN release TEXT NOT NULL DEFAULT '';
+)SQL";
+
 // The ordered, append-only migration list. To evolve the schema, append a new entry
 // with the next version — never edit or renumber a shipped one. run_migrations applies
 // exactly those a given database is behind on.
@@ -155,6 +164,7 @@ struct Migration {
 constexpr Migration kMigrations[] = {
     {1, "initial schema", kMigration1},
     {2, "audit log", kMigration2Audit},
+    {3, "analytics release column", kMigration3ReleaseCol},
 };
 
 bool is_blank(const std::string& s) {
