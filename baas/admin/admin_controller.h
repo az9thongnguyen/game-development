@@ -26,6 +26,8 @@ public:
     ADD_METHOD_TO(AdminController::listUsers,    "/v1/admin/users",           drogon::Get,  "web::ApiKeyFilter", "web::SecretKeyFilter");
     ADD_METHOD_TO(AdminController::rotateSecret, "/v1/admin/secret/rotate",   drogon::Post, "web::ApiKeyFilter", "web::SecretKeyFilter");
     ADD_METHOD_TO(AdminController::defineOffer,  "/v1/admin/catalog/{sku}",   drogon::Put,  "web::ApiKeyFilter", "web::SecretKeyFilter");
+    ADD_METHOD_TO(AdminController::createOperator, "/v1/admin/operators",     drogon::Post, "web::ApiKeyFilter", "web::SecretKeyFilter");
+    ADD_METHOD_TO(AdminController::listOperators,  "/v1/admin/operators",     drogon::Get,  "web::ApiKeyFilter", "web::SecretKeyFilter");
     METHOD_LIST_END
 
     void createProject(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
@@ -37,6 +39,8 @@ public:
     void listUsers(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
     void rotateSecret(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
     void defineOffer(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb, std::string sku);
+    void createOperator(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    void listOperators(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& cb);
 };
 
 }  // namespace web

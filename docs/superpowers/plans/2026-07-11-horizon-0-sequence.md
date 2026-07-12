@@ -234,6 +234,22 @@ The "atomic transactions" half of economy foundations, the sibling of idempotenc
 - Economy still ahead (named, not faked): currency/catalog model (priced items vs caller-supplied
   cost), receipt validation (platform-integration, not hand-built) — come when a ref game sells.
 
+### Horizon 2 — RBAC operators + roles (DONE, `docs/book/106`) [RBAC — menu item B]
+Multi-operator roles (the model + auth, NOT the risky full enforcement rewrite):
+- **Migration 6** `operators(project_id, name, key_hash, role, UNIQUE(pid,name))`. Roles
+  `Viewer<Admin<Owner`; enum order = rank so `authorize(have,need)` is one comparison.
+- `rbac::create_operator` (mint per-operator key, argon2id hash, audit, return once; dup/bad
+  name refused), `authenticate(pid, name, key)` (O(1) lookup by name → verify → role;
+  project-scoped), `list_operators`, pure `authorize`/`role_from_string`/`role_name`.
+- Endpoints (secret-gated = the owner bootstraps operators): `POST/GET /v1/admin/operators`.
+- **Test** `test_baas_rbac` (pure DB): role ordering; provisioning + dup/bad-name refusal;
+  authenticate right/wrong-key/cross-operator/unknown/**cross-project**; composed
+  authenticate+authorize gate (owner passes, viewer fails, wrong-key fails).
+- **Honest boundary (deliberate):** per-route role ENFORCEMENT (an OperatorFilter mapping each
+  route→min-role, rewiring the filter chain) is a security-critical change left as its OWN
+  focused slice — NOT bolted on after 5 other slices on momentum. Provisioning works today via
+  the project secret; enforcement is the next isolated step. (strategy principle 7: no overclaim.)
+
 ### Horizon 2 — store catalog (DONE, `docs/book/105`) [economy — menu item C]
 Priced offers the server owns, so the client buys a SKU not a caller-supplied cost:
 - **Migration 5** `catalog(project_id, sku, currency, cost, item, amount, UNIQUE(pid,sku))`.
