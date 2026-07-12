@@ -141,6 +141,11 @@ add_executable(test_baas_testruns ${CMAKE_SOURCE_DIR}/tests/test_baas_testruns.c
 target_link_libraries(test_baas_testruns PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_testruns COMMAND test_baas_testruns)
 
+# Tracing: X-Request-Id correlation on every response (H2 telemetry) — boots a server.
+add_executable(test_baas_tracing ${CMAKE_SOURCE_DIR}/tests/test_baas_tracing.cc)
+target_link_libraries(test_baas_tracing PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_tracing COMMAND test_baas_tracing)
+
 foreach(svc config analytics events admin replays ratelimit metrics)
   add_executable(test_baas_${svc} ${CMAKE_SOURCE_DIR}/tests/test_baas_${svc}.cc)
   target_link_libraries(test_baas_${svc} PRIVATE baas_core CURL::libcurl engine_flags)
