@@ -153,6 +153,21 @@ constexpr const char* kMigration3ReleaseCol = R"SQL(
 ALTER TABLE analytics_events ADD COLUMN release TEXT NOT NULL DEFAULT '';
 )SQL";
 
+// Migration 4 — idempotency keys. A client sends a unique key with a mutating request;
+// the server records the key + the result so a retried request replays the stored result
+// instead of applying the effect twice (no double-grant on a network retry). Scoped per
+// project; `result` holds the grant's resulting quantity to replay.
+constexpr const char* kMigration4Idempotency = R"SQL(
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  idem_key TEXT NOT NULL,
+  result BIGINT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, idem_key)
+);
+)SQL";
+
 // The ordered, append-only migration list. To evolve the schema, append a new entry
 // with the next version — never edit or renumber a shipped one. run_migrations applies
 // exactly those a given database is behind on.
@@ -165,6 +180,7 @@ constexpr Migration kMigrations[] = {
     {1, "initial schema", kMigration1},
     {2, "audit log", kMigration2Audit},
     {3, "analytics release column", kMigration3ReleaseCol},
+    {4, "idempotency keys", kMigration4Idempotency},
 };
 
 bool is_blank(const std::string& s) {

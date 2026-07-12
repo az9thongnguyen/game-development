@@ -33,7 +33,13 @@ bool valid_item(const std::string& item);   // 1-64 chars of [A-Za-z0-9_-]
 
 Item              get(long project_id, long user_id, const std::string& item);
 std::vector<Item> list(long project_id, long user_id);
-Result            grant(long project_id, long user_id, const std::string& item, long long amount);
+
+// grant adds `amount` of `item`. `idem_key` (optional) makes a retry safe: a second
+// grant with the same non-empty key for this project replays the first grant's result
+// instead of adding again — so a client that retries a timed-out request is not
+// double-credited. An empty key means "no idempotency" (every call applies).
+Result            grant(long project_id, long user_id, const std::string& item, long long amount,
+                        const std::string& idem_key = "");
 Result            consume(long project_id, long user_id, const std::string& item, long long amount);
 
 }  // namespace web::inv
