@@ -176,11 +176,29 @@ struct Migration {
     const char* name;
     const char* sql;
 };
+// Migration 5 — store catalog. A priced offer: a SKU maps to a price (spend `cost` of
+// `currency`) and a reward (grant `amount` of `item`). This is the "economy catalog,
+// currencies" model — the server owns prices, the client buys a SKU, not an arbitrary cost.
+constexpr const char* kMigration5Catalog = R"SQL(
+CREATE TABLE IF NOT EXISTS catalog (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  sku TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  cost BIGINT NOT NULL,
+  item TEXT NOT NULL,
+  amount BIGINT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, sku)
+);
+)SQL";
+
 constexpr Migration kMigrations[] = {
     {1, "initial schema", kMigration1},
     {2, "audit log", kMigration2Audit},
     {3, "analytics release column", kMigration3ReleaseCol},
     {4, "idempotency keys", kMigration4Idempotency},
+    {5, "store catalog", kMigration5Catalog},
 };
 
 bool is_blank(const std::string& s) {
