@@ -274,11 +274,23 @@ status ms`. **Test** `test_baas_tracing` (boots a server): minted id is 16-hex; 
 inbound id echoed verbatim; hostile id sanitized. `baas_test_util.h` gained additive response-
 header capture (`raw_headers` + `header_value`) reused for this. Full baas suite **27/27**.
 
-**Deployment profile (Dockerfile) — deferred with reason:** root CMake `pkg_check_modules(SDL2
-REQUIRED)` at *configure* time couples the whole project to SDL2, so a backend-only image would
-awkwardly need SDL2 just to configure `baas`. That deserves a build-system split (make SDL2
-optional when only baas targets are requested) FIRST — a broad, risky change not done on
-momentum. Docker IS installed (29.6.1); the slice is real but gated on that refactor.
+### Horizon 2 — backend container + build-split (DONE, `docs/book/107`) [deployment — menu item A]
+The previously-deferred deployment slice, now UNBLOCKED by doing the build-split first:
+- **Build-system split:** `option(ENGINE_BUILD_DESKTOP ON)` guards the SDL2 find + the `demo`
+  target. `-DENGINE_BUILD_DESKTOP=OFF` → configure skips SDL2 entirely + `demo` absent; only baas
+  + SDL-free `*_core` libs/tests build. **Verified BOTH ways**: default → "SDL2: found" + demo
+  builds; OFF → "skipping SDL2" + baas builds + `demo` target absent. Smallest change (1 option,
+  2 guards, mirrors the Drogon found/skip pattern) — no root-list split, no duplicated targets.
+- **`baas/ops/Dockerfile`** (2-stage: Drogon base + libsodium, builds only `baas` with
+  ENGINE_BUILD_DESKTOP=OFF so NO SDL2 in the image; runtime stage on Drogon base copies binary +
+  assets). **`docker-compose.yml`** (secrets required via `:?`, port 8080, persistent volume,
+  /healthz check). `.dockerignore`. Runbook `baas/ops/deploy.md`.
+- **Verified:** split both ways (native); in-container configure skips SDL2; found+fixed the one
+  configure dep gap (CURL from sdk/cpp → added libcurl4-openssl-dev). **NOT verified here:** full
+  green `docker build` / running container — the Drogon image is amd64 and builds here run under
+  slow arm64→amd64 emulation (exceeds sandbox time budget); confirm on native-amd64 Docker/CI. Same
+  honest posture as the Postgres path. Honest edge: single-node SQLite container — scale/managed-PG/
+  TLS/orchestrator are commodity-infra integration when a ref game needs it, not hand-built here.
 
 **H2 honest boundary (toolchain-checked, not assumed):** the persistence *mechanism* is
 buildable and tested here because the toolchain is present (Drogon + SQLite + libsodium).
