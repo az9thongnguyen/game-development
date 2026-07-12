@@ -51,6 +51,7 @@ add_library(baas_core OBJECT
   gateway/admin_filters.cc
   admin/admin_service.cc
   admin/admin_controller.cc
+  admin/audit.cc
   realtime/hub.cc
   realtime/ws_controller.cc
   replays/replay_service.cc
@@ -85,6 +86,11 @@ add_test(NAME rate_limiter COMMAND test_rate_limiter)
 add_executable(test_metrics ${CMAKE_SOURCE_DIR}/tests/test_metrics.cc)
 target_link_libraries(test_metrics PRIVATE baas_core engine_flags)
 add_test(NAME metrics COMMAND test_metrics)
+
+# Migrations: the versioned schema engine + audit log — pure DB, no HTTP server.
+add_executable(test_baas_migrations ${CMAKE_SOURCE_DIR}/tests/test_baas_migrations.cc)
+target_link_libraries(test_baas_migrations PRIVATE baas_core engine_flags)
+add_test(NAME baas_migrations COMMAND test_baas_migrations)
 
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)

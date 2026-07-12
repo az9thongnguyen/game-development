@@ -7,6 +7,7 @@
 
 #include <sodium.h>
 
+#include "baas/admin/audit.h"
 #include "baas/auth/password.h"
 #include "baas/db/db.h"
 
@@ -31,7 +32,9 @@ NewProject create_project(const std::string& name) {
     const auto        ins = db::client()->execSqlSync(
         "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
         name, pub, pw::hash(sec));   // secret stored hashed; plaintext returned once
-    return {static_cast<long>(ins.insertId()), name, pub, sec};
+    const long id = static_cast<long>(ins.insertId());
+    audit::record(id, "admin", "project.create", name);
+    return {id, name, pub, sec};
 }
 
 std::vector<ProjectInfo> list_projects() {

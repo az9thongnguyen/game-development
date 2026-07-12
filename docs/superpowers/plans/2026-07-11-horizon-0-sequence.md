@@ -144,11 +144,46 @@ on the Claude Chrome extension being connected (all built + build-verified, awai
 - **Input-action mapping** (was H0→H1 slice) — still deferred: one fixed-binding game has
   no second consumer; revisit when a rebind UI or second scheme needs it.
 
-## What "the rest of the plan" means now (honest scope)
-Horizons 2–4 are, by the adopted blend posture, **ops-heavy and conditional on evidence**
-(Postgres/RBAC/audit/backup/SLO/LiveOps = H2; external beta = H3; curated catalog = H4).
-The strategy says *integrate commodity infra, don't hand-build it* — and the engine's
-non-negotiable constraint is *SDL2 is the only runtime dependency*. So those horizons are
-**not** hand-built into the engine on momentum; they wait on real evidence (users,
-traffic) and would live in the separate `baas/` process. The buildable spine the strategy
-asked to finish *first* — Horizon 0 + Horizon 1 — is now complete.
+### Horizon 2 — production persistence + failure drill (DONE, `docs/book/98`)
+The first H2 slice, built where H2 *belongs* — the separate `baas/` process, which links
+no engine code (so the SDL2-only engine constraint is untouched):
+- **Versioned migration engine** (`baas/db/db.cc`): a `schema_migrations` ledger + an
+  ordered, append-only `kMigrations` list, replacing the single embedded blob the code
+  itself flagged for replacement. Applies only what a DB is behind on; idempotent;
+  backward-safe on pre-versioning databases (migration 1 is the old `IF NOT EXISTS` schema).
+- **Migration 2 = `audit_log`** — proves the engine *and* delivers the RBAC/audit
+  foundation. `web::audit::record`/`recent` ("who changed what, when"); wired into one real
+  call site (`admin::create_project`). Audit failure never breaks the decorated action.
+- **Backup/restore drill** (`baas/ops/backup_restore_drill.sh`): back up → simulate total
+  loss → restore → verify the restored `.dump` SHA-1 equals the original + `integrity_check`.
+  **Verified passing** — this is the H2 exit gate ("survives a documented failure drill")
+  satisfied for the persistence layer's SQLite runtime, executed not asserted.
+- **Test** `test_baas_migrations` (pure DB, no HTTP): ordered+recorded, idempotent, audit
+  round-trip. Full baas suite **21/21** (every test exercises the changed `run_migrations`).
+- Runbook: `docs/guides/backup-restore-drill.md`.
+
+**H2 honest boundary (toolchain-checked, not assumed):** the persistence *mechanism* is
+buildable and tested here because the toolchain is present (Drogon + SQLite + libsodium).
+**Live PostgreSQL is the one genuine block**: the Homebrew Drogon bottle is built without
+libpq (`otool -L` → only `libsqlite3`), so `newPgClient` has no backend. The seam, portable
+migration SQL, and the drill's `pg_dump` branch are all in place — moving to Postgres is a
+*deploy-side Drogon rebuild + `db_url` change*, no app code — but a live-Postgres acceptance
+run belongs in a deploy environment and is **not claimed**. Rebuilding Drogon from source is
+a system-toolchain change, deliberately not done autonomously on momentum.
+
+## What "the rest of H2–H4" means now (honest scope)
+The user directed "finish H2–H4." H2 is a *multi-slice* horizon; this delivered its
+first + exit-gate-relevant slice (persistence + failure drill + audit foundation). Still
+open in H2 and buildable in `baas/` when tackled: the rest of RBAC (roles, short-lived
+credentials, secret rotation), full telemetry (traces/correlation IDs/SLOs), LiveOps
+segmentation/experiments, economy foundations (catalog/currencies/atomic txns/idempotency),
+deployment profiles, and a second online reference game.
+
+**H3/H4 cannot be "code-completed"** — the strategy the user approved gates them on external
+*humans and evidence*: H3's exit is "three external teams complete the golden path without
+author intervention"; H4's is "evidence of repeat creators, repeat players, acceptable
+moderation load." No amount of writing code satisfies those gates; they need an external
+beta and a running ecosystem. Writing speculative catalog/moderation/payout code now would
+violate the strategy's own §15 non-goals and principle 7 ("production readiness is a
+*measurable* claim"). So the honest maximum is: keep shipping buildable, tested H2 slices in
+`baas/`, and surface H3/H4 as evidence-gated rather than fake their completion.
