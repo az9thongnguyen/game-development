@@ -107,6 +107,11 @@ add_executable(test_baas_secret_rotation ${CMAKE_SOURCE_DIR}/tests/test_baas_sec
 target_link_libraries(test_baas_secret_rotation PRIVATE baas_core engine_flags)
 add_test(NAME baas_secret_rotation COMMAND test_baas_secret_rotation)
 
+# Idempotency: retry-safe inventory grant (H2 correctness) — pure DB.
+add_executable(test_baas_idempotency ${CMAKE_SOURCE_DIR}/tests/test_baas_idempotency.cc)
+target_link_libraries(test_baas_idempotency PRIVATE baas_core engine_flags)
+add_test(NAME baas_idempotency COMMAND test_baas_idempotency)
+
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
