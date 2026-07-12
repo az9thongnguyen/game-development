@@ -42,6 +42,8 @@ add_library(baas_core OBJECT
   cloud_save/save_controller.cc
   inventory/inv_service.cc
   inventory/inv_controller.cc
+  store/store_service.cc
+  store/store_controller.cc
   remote_config/config_service.cc
   remote_config/config_controller.cc
   analytics/analytics_service.cc
@@ -116,6 +118,11 @@ add_test(NAME baas_idempotency COMMAND test_baas_idempotency)
 add_executable(test_baas_purchase ${CMAKE_SOURCE_DIR}/tests/test_baas_purchase.cc)
 target_link_libraries(test_baas_purchase PRIVATE baas_core engine_flags)
 add_test(NAME baas_purchase COMMAND test_baas_purchase)
+
+# Catalog: priced offers + buy-by-SKU over the atomic purchase (H2 economy) — pure DB.
+add_executable(test_baas_catalog ${CMAKE_SOURCE_DIR}/tests/test_baas_catalog.cc)
+target_link_libraries(test_baas_catalog PRIVATE baas_core engine_flags)
+add_test(NAME baas_catalog COMMAND test_baas_catalog)
 
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
