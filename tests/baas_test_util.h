@@ -31,7 +31,24 @@ inline std::size_t write_cb(char* p, std::size_t sz, std::size_t n, void* ud) {
 struct Resp {
     long        status = 0;
     std::string body;
+    std::string raw_headers;   // all response header lines, as received
 };
+
+// Case-insensitive lookup of a response header value (trimmed); "" if absent.
+inline std::string header_value(const Resp& r, const std::string& name) {
+    std::string lower_all = r.raw_headers, lower_name = name;
+    for (char& c : lower_all)  c = static_cast<char>(std::tolower((unsigned char)c));
+    for (char& c : lower_name) c = static_cast<char>(std::tolower((unsigned char)c));
+    const std::string needle = lower_name + ":";
+    const std::size_t at = lower_all.find(needle);
+    if (at == std::string::npos) return "";
+    std::size_t vs = at + needle.size();
+    std::size_t ve = r.raw_headers.find_first_of("\r\n", vs);
+    std::string v  = r.raw_headers.substr(vs, ve - vs);
+    const std::size_t b = v.find_first_not_of(" \t");
+    const std::size_t e = v.find_last_not_of(" \t");
+    return b == std::string::npos ? "" : v.substr(b, e - b + 1);
+}
 
 // Synchronous HTTP request. Adds Content-Type: application/json when a body is
 // present. status == -1 signals a transport failure.
@@ -51,6 +68,8 @@ inline Resp http(const std::string& method, const std::string& url,
     if (hs) curl_easy_setopt(c, CURLOPT_HTTPHEADER, hs);
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_cb);
     curl_easy_setopt(c, CURLOPT_WRITEDATA, &r.body);
+    curl_easy_setopt(c, CURLOPT_HEADERFUNCTION, write_cb);
+    curl_easy_setopt(c, CURLOPT_HEADERDATA, &r.raw_headers);
     curl_easy_setopt(c, CURLOPT_TIMEOUT, 5L);
     if (curl_easy_perform(c) != CURLE_OK) r.status = -1;
     else curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &r.status);

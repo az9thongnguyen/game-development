@@ -234,6 +234,15 @@ The "atomic transactions" half of economy foundations, the sibling of idempotenc
 - Economy still ahead (named, not faked): currency/catalog model (priced items vs caller-supplied
   cost), receipt validation (platform-integration, not hand-built) — come when a ref game sells.
 
+### Horizon 2 — request correlation ids (DONE, `docs/book/104`) [telemetry — menu item D]
+Every response now carries an `X-Request-Id` (adopt an inbound one for cross-proxy tracing, or
+mint 16 random hex). A pre-routing advice (registered before rate-limit, so even a 429 has an id)
+sanitizes any client-supplied id ([A-Za-z0-9_-], cap 64 — prevents log-forging) and stores it;
+the pre-sending advice echoes it as a header and prefixes the access-log line `[rid] METHOD path
+status ms`. **Test** `test_baas_tracing` (boots a server): minted id is 16-hex; two mints differ;
+inbound id echoed verbatim; hostile id sanitized. `baas_test_util.h` gained additive response-
+header capture (`raw_headers` + `header_value`) reused for this. Full baas suite **27/27**.
+
 **Deployment profile (Dockerfile) — deferred with reason:** root CMake `pkg_check_modules(SDL2
 REQUIRED)` at *configure* time couples the whole project to SDL2, so a backend-only image would
 awkwardly need SDL2 just to configure `baas`. That deserves a build-system split (make SDL2
