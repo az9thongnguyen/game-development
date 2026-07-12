@@ -48,6 +48,11 @@ jobs:
       - name: Golden-path smoke (headless inspect)
         run: ./build/demo --project-inspect projects/creator.gameproject
 
+      - name: Create-verb smoke (scaffold → inspect the scaffold)
+        run: |
+          ./build/demo --project-new assets/ci_new.gameproject fps "CI New"
+          ./build/demo --project-inspect ci_new.gameproject   # scaffolded manifest must inspect OK
+
       - name: Release-store smoke (publish → verify → status → promote)
         run: |
           ./build/demo --project-publish projects/creator.gameproject
