@@ -106,6 +106,73 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
     return {Item{item, qty}, std::nullopt};
 }
 
+Result purchase(long project_id, long user_id, const std::string& currency, long long cost,
+                const std::string& item, long long amount, const std::string& idem_key) {
+    Error scratch;
+    if (Error* e = validate(currency, cost, scratch)) return {std::nullopt, *e};
+    if (Error* e = validate(item, amount, scratch))   return {std::nullopt, *e};
+
+    // Scope the key to (user, this purchase's item) with a "purchase|" tag so it can never
+    // collide with a grant's key or another item's purchase key (see grant for the rationale).
+    const std::string scoped_key =
+        idem_key.empty() ? std::string()
+                         : "purchase|" + std::to_string(user_id) + "|" + item + "|" + idem_key;
+    if (!scoped_key.empty()) {
+        if (auto prior = idem_lookup(project_id, scoped_key))
+            return {Item{item, *prior}, std::nullopt};   // replay — no second purchase
+    }
+
+    // One transaction: check funds → spend → grant → record the key. It commits when `tx`
+    // is destroyed; any error path calls rollback() so nothing partial is left behind.
+    auto tx = db::client()->newTransaction();
+    try {
+        const auto cur = tx->execSqlSync(
+            "SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?",
+            project_id, user_id, currency);
+        const long long have = cur.empty() ? 0 : cur[0]["qty"].as<long>();
+        if (have < cost) {
+            tx->rollback();
+            return {std::nullopt, Error{409, "insufficient", "not enough " + currency}};
+        }
+
+        // Spend the currency.
+        tx->execSqlSync(
+            "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
+            "WHERE project_id=? AND user_id=? AND item=?",
+            have - cost, project_id, user_id, currency);
+
+        // Grant the item (upsert), computing its resulting quantity.
+        const auto ex = tx->execSqlSync(
+            "SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?",
+            project_id, user_id, item);
+        long long qty;
+        if (ex.empty()) {
+            qty = amount;
+            tx->execSqlSync("INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,?)",
+                            project_id, user_id, item, qty);
+        } else {
+            qty = ex[0]["qty"].as<long>() + amount;
+            tx->execSqlSync(
+                "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
+                "WHERE project_id=? AND user_id=? AND item=?",
+                qty, project_id, user_id, item);
+        }
+
+        // Record idempotency INSIDE the transaction so the key commits atomically with the
+        // spend+grant — a retry cannot land between the effect and the record.
+        if (!scoped_key.empty())
+            tx->execSqlSync(
+                "INSERT INTO idempotency_keys(project_id, idem_key, result) VALUES(?,?,?) "
+                "ON CONFLICT(project_id, idem_key) DO NOTHING",
+                project_id, scoped_key, qty);
+
+        return {Item{item, qty}, std::nullopt};   // tx commits on scope exit
+    } catch (const std::exception&) {
+        tx->rollback();
+        return {std::nullopt, Error{500, "internal", "purchase failed"}};
+    }
+}
+
 Result consume(long project_id, long user_id, const std::string& item, long long amount) {
     Error scratch;
     if (Error* e = validate(item, amount, scratch)) return {std::nullopt, *e};

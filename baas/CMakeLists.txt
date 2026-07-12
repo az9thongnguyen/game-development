@@ -112,6 +112,11 @@ add_executable(test_baas_idempotency ${CMAKE_SOURCE_DIR}/tests/test_baas_idempot
 target_link_libraries(test_baas_idempotency PRIVATE baas_core engine_flags)
 add_test(NAME baas_idempotency COMMAND test_baas_idempotency)
 
+# Purchase: atomic spend+grant with rollback + idempotency (H2 economy) — pure DB.
+add_executable(test_baas_purchase ${CMAKE_SOURCE_DIR}/tests/test_baas_purchase.cc)
+target_link_libraries(test_baas_purchase PRIVATE baas_core engine_flags)
+add_test(NAME baas_purchase COMMAND test_baas_purchase)
+
 add_executable(test_baas_auth ${CMAKE_SOURCE_DIR}/tests/test_baas_auth.cc)
 target_link_libraries(test_baas_auth PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_auth COMMAND test_baas_auth)
