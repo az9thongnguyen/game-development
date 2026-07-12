@@ -162,6 +162,24 @@ no engine code (so the SDL2-only engine constraint is untouched):
   round-trip. Full baas suite **21/21** (every test exercises the changed `run_migrations`).
 - Runbook: `docs/guides/backup-restore-drill.md`.
 
+### Horizon 2 — reversible LiveOps change (DONE, `docs/book/99`)
+Closes the H2 exit gate's third clause ("runs a reversible LiveOps change without client
+redeployment"), reusing the audit log from the persistence slice (compose, don't build):
+- **`cfg::set_audited` / `remove_audited`** (`baas/remote_config/config_service.cc`): upsert a
+  remote-config value, record the old→new transition in `audit_log`, and **return the prior
+  value** — which *is* the reversibility (the operator sets it back to revert). Clients keep
+  reading `/v1/config` unchanged, so the change lands with no redeployment.
+- Operator endpoints (`PUT/DELETE /v1/admin/config/{key}`) now return `"previous"` so a
+  dashboard can offer one-click revert.
+- **Test** `test_baas_liveops` (pure DB): new-set → change → audit shows old→new → revert →
+  audited delete. `baas_config`/`baas_admin` HTTP tests still green. No new table, no config
+  history subsystem (YAGNI — the audit row answers "what was it just before").
+
+**H2 exit gate status:** clause 1 "survives a failure drill" ✓ (persistence drill), clause 3
+"reversible LiveOps change" ✓ (this slice). **Clause 2 "measures a release" is the remaining
+open piece** — needs the client to tag telemetry with its release id and the analytics summary
+to slice by it; a real slice, not rushed on momentum.
+
 **H2 honest boundary (toolchain-checked, not assumed):** the persistence *mechanism* is
 buildable and tested here because the toolchain is present (Drogon + SQLite + libsodium).
 **Live PostgreSQL is the one genuine block**: the Homebrew Drogon bottle is built without
