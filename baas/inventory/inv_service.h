@@ -42,4 +42,13 @@ Result            grant(long project_id, long user_id, const std::string& item, 
                         const std::string& idem_key = "");
 Result            consume(long project_id, long user_id, const std::string& item, long long amount);
 
+// Atomically spend `cost` of `currency` and grant `amount` of `item` — all-or-nothing.
+// If the user cannot afford it, nothing changes and a 409 "insufficient" is returned.
+// `idem_key` (optional) makes a retry safe: a replay returns the resulting item qty
+// without spending or granting again. Both effects and the idempotency record commit in
+// one transaction, so a crash between the spend and the grant leaves the balance intact.
+Result            purchase(long project_id, long user_id, const std::string& currency,
+                           long long cost, const std::string& item, long long amount,
+                           const std::string& idem_key = "");
+
 }  // namespace web::inv

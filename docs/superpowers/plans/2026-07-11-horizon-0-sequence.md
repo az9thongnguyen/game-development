@@ -221,6 +221,19 @@ The "idempotency" half of economy foundations, on the op where it bites hardest 
   `ponytail:` invariant on `run_migrations` requires each new migration to be single-statement OR
   fully idempotent (migrations 1-4 satisfy it), with `db->newTransaction()` as the upgrade.
 
+### Horizon 2 — atomic purchase (DONE, `docs/book/103`) [economy foundations]
+The "atomic transactions" half of economy foundations, the sibling of idempotency:
+- `inv::purchase(pid, uid, currency, cost, item, amount, idem_key="")`: spends a currency and
+  grants an item in ONE Drogon transaction (`db->newTransaction()`; commit on scope exit, else
+  `rollback()`). Affordability check + spend are atomic against other requests (one reserved
+  connection); insufficient funds → pure no-op; idempotency record written INSIDE the txn so key
+  + effects commit together. Key scoped `"purchase|<uid>|<item>|<key>"` (no collision with grant).
+- **Test** `test_baas_purchase` (pure DB): atomic success; **insufficient → rollback, balance
+  unchanged** (proves the txn really rolls back, not just the happy path); idempotent retry not
+  double-charged; different key = new purchase; bad amount rejected pre-spend.
+- Economy still ahead (named, not faked): currency/catalog model (priced items vs caller-supplied
+  cost), receipt validation (platform-integration, not hand-built) — come when a ref game sells.
+
 **Deployment profile (Dockerfile) — deferred with reason:** root CMake `pkg_check_modules(SDL2
 REQUIRED)` at *configure* time couples the whole project to SDL2, so a backend-only image would
 awkwardly need SDL2 just to configure `baas`. That deserves a build-system split (make SDL2
