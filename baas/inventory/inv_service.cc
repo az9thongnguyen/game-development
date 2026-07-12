@@ -124,6 +124,11 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
 
     // One transaction: check funds → spend → grant → record the key. It commits when `tx`
     // is destroyed; any error path calls rollback() so nothing partial is left behind.
+    // ponytail: the SELECT-then-UPDATE affordability check is atomic against other requests
+    // ONLY because the SQLite pool is size 1 (db.cc), so newTransaction() reserves the sole
+    // connection and no concurrent purchase can read the pre-spend balance. On a Postgres
+    // build with pool > 1, `Deferred` would reopen this TOCTOU (two buyers both pass the
+    // check, both spend → overdraft) — switch to SELECT ... FOR UPDATE / a serializable txn.
     auto tx = db::client()->newTransaction();
     try {
         const auto cur = tx->execSqlSync(
