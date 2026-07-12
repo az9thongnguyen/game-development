@@ -9,6 +9,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include <drogon/orm/DbClient.h>
 
@@ -22,8 +23,20 @@ using drogon::orm::DbClientPtr;
 // Throws std::runtime_error on an unsupported scheme.
 DbClientPtr make_db_client(const std::string& url);
 
-// Create the schema if absent (idempotent — safe to run every boot).
+// Apply every schema migration this DB is behind on, in version order, recording
+// each in `schema_migrations`. Idempotent — safe to run every boot, and safe on a
+// database created before the versioned engine existed (migration 1 is the original
+// CREATE TABLE IF NOT EXISTS schema, so it just re-records as applied).
 void run_migrations(const DbClientPtr& db);
+
+// One applied schema migration (a row of schema_migrations). Exposed so tests and
+// the backup/restore drill can answer "which schema version is this DB at?".
+struct MigrationRecord {
+    int         version;
+    std::string name;
+    std::string applied_at;
+};
+std::vector<MigrationRecord> applied_migrations(const DbClientPtr& db);
 
 // Insert the demo project + its `colony_high` leaderboard if absent.
 // Returns the project's public_key (existing or newly inserted).
