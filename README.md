@@ -11,7 +11,9 @@ software renderer, 3D rasterizer, game logic, AI) is hand-written. The goal is t
 
 See [`requirements.md`](requirements.md) for the full vision and milestones, and
 the **guidebook** in [`docs/book/`](docs/book/) for the step-by-step learning
-material that accompanies the code.
+material that accompanies the code. For the platform golden path end to end, the
+operator guide **[`docs/guides/author-to-url.md`](docs/guides/author-to-url.md)**
+walks create → publish → promote → rollback in seven commands, with a failure lab.
 
 For the longer product direction — how this hand-written codebase grows into one
 inspectable, self-hostable game-creation platform — see
