@@ -40,6 +40,19 @@ if (!idem_key.empty()) idem_record(project_id, idem_key, qty);   // remember for
 reads the standard `Idempotency-Key` header, caps it at 64 characters, and passes it through; an
 empty header means "no idempotency," and every call applies as before.
 
+**Scoping the key (a bug caught in review).** A first cut stored the client's key under
+`(project_id, idem_key)` alone. But `grant` runs per *user* (the JWT sets `user_id`) and per
+*item* (the path segment), and the key is *client-supplied* — two players who both retry "request
+#1," or one client reusing a request-counter across items, would collide. The second grant would
+find the first's row and replay the wrong item's quantity for a user who was never actually
+credited: a 200 OK reporting a balance that does not exist. The fix keeps the table as-is but
+scopes the stored key to the request identity: `grant` composes `"<user_id>|<item>|<idem_key>"`
+before lookup/record. Because `item` is validated to `[A-Za-z0-9_-]` (no `|`) and `user_id` is
+numeric, the `<user_id>|<item>|` prefix is unambiguous and the arbitrary client key follows it, so
+no two distinct (user, item) requests can ever hash to the same stored key. The regression test
+covers exactly this: a different user, and a different item, reusing the same key value each get
+their own grant rather than a replay.
+
 There is one honest ceiling, marked in the code: `lookup`-then-`record` has a hair-thin window
 where two *concurrent* first uses of the same key could both grant. Single-writer SQLite serializes
 `execSqlSync`, so that window is effectively closed today; the upgrade for a multi-writer Postgres

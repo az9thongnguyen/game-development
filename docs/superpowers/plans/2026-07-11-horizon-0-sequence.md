@@ -210,9 +210,16 @@ The "idempotency" half of economy foundations, on the op where it bites hardest 
   with `ON CONFLICT DO NOTHING` (portable); only records *successes* (a rejected grant leaves
   the key free). Controller reads the `Idempotency-Key` header (capped 64).
 - **Test** `test_baas_idempotency` (pure DB): same key → not double-credited; different key →
-  applies; no key → applies; bad-amount key not poisoned. `baas_inventory` HTTP green.
+  applies; no key → applies; bad-amount key not poisoned; **cross-user + cross-item reuse of one
+  key value each get their own grant** (regression for the review fix below). `baas_inventory` green.
 - ponytail ceiling named: lookup-then-record has a thin concurrent-first-use window, closed by
   single-writer SQLite today; claim-first INSERT is the Postgres upgrade.
+- **Review fix (cpp-reviewer, HIGH):** the client key is scoped to `(user_id, item, idem_key)`
+  (composed as `"<uid>|<item>|<key>"`) — the first cut keyed on `(project_id, idem_key)` only,
+  which would silently replay the wrong user's/item's grant when a client key value collided.
+- **Review note (MEDIUM, documented):** migration statements aren't transaction-wrapped; a
+  `ponytail:` invariant on `run_migrations` requires each new migration to be single-statement OR
+  fully idempotent (migrations 1-4 satisfy it), with `db->newTransaction()` as the upgrade.
 
 **Deployment profile (Dockerfile) — deferred with reason:** root CMake `pkg_check_modules(SDL2
 REQUIRED)` at *configure* time couples the whole project to SDL2, so a backend-only image would

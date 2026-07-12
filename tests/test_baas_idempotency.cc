@@ -58,6 +58,20 @@ int main() {
     auto reused = web::inv::grant(pid, uid, item, 5, "req-bad");
     CHECK(reused.item && reused.item->qty == 45);
 
+    // --- key scoping (regression: the same client key must not collide across user/item) ---
+    // A DIFFERENT user in the same project reusing the SAME key value gets their OWN grant,
+    // not a replay of user 1's — otherwise user 2 would be silently credited nothing.
+    const long uid2 = 2;
+    auto u2 = web::inv::grant(pid, uid2, item, 10, "req-1");   // "req-1" was used by user 1
+    CHECK(u2.item && u2.item->qty == 10);                      // user 2's own fresh balance
+    CHECK(web::inv::get(pid, uid2, item).qty == 10);
+
+    // The SAME user + SAME key but a DIFFERENT item is a distinct grant, not a replay.
+    auto other_item = web::inv::grant(pid, uid, "silver", 7, "req-1");   // uid used "req-1" for gold
+    CHECK(other_item.item && other_item.item->qty == 7);
+    CHECK(web::inv::get(pid, uid, "silver").qty == 7);
+    CHECK(web::inv::get(pid, uid, item).qty == 45);   // gold untouched by the silver grant
+
     baastest::cleanup_db(db_path);
     if (g_failures == 0) std::printf("baas_idempotency: all tests passed\n");
     else                 std::printf("baas_idempotency: %d FAILURE(S)\n", g_failures);
