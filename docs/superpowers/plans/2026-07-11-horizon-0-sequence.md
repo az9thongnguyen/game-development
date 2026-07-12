@@ -118,12 +118,21 @@ pure decision/display (`hub.cpp`, unit test), impure assembly (`hub_build_core`,
 thin render (`HubScene`, manual visual accept). Read-only for now (shows the recommended
 verb; you run it via CLI, press R to refresh). Suite 51/51.
 
-**Remaining Horizon 1 (honest boundary):** the **full Studio shell** (docked panels,
-thumbnails, and *interactive* mutation — which needs the domain ops extracted from main.cpp
-behind a callable interface; a real subsystem deserving its own brainstorming pass), a
-**hosted artifact adapter** (evidence-gated ops; the local adapter proves the mechanics),
-and **BaaS HTTP-contract conformance** (lives in `baas/`, not the engine). Two pixel-level
-manual accepts stand open: web `?mode=project` and `--hub-ui` (both need eyes on a window).
+### Horizon 1 — interactive Hub + Studio shell (DONE, `docs/book/97`)
+- **`release_ops_core`**: `publish`/`promote`/`rollback` extracted from main.cpp, returning
+  `OpResult{ok,message}` — called by both the CLI (thin wrappers) and the Scenes. **Now
+  unit-tested end-to-end** (`test_release_ops`, temp asset base) → the ops are verified;
+  only keypress→op wiring is manual.
+- **Interactive `HubScene`** (`--hub-ui`): Space=publish→dev, 1/2=promote, R=refresh, flashes
+  the result. **Studio shell** (`--shell`): nav rail Hub/Learn/About; Hub section reuses
+  `hub_lines` + ops (no dup), Learn = doc map, About = project info.
+- **Web modes** `?mode=hubui` / `?mode=shell` in shell.html; wasm rebuilt. Suite 52/52.
+
+**Remaining Horizon 1 (honest boundary):** a **hosted artifact adapter** (evidence-gated
+ops; the local adapter proves the mechanics) and **BaaS HTTP-contract conformance** (lives
+in `baas/`, not the engine). The one open non-code item: the **browser pixel accept** —
+`?mode=project` / `?mode=hubui` / `?mode=shell` + native `--hub-ui`/`--shell` — blocked only
+on the Claude Chrome extension being connected (all built + build-verified, awaiting eyes).
 
 ### Deferred from Horizon 1 (each with a trigger)
 - **Release log / history listing** — append-only file when a UI/audit needs to enumerate

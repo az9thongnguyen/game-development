@@ -19,6 +19,7 @@
 #include "engine/hub/hub.hpp"
 #include "engine/hub/hub_build.hpp"
 #include "engine/project/project.hpp"
+#include "engine/release/ops.hpp"
 #include "engine/release/release.hpp"
 #include "engine/resource/resource.hpp"
 #include "platform/platform.hpp"
@@ -40,6 +41,7 @@
 #include "games/fx/fx_scene.hpp"
 #include "games/light/light_scene.hpp"
 #include "games/hub/hub_scene.hpp"
+#include "games/studio_shell/studio_shell_scene.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -224,132 +226,27 @@ int new_project(const std::string& out_path, const std::string& entry, const std
     return 0;
 }
 
-// Write text to `path` atomically: stage in a sibling ".tmp", then rename over the
-// target. A crash mid-write leaves the old file intact and the ".tmp" as garbage —
-// never a half-written release manifest or a torn channel pointer (exit gate: a publish
-// cannot expose a partial release).
-bool write_atomic(const std::string& path, const std::string& text) {
-    const std::string tmp = path + ".tmp";
-    return assets::write_file(tmp, std::vector<uint8_t>(text.begin(), text.end())) &&
-           assets::rename(tmp, path);
-}
-
 // Read a channel's current release id (validated), or nullopt if unset/malformed.
+// (Still used by verify/status/log below; the write side lives in engine::release ops.)
 std::optional<std::string> read_channel(const std::string& channel) {
-    auto bytes = assets::load_file(engine::channel_path(channel));
-    if (!bytes) return std::nullopt;
-    return engine::parse_channel(std::string(bytes->begin(), bytes->end()));
+    return engine::current_release(channel);
 }
 
-// Append one line to the append-only release audit log: what moved, to what, from what,
-// and why. Every channel move goes through here so promote/rollback are auditable and the
-// predecessor is always recorded (so a bad release can be rolled back to a known-good id).
-void record_audit(const std::string& action, const std::string& channel,
-                  const std::string& release, const std::string& prev, const std::string& reason) {
-    engine::AuditEntry e;
-    e.epoch   = static_cast<long long>(std::time(nullptr));
-    e.action  = action;
-    e.channel = channel;
-    e.release = release;
-    e.prev    = prev;
-    e.reason  = reason;
-    const std::string line = engine::audit_line(e);
-    assets::append_file(engine::audit_log_path(), std::vector<uint8_t>(line.begin(), line.end()));
+// The release verbs are thin CLI wrappers over the shared engine::release ops — the same
+// functions the graphical Hub Scene calls. They print the structured message (stdout on
+// success, stderr on failure) and map ok → exit 0.
+int print_op(const engine::OpResult& r) {
+    std::fprintf(r.ok ? stdout : stderr, "%s\n", r.message.c_str());
+    return r.ok ? 0 : 1;
 }
-
-// Publish: package a project and store its manifest immutably by content hash, then
-// point a channel (default "development") at it. Idempotent — re-publishing identical
-// content is a verified no-op; a differing manifest at the same release id is refused
-// (an immutable release's bytes never change). Manifest + channel are written atomically,
-// and the move is recorded in the audit log. Writes through the assets:: seam.
 int publish_project(const std::string& path, const std::string& channel, const std::string& reason) {
-    if (!engine::valid_channel_name(channel)) {
-        std::fprintf(stderr, "release: invalid channel name '%s'\n", channel.c_str());
-        return 1;
-    }
-    auto r = resolve_project(path);
-    if (!r) return 1;
-
-    const std::string pkg = engine::build_package(r->proj.name, r->proj.schema, r->proj.entry,
-                                                  r->resources);
-    const std::string hex   = engine::hash_hex(engine::package_hash(r->resources));  // == pkg's packagehash
-    const std::string mpath = engine::release_manifest_path(hex);
-    const std::vector<uint8_t> pkg_bytes(pkg.begin(), pkg.end());
-
-    bool verified = false;
-    if (auto existing = assets::load_file(mpath)) {
-        if (*existing != pkg_bytes) {   // same id, different bytes → corruption/collision; never overwrite
-            std::fprintf(stderr, "release: %s already stored with different bytes — refusing to overwrite\n",
-                         hex.c_str());
-            return 1;
-        }
-        verified = true;                // immutable release already present and byte-identical
-    } else if (!write_atomic(mpath, pkg)) {
-        std::fprintf(stderr, "release: cannot write %s\n", mpath.c_str());
-        return 1;
-    }
-
-    const std::string prev = read_channel(channel).value_or("");
-    if (!write_atomic(engine::channel_path(channel), engine::serialize_channel(hex))) {
-        std::fprintf(stderr, "release: cannot update channel '%s'\n", channel.c_str());
-        return 1;
-    }
-    record_audit("publish", channel, hex, prev, reason);
-    std::printf("%s %s\n  release %s\n  channel %s -> %s\n",
-                verified ? "verified" : "published", r->proj.name.c_str(),
-                hex.c_str(), channel.c_str(), hex.c_str());
-    return 0;
+    return print_op(engine::publish(path, channel, reason, kKnownEntries));
 }
-
-// Promote: point the target channel at whatever release the source channel currently
-// holds (e.g. development -> preview -> production). The release must exist in the store
-// — no dangling promotion. Atomic + audited, with the target's predecessor recorded.
 int promote_release(const std::string& from, const std::string& to, const std::string& reason) {
-    if (!engine::valid_channel_name(from) || !engine::valid_channel_name(to)) {
-        std::fprintf(stderr, "release: invalid channel name\n");
-        return 1;
-    }
-    auto hex = read_channel(from);
-    if (!hex) { std::fprintf(stderr, "release: channel '%s' is unset or malformed\n", from.c_str()); return 1; }
-    if (!assets::load_file(engine::release_manifest_path(*hex))) {
-        std::fprintf(stderr, "release: channel '%s' points at missing release %s\n",
-                     from.c_str(), hex->c_str());
-        return 1;
-    }
-    const std::string prev = read_channel(to).value_or("");
-    if (!write_atomic(engine::channel_path(to), engine::serialize_channel(*hex))) {
-        std::fprintf(stderr, "release: cannot update channel '%s'\n", to.c_str());
-        return 1;
-    }
-    record_audit("promote", to, *hex, prev, reason);
-    std::printf("promoted %s -> %s (%s)\n", from.c_str(), to.c_str(), hex->c_str());
-    return 0;
+    return print_op(engine::promote(from, to, reason));
 }
-
-// Rollback: point a channel at an explicit prior release id, which must exist in the
-// store. The id comes from an operator (from --release-status/--release-log), so it is
-// validated as a trust-boundary input before it becomes a path. Atomic + audited.
 int rollback_channel(const std::string& channel, const std::string& hex, const std::string& reason) {
-    if (!engine::valid_channel_name(channel)) {
-        std::fprintf(stderr, "release: invalid channel name '%s'\n", channel.c_str());
-        return 1;
-    }
-    if (!engine::valid_hash_hex(hex)) {
-        std::fprintf(stderr, "release: invalid release id '%s'\n", hex.c_str());
-        return 1;
-    }
-    if (!assets::load_file(engine::release_manifest_path(hex))) {
-        std::fprintf(stderr, "release: no such release %s\n", hex.c_str());
-        return 1;
-    }
-    const std::string prev = read_channel(channel).value_or("");
-    if (!write_atomic(engine::channel_path(channel), engine::serialize_channel(hex))) {
-        std::fprintf(stderr, "release: cannot update channel '%s'\n", channel.c_str());
-        return 1;
-    }
-    record_audit("rollback", channel, hex, prev, reason);
-    std::printf("rolled back %s -> %s\n", channel.c_str(), hex.c_str());
-    return 0;
+    return print_op(engine::rollback(channel, hex, reason));
 }
 
 // The channels with defined promotion semantics: publish lands in development, promote
@@ -531,7 +428,7 @@ int main(int argc, char** argv) {
         return hub_dashboard(argv[2]);
     }
 
-    // Windowed: the graphical Hub shell — the same view, drawn; R refreshes.
+    // Windowed: the graphical Hub shell — the same view, drawn; Space/1/2 drive the ops.
     if (mode == "--hub-ui") {
         const std::string proj = (argc > 2) ? argv[2] : "projects/creator.gameproject";
         platform::Config cfg;
@@ -542,6 +439,19 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         return run_window(cfg, std::make_unique<hubui::HubScene>(proj));
+    }
+
+    // Windowed: the Studio shell — nav rail (Hub / Learn / About) over the same domain.
+    if (mode == "--shell") {
+        const std::string proj = (argc > 2) ? argv[2] : "projects/creator.gameproject";
+        platform::Config cfg;
+        cfg.title     = "hand-engine — studio";
+        cfg.fb_width  = 900;
+        cfg.fb_height = 560;
+        cfg.scale     = 1;
+        cfg.smooth    = true;
+        cfg.highdpi   = true;
+        return run_window(cfg, std::make_unique<studioshell::StudioShellScene>(proj));
     }
 
     if (mode == "--3d") {

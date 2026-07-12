@@ -85,7 +85,7 @@ unknown *version* is refused with an actionable message rather than silently mis
 ### 3. Publishing bytes that collide with an existing release id
 ```sh
 # (Only reachable via store corruption or a hash collision.) The store refuses:
-# 'release <id> already stored with different bytes — refusing to overwrite'; exit 1
+# '<id> already stored with different bytes — refusing'; exit 1
 ```
 **Why:** an immutable release's bytes must never change. If what's on disk under a release
 id disagrees with what you're about to publish there, the only safe response is to refuse —
