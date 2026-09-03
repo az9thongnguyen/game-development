@@ -50,3 +50,6 @@ baas/config.json
 *.db-journal
 *.db-wal
 .env
+
+# Local code-graph index (machine-local, 10 MB SQLite)
+.codegraph/
