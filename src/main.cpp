@@ -441,7 +441,7 @@ int main(int argc, char** argv) {
         return run_window(cfg, std::make_unique<hubui::HubScene>(proj));
     }
 
-    // Windowed: the Studio shell — nav rail (Hub / Learn / About) over the same domain.
+    // Windowed: the Studio shell — nav rail (Hub / Guide / Learn / About) over the same domain.
     if (mode == "--shell") {
         const std::string proj = (argc > 2) ? argv[2] : "projects/creator.gameproject";
         platform::Config cfg;
