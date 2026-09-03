@@ -6,9 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A **hand-written C++20 game engine** built from scratch to learn deeply, plus a
 collection of games/tools on top of it and a hand-written Game Backend-as-a-Service.
-`requirements.md` (Vietnamese) is the source-of-truth vision; `docs/book/` is a
-72-chapter guidebook where each chapter maps to the code that implements it — the
-guidebook chapter is the best explanation of any given subsystem.
+`requirements.md` (Vietnamese) owns the original *learning* vision; `docs/strategy/`
+owns the *product* direction (how this grows into a self-hostable game-creation
+platform) — read it before touching the platform spine. `docs/book/` is a 100+-chapter
+guidebook where each chapter maps to the code that implements it; **the guidebook
+chapter is the best explanation of any given subsystem** (e.g. `93` = release store,
+`95`–`97` = Hub/Studio shell). `docs/guides/author-to-url.md` walks the operator
+golden path end to end. **`docs/PROJECT-BRIEF.md` is the single orientation document**:
+current state, full feature inventory, a verified-vs-unproven ledger, the roadmap
+position, and the decision rules for choosing what to build next — read it before
+picking work.
 
 ## Non-negotiable architectural constraints
 
@@ -39,18 +46,38 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-Everything is one `demo` executable; the first arg picks the scene:
+Everything is one `demo` executable; the first arg picks the mode. Windowed scenes:
 
 ```sh
 ./build/demo            # M0 engine demo (retro 480x270)
-./build/demo --gui [hvh|hvai] [easy|medium|hard]   # chess GUI
-./build/demo --tui      # chess terminal
-./build/demo --fps      # M2 raycaster
-./build/demo --3d       # M3 software-rasterized 3D core
-./build/demo --viz3d    # M3.5 interactive 3D sandbox
+./build/demo --gui [hvh|hvai] [easy|medium|hard]   # chess GUI      (--tui = terminal)
+./build/demo --fps      # M2 raycaster (loads the Map-Lab-authored maps/level_00.map)
+./build/demo --3d       # M3 software-rasterized 3D core     --viz3d = interactive sandbox
 ./build/demo --iso      # M4 isometric farm sim (F5/F9 save/load)
 ./build/demo --editor   # immediate-mode GUI + physics sandbox
-./build/demo --colony   # engine-core integration game
+./build/demo --colony   # engine-core integration game (also the BaaS/SDK client)
+./build/demo --studio   # Mini Studio: procedural Texture Lab (.hrt export, sheet export)
+./build/demo --sandbox  # declarative 2D sandbox: actors + data-only behaviors
+./build/demo --maplab   # tile-grid level editor -> maps/level_NN.map
+./build/demo --fx | --light | --audio | --anim     # particles / 2D lights / mixer / flipbook
+./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio shell
+```
+
+**Headless platform-spine verbs** (no window; these are what CI smoke-tests, so keep
+them working). Paths are relative to the asset root — see `assets::` below:
+
+```sh
+./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
+./build/demo --project projects/creator.gameproject                  # launch from manifest
+./build/demo --project-inspect  <proj>        # validate/doctor + resource closure
+./build/demo --project-package  <proj>        # deterministic package manifest (release-id seed)
+./build/demo --project-publish  <proj> development "reason"   # atomic publish + audit
+./build/demo --release-promote  development preview "reason"  # dev -> preview -> production
+./build/demo --release-rollback production <release-id> "reason"
+./build/demo --release-status | --release-log [channel]
+./build/demo --project-verify   <proj> development   # preview parity: exit 0 match / 2 drift / 1 err
+./build/demo --hub <proj>                     # aggregate status + next recommended action
+./build/demo --runner <baas_url> <api_key>    # headless BaaS test-run worker
 ```
 
 Tests (dependency-free, no SDL/window needed):
@@ -60,6 +87,21 @@ ctest --test-dir build --output-on-failure     # all
 ctest --test-dir build -R chess                # one suite by name (math, ecs, iso, fps, …)
 ./build/test_chess                             # or run the binary directly
 ```
+
+BaaS backend (separate process, **guarded on Drogon** — the engine build never
+depends on it; when Drogon is absent its targets, including the `baas_*`/`sdk_live`
+tests, silently vanish from `ctest`):
+
+```sh
+brew install drogon libsodium                  # enables the 'baas' target
+cp baas/config.example.json baas/config.json   # gitignored local dev config
+./build/baas/baas                              # or: docker compose -f baas/ops/docker-compose.yml up
+```
+
+CI (`.github/workflows/ci.yml`, ubuntu + macos) does a clean configure/build, runs
+`ctest`, then smoke-tests the whole golden path (create → inspect → publish →
+verify → promote → status → log → hub) and asserts no `.tmp` files leak from the
+atomic publish. Breaking a headless verb breaks CI even if `ctest` is green.
 
 Sanitizer build (ASan + UBSan) for memory/UB bugs during dev:
 
@@ -82,8 +124,10 @@ Pick the web scene by editing `Module.arguments` in `web/shell.html`.
 ```
 src/platform/   the platform seam (platform.hpp) + backend_sdl.cpp
 src/engine/     hand-written core: math, renderer2d, renderer3d, geometry, camera,
-                assets, image, text, ui, ecs/, jobs/, memory/, physics/
-src/games/      chess, fps, viz3d, iso, editor, colony
+                assets, image, text, ui, ecs/, jobs/, memory/, physics/, anim/,
+                fx/, audio/ + the platform spine: project/, resource/, release/, hub/
+src/games/      one dir per scene/tool (chess, fps, iso, colony, studio, sandbox,
+                maplab, hub, studio_shell, fx, light, audio, anim, runner, …)
 docs/book/      the guidebook (read the chapter for the subsystem you touch)
 server/         hand-written HTTP server (POSIX sockets) — separate process, no engine code
 baas/           Drogon Game-BaaS backend — separate process, links no engine code
@@ -95,8 +139,14 @@ Understand these deliberate patterns before editing the build:
 
 - **Core logic is split into SDL-free static libs** (`chess_core`, `fps_core`,
   `render3d_core`, `iso_core`, `ecs_core`, `jobs_core`, `mem_core`, `physics_core`,
-  `ui_core`, `text_core`, `viz3d_core`, `colony_core`). Each has a matching
-  `test_*` target so simulation/logic is unit-tested with no window.
+  `ui_core`, `text_core`, `viz3d_core`, `colony_core`, plus the platform-spine
+  cores `project_core`, `resource_core`, `release_core`, `release_ops_core`,
+  `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
+  `maplab_core`, `particles_core`, `tween_core`, `light_core`, `audio_core`,
+  `runner_core`). Each has a matching `test_*` target so simulation/logic is
+  unit-tested with no window.
+- **`-DENGINE_BUILD_DESKTOP=OFF`** builds everything except the SDL2 `demo` target —
+  that's how the backend container image builds without SDL2 present.
 - **`renderer3d.cpp` / `ui.cpp` reference `Renderer2D` symbols but don't link it** —
   the final target that links them provides `renderer2d.cpp`. Several `test_*`
   targets therefore *compile* `renderer2d.cpp`/`assets.cpp` directly rather than
@@ -114,6 +164,34 @@ Understand these deliberate patterns before editing the build:
 A `Scene` (`src/engine/scene.hpp`) implements `update(dt, input)` and `render(ctx)`,
 where `Context` carries the `Renderer2D`, input snapshot, timing, and shared UI font.
 Each game is a `Scene`; `src/main.cpp` maps a CLI flag to a `platform::Config` + scene.
+
+## The platform spine (create → publish → promote → verify)
+
+Beyond the games, the repo is growing a game-creation *platform*, and its data flow
+is the thing most likely to be broken by a careless edit:
+
+1. **`game.project` manifest** (`project_core`) — a versioned text file that declares
+   identity, an `entry` (which game to launch), and its content as `asset <type> <path>`
+   lines. `--project` launches from it; `src/main.cpp`'s `launch_entry` seam maps an
+   entry name to a scene, so a new game needs no new CLI flag.
+2. **Resource closure** (`resource_core`) — hand-written FNV-1a `content_hash` over each
+   declared asset. `--project` **hard-refuses** to launch with a missing dependency.
+3. **Package** (`resource_core::build_package`) — resources sorted by path + a combined
+   `packagehash`: order-independent, content-sensitive. This hash *is* the release id.
+4. **Release store** (`release_core`, `release_ops_core`) — `releases/<hash>/` is
+   immutable and content-addressed; the channels `development → preview → production`
+   are pointers moved by promote/rollback. Publishes are **atomic** (stage `.tmp` →
+   `assets::rename`) and **audited** (append-only `releases/audit.log` recording
+   timestamp, predecessor, reason). Re-publishing identical bytes is a verified no-op;
+   publishing *different* bytes under an existing id is refused.
+5. **Hub** (`hub_core`) — one pure `hub_lines`/`recommend` shared by the headless
+   `--hub` and the windowed `--hub-ui`/`--shell`, so CLI and window can't drift.
+
+Two rules follow from that shape: **the operation lives in a pure `*_core` lib and the
+trigger (CLI flag or keypress) only calls it** — never reimplement an op in a Scene; and
+every write goes through `assets::` so the same code works on native and the web MEMFS.
+The asset root (`ASSET_ROOT`/`assets/`) is the origin of every runtime path, which is
+why manifests read as `projects/foo.gameproject`, not a filesystem path.
 
 ## Git workflow
 

@@ -2,7 +2,7 @@
 //  games/studio_shell/studio_shell_scene.hpp  —  the Studio shell (--shell)
 // =============================================================================
 //  Horizon 1's "shared Studio shell and dock/navigation model": a window with a left
-//  nav rail (Hub / Learn / About) and a main panel that renders the selected section.
+//  nav rail (Hub / Guide / Learn / About) and a main panel that renders the selected section.
 //  The Hub section IS the interactive release controller — it reuses the same tested
 //  engine::hub_lines content and engine::release ops as --hub / --hub-ui, so there is no
 //  second copy of "what the hub says" or "how to publish". This scene is only the frame
@@ -27,7 +27,7 @@ public:
     void render(const engine::Context& ctx) override;
 
 private:
-    enum Section { Hub = 0, Learn, About, SectionCount };
+    enum Section { Hub = 0, Guide, Learn, About, SectionCount };
 
     void rebuild_hub();
 
