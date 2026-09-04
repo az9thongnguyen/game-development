@@ -567,8 +567,40 @@ static void test_sync_decision() {
     CHECK(std::string(sync_text(Sync::Conflict)) != std::string(sync_text(Sync::InSync)));
 }
 
+
+// -----------------------------------------------------------------------------
+//  One number, one place. `sell` used to be written in BOTH crops.def and
+//  items.def with the same value, and end_day read the item's copy — so changing
+//  the crop's price, from a file or from a dashboard, did nothing at all.
+// -----------------------------------------------------------------------------
+static void test_the_crop_owns_the_price() {
+    Defs d = *parse_defs("crop parsnip season=spring days=2 stages=3 sell=35 seed=20\n"
+                         "item parsnip type=crop sell=999\n");
+    const auto earn = [](const Defs& defs) {
+        World w;
+        w.seed = 7;
+        w.shipped["parsnip"] = 1;
+        return end_day(w, defs).gold_earned;
+    };
+    CHECK(earn(d) >= 33 && earn(d) <= 37);          // the crop's 35, not the item's 999
+
+    // ...and that is the number a remote override moves.
+    CHECK(apply_overrides(d, "crop parsnip sell=100\n").applied == 1);
+    CHECK(earn(d) >= 98 && earn(d) <= 102);
+
+    // A non-crop item still prices itself: the rule is "the crop owns a CROP's price",
+    // not "items have no prices".
+    Defs t = *parse_defs("item parsnip_seed type=seed sell=10\n");
+    World w;
+    w.seed = 7;
+    w.shipped["parsnip_seed"] = 1;
+    const int g = end_day(w, t).gold_earned;
+    CHECK(g >= 8 && g <= 12);
+}
+
 int main() {
     test_defs();
+    test_the_crop_owns_the_price();
     test_overrides();
     test_sync_decision();
     test_a_day_of_farming();

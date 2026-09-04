@@ -39,7 +39,6 @@ private:
     iso::Vec2i hovered_cell(const platform::InputState& in) const;
 
     // BaaS actions (results delivered via client_.update() pumped each frame).
-    static std::string default_base_url();
     void               login();
     void               submit_score();
     void               refresh_board();

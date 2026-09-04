@@ -30,6 +30,22 @@ struct Config {
     std::string api_key;    // the project's public key
 };
 
+// Where the backend is, when nobody said. Native talks to a local baas; the web
+// build is SERVED BY the baas, so a relative base resolves API calls against the
+// page it was loaded from — which is also the only answer that survives being
+// deployed behind a different hostname.
+//
+// It lives here rather than in a game because it is a fact about how this backend
+// is served, not about any one game. Two games each carrying their own copy of the
+// #ifdef is how the web build ends up calling 127.0.0.1 from someone's browser.
+inline std::string default_base_url() {
+#ifdef __EMSCRIPTEN__
+    return "";
+#else
+    return "http://127.0.0.1:8080";
+#endif
+}
+
 struct Session {
     long long   user_id = 0;   // 64-bit: wasm32/Windows have 32-bit long
     std::string display_name;

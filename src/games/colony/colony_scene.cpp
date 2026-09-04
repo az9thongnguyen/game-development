@@ -74,7 +74,7 @@ std::vector<uint8_t> gen_agent_sprite() {
 
 ColonyScene::ColonyScene()
     : sim_(14, 14), frame_(64 * 1024),
-      client_(gbaas::Config{default_base_url(), "pk_demo_colony"}) {
+      client_(gbaas::Config{gbaas::default_base_url(), "pk_demo_colony"}) {
     sim_.reset_default();
 
     // D: ensure the sprite exists, register a bytes→Image loader, load via the cache.
@@ -86,16 +86,6 @@ ColonyScene::ColonyScene()
     sprite_ = cache_.load<gfx::Image>(kSpritePath);
 
     login();   // BaaS: guest sign-in (async; completes over the next few frames)
-}
-
-// Native talks to a local baas; the web build is served BY the baas (same origin),
-// so a relative base ("") resolves API calls against the page.
-std::string ColonyScene::default_base_url() {
-#ifdef __EMSCRIPTEN__
-    return "";
-#else
-    return "http://127.0.0.1:8080";
-#endif
 }
 
 void ColonyScene::login() {

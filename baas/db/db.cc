@@ -324,6 +324,35 @@ std::string seed(const DbClientPtr& db) {
             std::string("2000-01-01 00:00:00"), std::string("2999-01-01 00:00:00"),
             std::string("{\"wood_mult\":2}"));
     }
+
+    // ---- the farm demo -------------------------------------------------------
+    // A second project, because the farm is a second GAME: its prices, its live
+    // event and its save slot must not be able to collide with the colony's. The
+    // config value and the event payload are both a `defs` OVERRIDE BLOB in the same
+    // text format the game's own `farm/crops.def` uses — opaque to the server, which
+    // is the point: an operator changes a price by typing the line they would have
+    // typed in the file, and nothing here needs to know what a crop is.
+    const std::string farm_key = "pk_demo_farm";
+    if (db->execSqlSync("SELECT id FROM projects WHERE public_key=?", farm_key).empty()) {
+        const auto ins = db->execSqlSync(
+            "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
+            std::string("Farm Demo"), farm_key, pw::hash("sk_demo_farm"));
+        const auto pid = ins.insertId();
+        // No leaderboard: the farm does not submit a score, and a seeded row nothing
+        // reads is a row someone later mistakes for a feature.
+        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+                        static_cast<long>(pid), std::string("farm_defs"),
+                        std::string("crop parsnip sell=40\n"));
+        // Seeded NOT active (it started and ended in the past), so the festival is a
+        // switch an operator flips in the dashboard rather than a permanent buff.
+        db->execSqlSync(
+            "INSERT INTO live_events(project_id, key, name, starts_at, ends_at, payload) VALUES(?,?,?,?,?,?)",
+            static_cast<long>(pid), std::string("harvest_festival"),
+            std::string("Harvest Festival"),
+            std::string("2000-01-01 00:00:00"), std::string("2000-01-02 00:00:00"),
+            std::string("crop parsnip sell=90\ncrop pumpkin sell=180\n"));
+    }
+
     return public_key;
 }
 

@@ -58,6 +58,12 @@ int main() {
         const std::string admin  = "X-Admin-Secret: test-admin";
 
         // ---- platform admin: create project (gated by the admin secret) ----
+        // Counted relative to what the seed happens to contain. Hard-coding "2" made
+        // this test fail the day a second demo game was seeded, which is a fact about
+        // the fixture, not about the admin API.
+        const int before = static_cast<int>(
+            parse(http("GET", base + "/v1/admin/projects", {admin}).body)["projects"].size());
+        CHECK(before >= 1);
         CHECK(http("POST", base + "/v1/admin/projects", {}, R"({"name":"P2"})").status == 401);
         CHECK(http("POST", base + "/v1/admin/projects", {"X-Admin-Secret: wrong"},
                    R"({"name":"P2"})").status == 401);
@@ -66,7 +72,7 @@ int main() {
         const std::string pkB = parse(np.body)["public_key"].asString();
         const std::string skB = parse(np.body)["secret_key"].asString();
         CHECK(pkB.rfind("pk_", 0) == 0 && skB.rfind("sk_", 0) == 0);
-        CHECK(parse(http("GET", base + "/v1/admin/projects", {admin}).body)["projects"].size() == 2);
+        CHECK(static_cast<int>(parse(http("GET", base + "/v1/admin/projects", {admin}).body)["projects"].size()) == before + 1);
 
         // ---- project admin: secret gating ----
         CHECK(http("PUT", base + "/v1/admin/config/difficulty", {keyA}, R"({"value":"hard"})").status == 401);

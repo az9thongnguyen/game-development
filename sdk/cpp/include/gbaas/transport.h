@@ -36,4 +36,26 @@ struct ITransport {
     virtual void poll() = 0;
 };
 
+// A transport that answers every request with a transport failure, immediately but
+// still ASYNCHRONOUSLY — the callback fires from poll(), like every other transport,
+// so code cannot accidentally depend on being called back inside send().
+//
+// It exists so that "no backend" is a thing you can CONSTRUCT rather than a thing
+// that happens to you. A test that must not open a socket, and a build shipped with
+// no server behind it, then take the same path the game already handles.
+class OfflineTransport : public ITransport {
+public:
+    void send(const std::string&, const std::string&, const Headers&, const std::string&,
+              HttpDone done) override {
+        if (done) pending_.push_back(std::move(done));
+    }
+    void poll() override {
+        auto batch = std::move(pending_);
+        pending_.clear();
+        for (auto& d : batch) d(HttpResponse{-1, "offline"});
+    }
+private:
+    std::vector<HttpDone> pending_;
+};
+
 }  // namespace gbaas
