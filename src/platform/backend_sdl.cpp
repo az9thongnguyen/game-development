@@ -14,6 +14,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 #ifdef __EMSCRIPTEN__
@@ -40,6 +41,8 @@ int                   g_ss    = 1;   // supersample factor
 bool                  g_quit  = false;
 bool                  g_quit_on_escape = true;
 bool                  g_resizable      = false;
+SDL_Cursor*           g_cursors[7]     = {};   // one per platform::Cursor, created lazily
+Cursor                g_cursor_now     = Cursor::Arrow;
 InputState            g_input;
 
 #ifndef __EMSCRIPTEN__
@@ -279,7 +282,38 @@ bool init(const Config& cfg) {
     return true;
 }
 
+void set_cursor(Cursor c) {
+    // Setting the same shape every frame is the natural way for an immediate-mode UI
+    // to drive this, so make the repeat case free.
+    if (c == g_cursor_now && g_cursors[static_cast<int>(c)]) return;
+
+    static const SDL_SystemCursor kSys[] = {
+        SDL_SYSTEM_CURSOR_ARROW, SDL_SYSTEM_CURSOR_HAND,   SDL_SYSTEM_CURSOR_IBEAM,
+        SDL_SYSTEM_CURSOR_SIZEWE, SDL_SYSTEM_CURSOR_SIZENS, SDL_SYSTEM_CURSOR_SIZEALL,
+        SDL_SYSTEM_CURSOR_CROSSHAIR,
+    };
+    const int i = static_cast<int>(c);
+    if (i < 0 || i >= 7) return;
+    if (!g_cursors[i]) g_cursors[i] = SDL_CreateSystemCursor(kSys[i]);
+    if (!g_cursors[i]) return;                 // creation failed: keep whatever we had
+    SDL_SetCursor(g_cursors[i]);
+    g_cursor_now = c;
+}
+
+std::string clipboard_get() {
+    if (SDL_HasClipboardText() == SDL_FALSE) return {};
+    char* t = SDL_GetClipboardText();          // SDL allocates; we own it
+    if (!t) return {};
+    std::string out(t);
+    SDL_free(t);
+    return out;
+}
+
+void clipboard_set(const std::string& text) { SDL_SetClipboardText(text.c_str()); }
+
 void shutdown() {
+    for (SDL_Cursor*& c : g_cursors) { if (c) { SDL_FreeCursor(c); c = nullptr; } }
+    g_cursor_now = Cursor::Arrow;
     if (g_texture)  { SDL_DestroyTexture(g_texture);   g_texture  = nullptr; }
     if (g_renderer) { SDL_DestroyRenderer(g_renderer); g_renderer = nullptr; }
     if (g_window)   { SDL_DestroyWindow(g_window);     g_window   = nullptr; }
