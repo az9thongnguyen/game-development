@@ -63,10 +63,12 @@ Everything is one `demo` executable; the first arg picks the mode. Windowed scen
 ./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio (1280x720, resizable)
                                                   # --shell opens the Map workspace: paint/rect/fill a
                                                   # map2, Cmd+Z undo, Cmd+S save, Cmd+K command palette,
-                                                  # Cmd+1..6 sections. Autosaves; offers recovery on open.
+                                                  # Cmd+1..7 sections. Autosaves; offers recovery on open.
                                                   # Project section = asset browser + validation verdict
                                                   # (the same engine::inspect --project-inspect prints);
-                                                  # Hub section also shows the audit log, newest first.
+                                                  # Play section RUNS the project's entry scene in a
+                                                  # framebuffer of its own — Pause, Step one frame, Esc
+                                                  # returns the keyboard; Hub also shows the audit log.
 ```
 
 **Headless platform-spine verbs** (no window; these are what CI smoke-tests, so keep
@@ -171,12 +173,17 @@ Understand these deliberate patterns before editing the build:
 
 ## Runtime architecture
 
-`App` (`src/engine/app.hpp`) owns the active `Scene` and a **fixed-timestep clock**:
+`App` (`src/engine/app.hpp`) owns the active `Scene` and a **fixed-timestep clock**
+(`engine::FixedStep`, `src/engine/fixed_step.hpp` — header-only and pure, shared with
+the Studio's Play viewport so there is exactly one spiral-of-death clamp):
 `platform::run` feeds it a variable `dt`; `App::frame` accumulates it into fixed
 `1/60 s` `update()` steps (deterministic logic) plus exactly one `render()` per frame.
 A `Scene` (`src/engine/scene.hpp`) implements `update(dt, input)` and `render(ctx)`,
 where `Context` carries the `Renderer2D`, input snapshot, timing, and shared UI font.
-Each game is a `Scene`; `src/main.cpp` maps a CLI flag to a `platform::Config` + scene.
+Each game is a `Scene`; `src/main.cpp` maps a CLI flag to a `platform::Config` + scene. Manifest **entries**
+live in one table there (`entries()`): `launch_entry`, `known_entries()` and the
+Studio's Play viewport are all derived from it, so a game cannot be
+launchable-but-unknown or known-but-unlaunchable.
 
 ## The platform spine (create → publish → promote → verify)
 

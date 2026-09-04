@@ -25,7 +25,7 @@
 | S4b | Map workspace + command palette (consumer) | ✅ xong | `feat/s4b-map-workspace` | 112 |
 | S5 | Farm — vertical slice | ✅ xong | `feat/s5-farm` | 113 |
 | S6 | Asset browser · Validation panel · audit log trong cửa sổ | ✅ xong | `feat/s6-project-workspace` | 114 |
-| S6b | Play viewport (cần `App` giữ sub-scene) | ⬜ chưa | | 115 |
+| S6b | Play viewport + `FixedStep` + một bảng entry | ✅ xong | `feat/s6b-play-viewport` | 115 |
 | S7 | Sandbox → workspace thứ hai + `Workspace` interface (D23) | ⬜ chưa | | 116 |
 | S8 | Farm v1 + BaaS + HUD | ⬜ chưa | | 117 |
 | S9 | Web: shell, Collection, touch, dashboard | ⬜ chưa | | 118 |
@@ -315,6 +315,11 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D36 | Project **không shippable ⇒ không có package hash** | Release id suy ra được từ nội dung thiếu là release id publish được |
 | D37 | `known_entries` phải được **tiêm vào**, không tự dựng trong scene | Studio nói "unknown entry farm" trong khi CLI nói OK — hai câu trả lời, một sự thật |
 | D38 | Log đọc **mới nhất trước**, file vẫn append-only cũ-trước | Câu hỏi mà lịch sử release trả lời là "vừa xảy ra chuyện gì"; để nó ở dòng cuối = log không được đọc |
+| D39 | Scene nhúng được cấp **framebuffer riêng**, không vẽ vào framebuffer cha dưới clip | Scene hỏi `g.width()/height()` rồi canh giữa theo đó — dùng clip thì **mọi toạ độ thành lời nói dối** |
+| D40 | Accumulator fixed-step **tách ra dùng chung**, không chép | Bản sao thứ hai khớp mọi frame bình thường và lệch **đúng lúc máy khựng** |
+| D41 | Input **chặn cửa**, không chuyển tiếp: chord và Escape không bao giờ tới game | Game ăn `Cmd+K` = palette không với tới; game nuốt Escape = nhốt bàn phím |
+| D42 | "Không có input" phải nói **không có con trỏ** (-1), không phải `InputState{}` | Chuột mặc định ở (0,0) là **một vị trí có thật** trong không gian game |
+| D43 | Bảng entry là **một**; `known_entries()` suy ra từ nó | "kept in sync with" là comment nhờ con người làm build step |
 
 ---
 
@@ -360,30 +365,65 @@ setter. Đó là thay đổi kiến trúc, không phải một panel, và xứng
 
 ---
 
+## S6b — Play viewport (chương 115) — XONG
+
+Commit: `a0014f1` (FixedStep) · `571ab4e` (Play viewport + bảng entry).
+
+**Cái gì đã chạy:**
+
+- `--shell projects/farm.gameproject` → section **Play** → Farm chạy **trong Studio**
+  ở đúng 640×360 gốc, letterbox scale nguyên, kèm **Pause** và **Step một frame**.
+- `engine::FixedStep` tách khỏi `App::frame`; Play viewport dùng **cùng** clamp.
+- `launch_entry` + `kKnownEntries` gộp thành **một bảng** `entries()`; Play factory là
+  người đọc thứ ba, và nó đọc cùng bảng chứ không tạo bản sao thứ tư.
+
+**Bug thật tìm được:** "không nhận input" từng là `InputState{}` mặc định, chuột ở
+**(0,0)** — một vị trí có thật. Game không focus đang bị bảo con trỏ đậu ở góc trên
+trái vĩnh viễn. Chỉ có test viết **từ góc nhìn của scene** mới thấy; nhìn màn hình
+không bao giờ thấy.
+
+**Đính chính chương 114:** chương đó viết Play viewport "cần `App` giữ sub-scene". Sai.
+Studio tự giữ `unique_ptr<Scene>` được. Rào cản thật là `App::frame` bị hàn vào
+`platform::framebuffer()`/`input()`, và thứ đáng dùng chung là **accumulator**. Đã ghi
+đính chính vào chính chương 114.
+
+**Đã mutation-test:** chuyển input khi không focus · cho chord lọt · Step thành Resume ·
+`stop()` không reset đồng hồ · scale phân số · paused vẫn chạy · (FixedStep) clamp sai
+chỗ, `>` thay `>=`, reset giữ phần dư, gán thay vì cộng accumulator.
+
+**Số liệu:** 71/71 test · ASan+UBSan sạch (71/71) · web build xanh · Release ss=2
+**1.56 ms** median (budget 8 ms, **chưa có game chạy** trong số đo này) · golden path +
+second-game smoke xanh · không rò `.tmp`.
+
+**Chưa xác minh:** vẫn **chưa ai bấm Play** — chỉ render ngoài màn hình. **Chuột chưa
+tới game** (cố ý: con trỏ đúng một nửa còn tệ hơn không có). Chỉ `farm` đã chạy trong
+viewport; `fps` có trong bảng nhưng chưa thử. Viewport **vẫn chạy khi sang section
+khác** — cố ý, nhưng một scene đắt sẽ ăn frame time ở Map workspace mà không cảnh báo.
+
+---
+
 ## Việc kế tiếp
 
-**S6b — Play viewport**, chương 115. `App` cần giữ được một sub-scene: hôm nay
-`app.hpp` có đúng một `unique_ptr<Scene>` set trong constructor, không setter, không
-stack. Chạy thử game **ngay trong Studio** là thứ biến Studio từ "công cụ sửa file"
-thành "công cụ làm game", và Farm là lý do nó đáng làm bây giờ.
+**S7 — hấp thụ Sandbox → workspace thứ hai**, chương 116. Đây là lúc interface
+`Workspace` mới đáng tạo (D23): sẽ có **hai** implementation, nên cái khuôn sẽ đúng
+hình chứ không phải khuôn đúc quanh một người ở duy nhất. Map Lab (`--maplab`, vẫn ghi
+`fpsmap1`) đi cùng đợt đó.
 
-Sau đó **S7 — hấp thụ Sandbox → workspace thứ hai**, và **khi đó** interface
-`Workspace` mới đáng tạo (D23).
+**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S7):
 
-**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S6b):
-
-1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm và đã đi vào
-   `assets/projects/farm.gameproject` + `launch_entry`. Đổi sau là một lần sửa manifest
-   + entry id, không đắt, nhưng càng để lâu càng nhiều chỗ nhắc tới.
-2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) để Farm có art — hay chờ tự vẽ trong
-   Studio? Hôm nay game vẽ bằng màu phẳng và hình tròn, và nó **trông đúng như thế**.
+1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã đi vào
+   `assets/projects/farm.gameproject`, `entries()` và `launch_entry`. Đổi sau vẫn rẻ,
+   nhưng càng để lâu càng nhiều chỗ nhắc tới.
+2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) cho Farm — hay tự vẽ trong Studio?
+   Giờ đã **nhìn thấy game chạy trong Studio**, và nó trông đúng như một game chưa có art.
 3. **Xoá 10 flag CLI cũ** (`--hub-ui --shell --editor --sandbox --maplab` …) —
    cần anh đồng ý (`PLAN.md §8` mục 3). **Chưa xoá gì cả.**
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
-- **Play viewport** → cần sửa `App`; là S6b.
-- Hấp thụ **Sandbox** và **Map Lab** vào Studio → khi có workspace thứ hai thì
-  interface `Workspace` mới đáng tạo (D23). `--maplab` vẫn ghi `fpsmap1`.
+- **Chuột vào Play viewport** — `draw()` đã trả về `shown` đúng cho phép biến đổi toạ
+  độ; chưa làm vì chưa game nào cần, và con trỏ sai một nửa tệ hơn không có.
+- Hấp thụ **Sandbox** và **Map Lab** vào Studio → S7 (D23).
 - Filter/paging cho audit log → `engine::log(channel)` đã hỗ trợ, panel chưa hỏi.
 - Cache hash theo mtime/size trong `inspect()` → 5 file thì không đáng; 100 texture thì đáng.
+- Hai Play viewport cạnh nhau (so bản đang sửa với bản đã publish) → chưa ai cần.
