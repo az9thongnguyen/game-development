@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -93,42 +94,74 @@ int run_window(const platform::Config& cfg, std::unique_ptr<engine::Scene> scene
 
 // Launch a reference-game entry scene by its manifest id. Single source of truth
 // shared by the --fps flag and the --project path, so a project manifest selects a
-// game without editing this dispatch. Extend the table (and kKnownEntries) when a
+// game without editing this dispatch. Extend the table when a
 // new entry scene is added. ponytail: starts with the one Horizon 0 reference game.
-int launch_entry(const std::string& entry) {
-    if (entry == "fps") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — fps";
-        cfg.fb_width  = 640;
-        cfg.fb_height = 400;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        return run_window(cfg, std::make_unique<fps::RaycastScene>());
-    }
-    if (entry == "farm") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — farm";
-        cfg.fb_width  = 640;
-        cfg.fb_height = 360;
-        cfg.scale     = 2;
-        cfg.smooth    = false;   // a tile game wants crisp pixels, not a soft upscale
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<farm::FarmScene>());
-    }
-    std::fprintf(stderr, "unknown entry scene: %s\n", entry.c_str());
-    return 1;
+// The ONE entry table. It used to be two hand-synced things: a chain of `if`s in
+// launch_entry, and a kKnownEntries literal beside it with a comment asking whoever
+// edited one to remember the other. Chapter 114 is about what happens to lists that
+// are written down twice, so this slice does not add a third for the Play viewport —
+// launching, validating and playing all read this.
+struct Entry {
+    std::string      id;
+    platform::Config cfg;                                       // window + native size
+    std::function<std::unique_ptr<engine::Scene>()> make;       // a fresh scene
+};
+
+const std::vector<Entry>& entries() {
+    static const std::vector<Entry> table = [] {
+        std::vector<Entry> v;
+        {
+            platform::Config c;
+            c.title = "hand-engine — fps";
+            c.fb_width = 640; c.fb_height = 400;
+            c.scale = 1; c.smooth = true; c.highdpi = true;
+            v.push_back({"fps", c, [] {
+                return std::unique_ptr<engine::Scene>(new fps::RaycastScene());
+            }});
+        }
+        {
+            platform::Config c;
+            c.title = "hand-engine — farm";
+            c.fb_width = 640; c.fb_height = 360;
+            c.scale = 2; c.smooth = false;   // a tile game wants crisp pixels
+            c.highdpi = true; c.supersample = kAA;
+            v.push_back({"farm", c, [] {
+                return std::unique_ptr<engine::Scene>(new farm::FarmScene());
+            }});
+        }
+        return v;
+    }();
+    return table;
 }
 
-// The entry ids a project manifest may name — kept in sync with launch_entry.
-const std::vector<std::string> kKnownEntries = {"fps", "farm"};
+const Entry* find_entry(const std::string& id) {
+    for (const Entry& e : entries())
+        if (e.id == id) return &e;
+    return nullptr;
+}
+
+int launch_entry(const std::string& entry) {
+    const Entry* e = find_entry(entry);
+    if (!e) { std::fprintf(stderr, "unknown entry scene: %s\n", entry.c_str()); return 1; }
+    return run_window(e->cfg, e->make());
+}
+
+// DERIVED from the table, so a game cannot be launchable-but-unknown (the manifest
+// refuses it) or known-but-unlaunchable (validate passes, then the launch fails).
+const std::vector<std::string>& known_entries() {
+    static const std::vector<std::string> ids = [] {
+        std::vector<std::string> v;
+        for (const Entry& e : entries()) v.push_back(e.id);
+        return v;
+    }();
+    return ids;
+}
 
 // Strict load: an Inspection that is actually shippable, or nullopt after printing
 // why. Callers that need a shippable project (launch, package) go through here; the
 // inspect report below wants the partial answer, so it reads the Inspection directly.
 std::optional<engine::Inspection> resolve_project(const std::string& path) {
-    engine::Inspection in = engine::inspect(path, kKnownEntries);
+    engine::Inspection in = engine::inspect(path, known_entries());
     if (in.shippable()) return in;
     // A manifest that cannot be read or parsed has one problem and it is fatal; a
     // manifest that parsed has a list, and printing all of it is the difference
@@ -148,7 +181,7 @@ std::optional<engine::Inspection> resolve_project(const std::string& path) {
 // report goes to stdout either way — "not shippable, here is why" is this verb's
 // ANSWER, not a malfunction, and a caller redirecting stderr must still get it.
 int inspect_project(const std::string& path) {
-    cmd::register_release_commands(kKnownEntries);
+    cmd::register_release_commands(known_entries());
     const engine::OpResult r = cmd::run("project.inspect", {path});
     std::printf("%s\n", r.message.c_str());
     return r.ok ? 0 : 1;
@@ -181,7 +214,7 @@ int new_project(const std::string& out_path, const std::string& entry, const std
     p.name   = name;
     p.schema = engine::kProjectSchema;
     p.entry  = entry;
-    const auto errs = engine::validate(p, kKnownEntries);   // known entry + non-empty name, fail-closed
+    const auto errs = engine::validate(p, known_entries());   // known entry + non-empty name, fail-closed
     if (!errs.empty()) {
         std::fprintf(stderr, "project-new: cannot scaffold a launchable project:\n");
         for (const auto& e : errs) std::fprintf(stderr, "  - %s\n", e.c_str());
@@ -222,7 +255,7 @@ int print_op(const engine::OpResult& r) {
 // and a Studio button are provably the same code, and adding a command cannot add it
 // to only some of them.
 int run_command(const char* id, const std::vector<std::string>& args) {
-    cmd::register_release_commands(kKnownEntries);
+    cmd::register_release_commands(known_entries());
     return print_op(cmd::run(id, args));
 }
 int publish_project(const std::string& path, const std::string& channel, const std::string& reason) {
@@ -290,7 +323,7 @@ int verify_project(const std::string& path, const std::string& channel) {
 // assembled by engine::build_hub_view and rendered via engine::hub_lines — the SAME
 // content the graphical Hub Scene (--hub-ui) draws, so CLI and window never drift.
 int hub_dashboard(const std::string& path) {
-    auto v = engine::build_hub_view(path, kKnownEntries);
+    auto v = engine::build_hub_view(path, known_entries());
     if (!v) { std::fprintf(stderr, "hub: cannot read or parse '%s'\n", path.c_str()); return 1; }
     for (const auto& line : engine::hub_lines(*v)) std::printf("%s\n", line.c_str());
     return 0;
@@ -367,7 +400,7 @@ int main(int argc, char** argv) {
     // The older flags below are kept and are now one-line aliases onto the same
     // handlers, so CI and every script keep working unchanged.
     if (mode == "--cmd") {
-        cmd::register_release_commands(kKnownEntries);
+        cmd::register_release_commands(known_entries());
         if (argc < 3) {
             std::printf("usage: --cmd <id> [args...]\n\nregistered commands:\n");
             for (const auto& i : cmd::all())
@@ -451,7 +484,7 @@ int main(int argc, char** argv) {
         std::printf("          build: %s\n", build);
 
         for (int ss : {1, 2}) {
-            studioshell::StudioShellScene scene(proj, kKnownEntries);
+            studioshell::StudioShellScene scene(proj, known_entries());
             std::vector<std::uint32_t> buf(static_cast<std::size_t>(LW * ss) * (LH * ss), 0);
             platform::Framebuffer fb{buf.data(), LW * ss, LH * ss, LW * ss};
             platform::InputState  in{};
@@ -519,9 +552,20 @@ int main(int argc, char** argv) {
         // command palette lists everything this process can do — not only what the
         // workspace itself registers. Same registry `--cmd` reads; what differs is
         // what a given process has registered, which is the honest difference.
-        cmd::register_release_commands(kKnownEntries);
-        auto scene = std::make_unique<studioshell::StudioShellScene>(proj, kKnownEntries);
+        cmd::register_release_commands(known_entries());
+        auto scene = std::make_unique<studioshell::StudioShellScene>(proj, known_entries());
         scene->set_clipboard(&platform::clipboard_get, &platform::clipboard_set);
+                // The Play viewport builds its scene from the SAME entry table --project
+        // launches from, so a game that plays in the Studio is the game that runs.
+        scene->set_play_factory([](const std::string& id) {
+            studioshell::PlayTarget t;
+            if (const Entry* e = find_entry(id)) {
+                t.scene = e->make();
+                t.w = e->cfg.fb_width;
+                t.h = e->cfg.fb_height;
+            }
+            return t;
+        });
         return run_window(cfg, std::move(scene));
     }
 

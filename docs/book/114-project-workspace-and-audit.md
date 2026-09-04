@@ -318,9 +318,15 @@ being a list of timestamps and becomes a record you can interrogate.
 - **The history is not filtered.** `engine::log()` takes a channel filter and the panel
   ignores it; every entry for every channel is in one list. At a few dozen rows that is
   fine and at a few hundred it will not be.
-- **`Play viewport` is not here.** Running a game inside the Studio needs `App` to hold
-  a sub-scene, and `app.hpp` has one `unique_ptr<Scene>` set in its constructor with no
-  setter. That is an architectural change, not a panel, and it deserves its own slice.
+- **`Play viewport` is not here.** *(Corrected in chapter 115: this paragraph
+  originally said the Play viewport "needs `App` to hold a sub-scene". That framing is
+  wrong. Nothing stops the Studio owning a `unique_ptr<Scene>` itself. The real
+  obstacle is that `App::frame` is welded to `platform::framebuffer()` and
+  `platform::input()`, so it can drive a scene into the window and nowhere else — and
+  the fixed-timestep accumulator that makes updates deterministic lives inside it. What
+  chapter 115 actually had to do was extract the accumulator, not change what `App`
+  owns.)* Either way it is an architectural change rather than a panel, and it deserves
+  its own slice.
 
 ## Ceilings, written down
 

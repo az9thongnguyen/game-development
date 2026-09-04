@@ -9,6 +9,7 @@
 
 #include <memory>
 
+#include "engine/fixed_step.hpp"
 #include "engine/scene.hpp"
 #include "engine/text/font.hpp"
 
@@ -27,8 +28,9 @@ public:
 private:
     std::unique_ptr<Scene>      scene_;
     std::unique_ptr<text::Font> ui_font_;    // shared UI face, loaded once at startup
-    double accumulator_ = 0.0;   // unspent real time waiting to become fixed steps
-    double time_        = 0.0;   // total simulated time
+    // The accumulator moved into FixedStep so the Play viewport can drive a scene on
+    // the same clock rather than on a second one that agrees most of the time.
+    FixedStep clock_{kFixedDt};
 };
 
 } // namespace engine

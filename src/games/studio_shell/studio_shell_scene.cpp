@@ -3,6 +3,7 @@
 // =============================================================================
 #include "games/studio_shell/studio_shell_scene.hpp"
 
+#include <cstdio>
 #include <string>
 #include <utility>
 
@@ -20,7 +21,12 @@ namespace studioshell {
 namespace th = ui::theme;
 
 namespace {
-const char* const kSections[] = {"Map", "Project", "Hub", "Guide", "Learn", "About"};
+const char* const kSections[] = {"Map", "Project", "Play", "Hub", "Guide", "Learn", "About"};
+
+// Toolbar buttons, in the order they are drawn. Indices are what the draw pass
+// hands back to update(), because a click is discovered while drawing and acted
+// on while updating — the same round trip the nav rail already makes.
+enum PlayBtn { BtnPlay = 0, BtnPause, BtnStep, BtnStop };
 
 // The Learn panel is a static map from the platform to its documentation — the roadmap's
 // "build your first project" journey, pointing at the guide and the chapters behind it.
@@ -69,9 +75,10 @@ const char* const kGuideLines[] = {
     "  --shell|this Studio: Map workspace + Hub + these pages",
     "",
     "THIS SHELL",
-    "  Cmd+1..6|switch section (click the rail too)   Cmd+K = command palette",
+    "  Cmd+1..7|switch section (click the rail too)   Cmd+K = command palette",
     "  Map|B/R/G tool, 0-9 brush, RMB erase, MMB pan, wheel zoom, Cmd+S save, Cmd+Z undo",
     "  Project|declared assets + their hashes, and why the project is / is not shippable (R re-reads)",
+    "  Play|run this project's entry scene in the Studio — Pause, Step one frame, Esc releases the keyboard",
     "  Hub|Space publish, 1 promote to preview, 2 to production, R refresh",
 };
 
@@ -200,12 +207,41 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
         }
         // The palette owns the keyboard while it is up; nothing below sees this frame.
         map_.update(dt, in, /*interactive*/ false);
+        play_.update(dt, in, /*focused*/ false);   // keeps running, receives nothing
         return;
     }
 
     // ---- the map workspace ----
     map_.update(dt, in, /*interactive*/ modal_ == Modal::None && section_ == Map);
     if (auto msg = map_.take_message()) flash(*msg);
+
+    // ---- the play viewport --------------------------------------------------
+    // Focus is claimed by clicking the frame and released with Escape. Without an
+    // explicit release the keyboard would be trapped: the game would eat every key
+    // that is not a Studio chord, including the ones that would get you out.
+    if (play_focus_click_) { play_focused_ = true; play_focus_click_ = false; }
+    if (section_ != Play || !play_.running()) play_focused_ = false;
+    if (play_focused_ && in.pressed(platform::Key::Escape)) play_focused_ = false;
+
+    const int btn = play_button_;
+    play_button_ = -1;
+    if (btn == BtnPlay) {
+        // Restart is stop-then-start, so a restarted game gets a fresh scene AND a
+        // fresh clock rather than the previous run's leftovers.
+        play_.stop();
+        flash(play_.start(inspection_.project.entry), 3.0);
+        play_focused_ = play_.running();
+    } else if (btn == BtnPause) {
+        play_.set_paused(!play_.paused());
+    } else if (btn == BtnStep) {
+        play_.step_once();
+    } else if (btn == BtnStop) {
+        play_.stop();
+        play_focused_ = false;
+    }
+    // The scene advances on the shell's own fixed step. Input reaches it only when
+    // the Play section is showing AND the frame has focus.
+    play_.update(dt, in, section_ == Play && play_focused_ && modal_ == Modal::None);
 
     // R re-reads from disk: the panel is a snapshot, and the files it describes are
     // edited by other tools while the Studio is open.
@@ -259,6 +295,107 @@ void StudioShellScene::draw_map_section(gfx::Renderer2D& g, ui::Rect area) {
     g.draw_text(area.x + area.w - g.text_width(hint), sy, hint, th::text_muted);
 }
 
+// The Play section: a toolbar, the game letterboxed under it, and a status line that
+// says what is actually true — how many fixed steps have run, and whether the keyboard
+// is going to the game or to the Studio.
+void StudioShellScene::draw_play_section(gfx::Renderer2D& g, ui::Rect area,
+                                         text::Font* font, double dt) {
+    int y = area.y;
+    g.set_font_size(th::sz_title);
+    g.draw_text(area.x, y, "Play", th::text);
+    {
+        // State as a WORD, not only as a button that looks pressed. "Paused" and
+        // "running with nothing moving on screen" are indistinguishable otherwise.
+        const char* word = !play_.has_factory() ? "unavailable"
+                           : !play_.running()   ? "stopped"
+                           : play_.paused()     ? "paused" : "running";
+        const ui::Tone tone = !play_.running()  ? ui::Tone::Neutral
+                              : play_.paused()  ? ui::Tone::Warning
+                                                : ui::Tone::Success;
+        g.set_font_size(th::sz_caption);
+        ui_.badge(area.x + area.w - g.text_width(word) - th::space_lg, y + th::space_xs,
+                  word, tone);
+    }
+    y += th::sz_title + th::space_sm;
+
+    // ---- toolbar ------------------------------------------------------------
+    {
+        ui_.push_id("playbar");
+        ui_.begin_layout(ui::Rect{area.x, y, area.w, 30}, ui::Axis::X,
+                         ui::LayoutOpts{th::space_sm, 0});
+        const bool can = play_.has_factory() && inspection_.parsed &&
+                         !inspection_.project.entry.empty();
+        if (ui_.button(ui_.slot(110), play_.running() ? "Restart" : "Play",
+                       /*primary*/ !play_.running(), can))
+            play_button_ = BtnPlay;
+        if (ui_.button(ui_.slot(100), play_.paused() ? "Resume" : "Pause", false, play_.running()))
+            play_button_ = BtnPause;
+        // Step is only meaningful while paused: it exists to advance one fixed step
+        // and look at it, which is the whole reason to embed a player rather than
+        // launch the game.
+        if (ui_.button(ui_.slot(90), "Step", false, play_.running() && play_.paused()))
+            play_button_ = BtnStep;
+        if (ui_.button(ui_.slot(90), "Stop", false, play_.running()))
+            play_button_ = BtnStop;
+        ui_.end_layout();
+        ui_.pop_id();
+    }
+    y += 30 + th::space_md;
+
+    const int status_h = th::sz_caption + th::space_md;
+    const ui::Rect view{area.x, y, area.w, area.y + area.h - y - status_h};
+
+    if (!play_.running()) {
+        g.fill_round_rect(view.x, view.y, view.w, view.h, th::radius_md, th::elevated);
+        g.set_font_size(th::sz_body);
+        const char* why =
+            !play_.has_factory()
+                ? "This build cannot play: no scene factory was wired in."
+            : !inspection_.parsed
+                ? "No project to play — the manifest could not be read."
+            : inspection_.project.entry.empty()
+                ? "The manifest declares no entry."
+                : "Press Play to run this project's entry scene here.";
+        g.draw_text(view.x + th::space_lg, view.y + th::space_lg, why, th::text_muted);
+        if (play_.has_factory() && inspection_.parsed && !inspection_.project.entry.empty()) {
+            g.set_font_size(th::sz_caption);
+            g.draw_text(view.x + th::space_lg, view.y + th::space_lg + th::sz_body + th::space_sm,
+                        ("entry  " + inspection_.project.entry).c_str(), th::text_dim);
+        }
+    } else {
+        const ui::Rect shown = play_.draw(g, view, font, dt);
+        // The click that gives the game the keyboard. hit() draws nothing — the frame
+        // underneath IS the control — so this is the whole focus affordance.
+        bool hovered = false;
+        if (ui_.hit("playview", shown, &hovered)) play_focus_click_ = true;
+        if (play_focused_)
+            g.draw_rect(shown.x - 2, shown.y - 2, shown.w + 4, shown.h + 4, th::accent);
+        else if (hovered)
+            g.draw_rect(shown.x - 2, shown.y - 2, shown.w + 4, shown.h + 4, th::border_strong);
+    }
+
+    // ---- status -------------------------------------------------------------
+    g.set_font_size(th::sz_caption);
+    const int sy = area.y + area.h - th::sz_caption;
+    std::string left;
+    if (play_.running()) {
+        char buf[160];
+        std::snprintf(buf, sizeof buf, "%s   %dx%d   t=%.2fs   %lld steps",
+                      play_.entry().c_str(), play_.width(), play_.height(),
+                      play_.clock(), play_.steps());
+        left = buf;
+    } else {
+        left = "stopped";
+    }
+    g.draw_text(area.x, sy, left.c_str(), th::text_muted);
+    const char* hint = play_.running()
+                           ? (play_focused_ ? "the game has the keyboard  ·  Esc returns it to the Studio"
+                                            : "click the frame to give the game the keyboard")
+                           : "Cmd+K commands   ·   the game runs at its own native size";
+    g.draw_text(area.x + area.w - g.text_width(hint), sy, hint,
+                play_focused_ ? th::accent : th::text_muted);
+}
+
 void StudioShellScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     const int w = g.width(), h = g.height();
@@ -290,7 +427,7 @@ void StudioShellScene::render(const engine::Context& ctx) {
 
     g.set_font_size(th::sz_caption);
     const int hint_line = th::sz_caption + th::space_xs;
-    g.draw_text(th::space_lg, h - th::space_lg - hint_line * 2, "Cmd+1..6  switch section",
+    g.draw_text(th::space_lg, h - th::space_lg - hint_line * 2, "Cmd+1..7  switch section",
                 th::text_muted);
     g.draw_text(th::space_lg, h - th::space_lg - hint_line, "Cmd+K  command palette",
                 th::text_muted);
@@ -304,6 +441,8 @@ void StudioShellScene::render(const engine::Context& ctx) {
         draw_map_section(g, area);
     } else if (section_ == Project) {
         run(projectui::draw_project_panel(ui_, g, inspection_, area, asset_sel_));
+    } else if (section_ == Play) {
+        draw_play_section(g, area, ctx.font, ctx.dt);
     } else if (section_ == Hub) {
         const hubui::Op clicked = hubui::draw_hub_panel(ui_, g, hub_ ? &*hub_ : nullptr,
                                                         project_path_, area, history_);
