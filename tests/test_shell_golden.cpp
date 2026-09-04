@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "engine/assets.hpp"
+#include "engine/document/document.hpp"
 #include "engine/commands/registry.hpp"
 #include "engine/hub/hub_build.hpp"
 #include "engine/renderer2d.hpp"
@@ -27,7 +28,10 @@
 #include "engine/release/ops.hpp"
 #include "games/hub/hub_panel.hpp"
 #include "games/farm/farm_scene.hpp"
+#include "games/sandbox/world.hpp"
 #include "games/studio_shell/play_viewport.hpp"
+#include "games/studio_shell/scene_workspace.hpp"
+#include "games/studio_shell/workspace_host.hpp"
 #include "games/studio_shell/project_panel.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
 
@@ -165,6 +169,331 @@ int main() {
     // Seven sections, seven different screens.
     for (std::size_t i = 1; i < prints.size(); ++i) CHECK(prints[i] != prints[i - 1]);
     CHECK(prints[0] != prints[prints.size() - 1]);
+
+    // ---------------------------------------------------------------------
+    //  The Scene workspace: the sandbox, absorbed — and given the undo it never had.
+    // ---------------------------------------------------------------------
+    {
+        studioshell::StudioShellScene sc(kProject, kKnownEntries);
+        studioshell::SceneWorkspace& sw = sc.scene_workspace();
+
+        // It opened the scene the MANIFEST declares, not a hardcoded path.
+        CHECK(sw.loaded());
+        CHECK(sw.path() == "scenes/demo.scene");
+        CHECK(!sw.dirty());                       // opening is not editing
+        const std::size_t start_count = sw.actor_count();
+        CHECK(start_count == 8);
+
+        std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+        platform::Framebuffer f{b.data(), PW, PH, PW};
+        // Draw once so the workspace learns its canvas: immediate mode has no layout
+        // until it draws, and every coordinate below depends on it.
+        const auto draw = [&](const platform::InputState& in) {
+            for (auto& p : b) p = 0;
+            gfx::Renderer2D r(f, SS);
+            const engine::Context c{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            sc.render(c);
+        };
+        // Switch to the Scene tab: the workspace is only interactive when it shows.
+        platform::InputState idle{};
+        draw(idle);
+        {
+            // The tab row is at the top of the Edit area; click the second tab. A ui
+            // click is press THEN release — driving the real control rather than a
+            // setter is the point: a tab that stopped being wired would still pass a
+            // test that assigned the index directly.
+            const int rail = 200, tx = rail + 24 + (LW - rail - 48) * 3 / 4, ty = 24 + 15;
+            platform::InputState down{};
+            down.mouse_x = tx; down.mouse_y = ty;
+            down.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+            down.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            draw(down);
+            sc.update(1.0 / 60.0, down);
+
+            platform::InputState up{};
+            up.mouse_x = tx; up.mouse_y = ty;
+            up.mouse_released[static_cast<int>(platform::MouseButton::Left)] = true;
+            draw(up);
+            sc.update(1.0 / 60.0, up);
+            sc.update(1.0 / 60.0, idle);
+        }
+        CHECK(sc.open_workspace() == 1);          // the Scene tab is showing
+        draw(idle);
+        CHECK(sw.actor_rect(0).w > 0);            // ...so it has a canvas now
+
+        // Helper: where actor `i` currently is, in world units.
+        const auto pos_of = [&](int index, float& x, float& y) {
+            sandbox::World& w = const_cast<sandbox::World&>(sw.world());
+            int i = 0;
+            w.reg.view<sandbox::Transform2D>([&](ecs::Entity, sandbox::Transform2D& t) {
+                if (i++ == index) { x = t.x; y = t.y; }
+            });
+        };
+        const auto press_at = [&](int px, int py) {
+            platform::InputState in{};
+            in.mouse_x = px; in.mouse_y = py;
+            in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            return in;
+        };
+
+        // ---- place: one actor, one undo step, and dirty ---------------------
+        {
+            const ui::Rect a0 = sw.actor_rect(0);
+            // Arm the Ball tool through the inspector, then click empty canvas.
+            // Driving the real button rather than a setter is the point: a control
+            // that stopped being wired would still pass a test that called place().
+            // (The palette buttons are at known offsets inside the inspector.)
+            sw.load_textures();
+            const int drop_x = a0.x + 160, drop_y = a0.y + 200;
+            platform::InputState in = press_at(drop_x, drop_y);
+            // Nothing is armed, so this only selects/deselects — the count must not move.
+            draw(in); sc.update(1.0 / 60.0, in);
+            platform::InputState up{}; up.mouse_x = drop_x; up.mouse_y = drop_y;
+            up.mouse_released[static_cast<int>(platform::MouseButton::Left)] = true;
+            draw(up); sc.update(1.0 / 60.0, up);
+            CHECK(sw.actor_count() == start_count);
+            CHECK(!sw.dirty());                   // clicking empty space is not an edit
+        }
+
+        // ---- a click that selects but does not move is NOT an edit ----------
+        // The gesture runs the whole drag path — press, hold, release — and ends
+        // where it started. Without the no-op guard in commit() this records a
+        // "move actor" step, and selecting an actor would make the document dirty.
+        {
+            const ui::Rect a0 = sw.actor_rect(0);
+            const int cx = a0.x + a0.w / 2, cy = a0.y + a0.h / 2;
+            platform::InputState down = press_at(cx, cy);
+            draw(down); sc.update(1.0 / 60.0, down);
+            platform::InputState hold{};
+            hold.mouse_x = cx; hold.mouse_y = cy;
+            hold.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            draw(hold); sc.update(1.0 / 60.0, hold);
+            platform::InputState rel{};
+            rel.mouse_x = cx; rel.mouse_y = cy;
+            rel.mouse_released[static_cast<int>(platform::MouseButton::Left)] = true;
+            draw(rel); sc.update(1.0 / 60.0, rel);
+            CHECK(sw.selected() == 0);            // it DID select
+            CHECK(!sw.dirty());                   // ...and it did not edit
+            CHECK(!cmd::run("scene.undo").ok);    // nothing was recorded to undo
+        }
+
+        // ---- drag an actor: ONE undo step for the whole gesture -------------
+        {
+            const ui::Rect a0 = sw.actor_rect(0);
+            float ox = 0, oy = 0;
+            pos_of(0, ox, oy);
+
+            platform::InputState down = press_at(a0.x + a0.w / 2, a0.y + a0.h / 2);
+            draw(down); sc.update(1.0 / 60.0, down);
+
+            // Ten frames of movement — ten component writes, one undo step.
+            for (int k = 1; k <= 10; ++k) {
+                platform::InputState mv{};
+                mv.mouse_x = a0.x + a0.w / 2 + k * 6;
+                mv.mouse_y = a0.y + a0.h / 2 + k * 4;
+                mv.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+                draw(mv); sc.update(1.0 / 60.0, mv);
+            }
+            platform::InputState rel{};
+            rel.mouse_x = a0.x + a0.w / 2 + 60;
+            rel.mouse_y = a0.y + a0.h / 2 + 40;
+            rel.mouse_released[static_cast<int>(platform::MouseButton::Left)] = true;
+            draw(rel); sc.update(1.0 / 60.0, rel);
+
+            float mx = 0, my = 0;
+            pos_of(0, mx, my);
+            CHECK(mx > ox + 20.0f);               // it actually moved
+            CHECK(sw.dirty());
+            CHECK(sw.selected() == 0);            // ...and it is still the selection
+
+            // ONE undo returns it all the way to where it started. If the drag had
+            // recorded a command per frame this would leave it partway back — which
+            // is the bug merge/commit-on-release exists to prevent.
+            CHECK(cmd::run("scene.undo").ok);
+            float ux = 0, uy = 0;
+            pos_of(0, ux, uy);
+            CHECK(ux == ox && uy == oy);
+            CHECK(!sw.dirty());                   // ...and undoing to the saved point is CLEAN
+            // An undo rebuilds the world from text, so every entity is NEW. Holding on
+            // to the old index would leave the selection pointing at a different actor
+            // — an inspector then edits something the user is not looking at.
+            CHECK(sw.selected() == -1);
+        }
+
+        // ---- delete, then undo, restores the actor --------------------------
+        {
+            const ui::Rect a1 = sw.actor_rect(1);
+            platform::InputState pick = press_at(a1.x + a1.w / 2, a1.y + a1.h / 2);
+            draw(pick); sc.update(1.0 / 60.0, pick);
+            CHECK(sw.selected() == 1);
+
+            platform::InputState del{};
+            del.key_pressed[static_cast<int>(platform::Key::Delete)] = true;
+            draw(del); sc.update(1.0 / 60.0, del);
+            CHECK(sw.actor_count() == start_count - 1);
+            CHECK(sw.dirty());
+
+            CHECK(cmd::run("scene.undo").ok);
+            CHECK(sw.actor_count() == start_count);
+            CHECK(!sw.dirty());
+            // A restored world is built from NEW entities, so the old selection index
+            // must be cleared rather than left pointing at a different actor.
+            CHECK(sw.selected() == -1);
+        }
+
+        // ---- Play/Stop is a simulation, not an edit -------------------------
+        {
+            CHECK(!sw.playing());
+            CHECK(!sw.dirty());
+            CHECK(cmd::run("scene.play").ok);
+            CHECK(sw.playing());
+            float bx = 0, by = 0;
+            pos_of(0, bx, by);
+            for (int k = 0; k < 60; ++k) sc.update(1.0 / 60.0, idle);
+            float px = 0, py = 0;
+            pos_of(0, px, py);
+            CHECK(px != bx || py != by);          // the simulation ran
+            // ...and the emitter's spawner added actors while it ran.
+            CHECK(sw.actor_count() > start_count);
+
+            CHECK(cmd::run("scene.play").ok);     // Stop
+            CHECK(!sw.playing());
+            CHECK(sw.actor_count() == start_count);   // restored to the pre-Play world
+            float sx = 0, sy = 0;
+            pos_of(0, sx, sy);
+            CHECK(sx == bx && sy == by);
+            // Running and reverting a simulation did not change the DOCUMENT, so it
+            // must not be dirty and Cmd+Z must not replay it.
+            CHECK(!sw.dirty());
+        }
+
+        // ---- and it looks like a scene --------------------------------------
+        draw(idle);
+        dump_ppm(b, PW, PH, "shell_scene.ppm");
+        {
+            // The canvas carries the actors' colours, not just the panel surface.
+            const auto at = [&](int lx, int ly) { return b[(ly * SS) * PW + (lx * SS)]; };
+            const ui::Rect a2 = sw.actor_rect(2);
+            CHECK(a2.w > 0);
+            // COUNT ink in the actor's rect rather than probing its centre: the
+            // centre pixel is the orientation tick, which is drawn in the background
+            // colour on purpose. A probe there tests the tick, not the actor.
+            int ink = 0;
+            for (int y = a2.y; y < a2.y + a2.h; ++y)
+                for (int x = a2.x; x < a2.x + a2.w; ++x) {
+                    const std::uint32_t p = at(x, y);
+                    if (p != th::elevated && p != th::bg) ++ink;
+                }
+            CHECK(ink > a2.w * a2.h / 3);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    //  Recovery OFFERS, it never applies (D19) — now for the second workspace too.
+    // ---------------------------------------------------------------------
+    {
+        const std::string scene_path = "scenes/demo.scene";
+        const std::string saved = std::string(
+            reinterpret_cast<const char*>(assets::load_file(scene_path)->data()),
+            assets::load_file(scene_path)->size());
+        // An autosave that differs from the file: one fewer actor than the saved one.
+        std::string autosaved;
+        {
+            std::size_t nl = saved.rfind('\n', saved.size() - 2);
+            autosaved = saved.substr(0, nl + 1);
+        }
+        CHECK(autosaved != saved);
+        assets::write_file(doc::autosave_path(scene_path),
+                           std::vector<std::uint8_t>(autosaved.begin(), autosaved.end()));
+
+        cmd::clear();
+        studioshell::SceneWorkspace ws(scene_path);
+        CHECK(ws.recovery_pending());
+        // The SAVED file is what is open. Applying the autosave without asking is how
+        // someone loses the version they deliberately saved.
+        CHECK(ws.actor_count() == 8);
+
+        ws.take_recovery();
+        CHECK(!ws.recovery_pending());
+        CHECK(ws.actor_count() == 7);       // now the recovered one
+        CHECK(ws.dirty());                  // ...and it differs from the file
+        // Recovery is a real command, so Ctrl+Z undoes it back to the saved file.
+        ws.register_commands();
+        CHECK(cmd::run("scene.undo").ok);
+        CHECK(ws.actor_count() == 8);
+
+        // Declining keeps the saved file AND leaves the autosave alone, so a reflex
+        // Cancel cannot be the thing that destroys the work: the offer comes back.
+        cmd::clear();
+        studioshell::SceneWorkspace again(scene_path);
+        CHECK(again.recovery_pending());
+        again.dismiss_recovery();
+        CHECK(!again.recovery_pending());
+        cmd::clear();
+        studioshell::SceneWorkspace third(scene_path);
+        CHECK(third.recovery_pending());    // still offered
+
+        // Clean up: assets:: has no delete, and an empty autosave is how
+        // discard_autosave marks "nothing here".
+        assets::write_file(doc::autosave_path(scene_path), std::vector<std::uint8_t>{});
+        cmd::clear();
+        studioshell::SceneWorkspace clean(scene_path);
+        CHECK(!clean.recovery_pending());
+    }
+
+    // ---------------------------------------------------------------------
+    //  --sandbox: the same workspace, in a window of its own. One implementation,
+    //  two frames — which is the entire reason the sandbox was absorbed rather than
+    //  reimplemented as a Studio tab.
+    // ---------------------------------------------------------------------
+    {
+        cmd::clear();          // the host registers scene.* against ITS workspace
+        studioshell::WorkspaceHost host(
+            std::make_unique<studioshell::SceneWorkspace>("scenes/demo.scene"));
+        auto& ws = static_cast<studioshell::SceneWorkspace&>(host.workspace());
+        CHECK(ws.loaded());
+        CHECK(ws.actor_count() == 8);
+        // Hosting registers the workspace's commands, so Cmd+K in --sandbox lists the
+        // same operations the Studio tab does. That is the claim; this breaks it.
+        CHECK(cmd::exists("scene.play"));
+        CHECK(cmd::exists("scene.undo"));
+
+        std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+        platform::Framebuffer f{b.data(), PW, PH, PW};
+        platform::InputState idle{};
+        for (int i = 0; i < 2; ++i) {
+            for (auto& p : b) p = 0;
+            gfx::Renderer2D r(f, SS);
+            const engine::Context c{r, idle, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            host.render(c);
+            host.update(1.0 / 60.0, idle);
+        }
+        // It filled the window: no nav rail here, so the canvas starts at the margin.
+        const auto at = [&](int lx, int ly) { return b[(ly * SS) * PW + (lx * SS)]; };
+        // The world's playfield is deliberately th::bg (darker than the panel around
+        // it), so "not bg" is the wrong probe. What must be true is that the canvas
+        // PANEL was drawn at all, and that an actor put its colour on it.
+        int surface = 0;
+        for (int y = 0; y < PH; y += 4)
+            for (int x = 0; x < PW; x += 4)
+                if (b[static_cast<std::size_t>(y) * PW + x] == th::elevated) ++surface;
+        CHECK(surface > 500);
+        CHECK(ws.actor_rect(0).w > 0);
+        CHECK(ws.actor_rect(0).x < LW / 2);         // ...and it is on the LEFT, not inset
+                                                    // behind a rail that does not exist
+        {   // an actor's colour is actually on the canvas
+            const ui::Rect a = ws.actor_rect(0);
+            int ink = 0;
+            for (int y = a.y; y < a.y + a.h; ++y)
+                for (int x = a.x; x < a.x + a.w; ++x) {
+                    const std::uint32_t p = at(x, y);
+                    if (p != th::elevated && p != th::bg) ++ink;
+                }
+            CHECK(ink > a.w * a.h / 3);
+        }
+        dump_ppm(b, PW, PH, "sandbox_host.ppm");
+    }
 
     // ---------------------------------------------------------------------
     //  The Play viewport: a scene gets its own framebuffer, its own clock, and

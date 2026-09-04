@@ -57,12 +57,13 @@ Everything is one `demo` executable; the first arg picks the mode. Windowed scen
 ./build/demo --editor   # immediate-mode GUI + physics sandbox
 ./build/demo --colony   # engine-core integration game (also the BaaS/SDK client)
 ./build/demo --studio   # Mini Studio: procedural Texture Lab (.hrt export, sheet export)
-./build/demo --sandbox  # declarative 2D sandbox: actors + data-only behaviors
+./build/demo --sandbox  # the Studio's Scene workspace, full-screen (same object,
+                        # same undo/autosave/palette as the Studio's Scene tab)
 ./build/demo --maplab   # tile-grid level editor -> maps/level_NN.map
 ./build/demo --fx | --light | --audio | --anim     # particles / 2D lights / mixer / flipbook
 ./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio (1280x720, resizable)
-                                                  # --shell opens the Map workspace: paint/rect/fill a
-                                                  # map2, Cmd+Z undo, Cmd+S save, Cmd+K command palette,
+                                                  # --shell opens the Edit section: TABS of workspaces
+                                                  # (Map | Scene), Cmd+Z undo, Cmd+S save, Cmd+K palette,
                                                   # Cmd+1..7 sections. Autosaves; offers recovery on open.
                                                   # Project section = asset browser + validation verdict
                                                   # (the same engine::inspect --project-inspect prints);
@@ -180,7 +181,11 @@ the Studio's Play viewport so there is exactly one spiral-of-death clamp):
 `1/60 s` `update()` steps (deterministic logic) plus exactly one `render()` per frame.
 A `Scene` (`src/engine/scene.hpp`) implements `update(dt, input)` and `render(ctx)`,
 where `Context` carries the `Renderer2D`, input snapshot, timing, and shared UI font.
-Each game is a `Scene`; `src/main.cpp` maps a CLI flag to a `platform::Config` + scene. Manifest **entries**
+Each game is a `Scene`; `src/main.cpp` maps a CLI flag to a `platform::Config` + scene. The Studio's editors
+implement `studioshell::Workspace` (`src/games/studio_shell/workspace.hpp`) — canvas +
+inspector + status + save/undo/recovery. `WorkspaceHost` runs one full-screen (that is
+what `--sandbox` is), and the Studio's Edit section runs them as tabs, so an editor
+cannot exist in only one of the two frames. Manifest **entries**
 live in one table there (`entries()`): `launch_entry`, `known_entries()` and the
 Studio's Play viewport are all derived from it, so a game cannot be
 launchable-but-unknown or known-but-unlaunchable.

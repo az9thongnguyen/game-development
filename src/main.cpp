@@ -43,14 +43,15 @@
 #include "games/editor/editor_scene.hpp"
 #include "games/colony/colony_scene.hpp"
 #include "games/studio/studio_scene.hpp"
-#include "games/sandbox/sandbox_scene.hpp"
 #include "games/maplab/maplab_scene.hpp"
 #include "games/anim/anim_scene.hpp"
 #include "games/audio/audio_scene.hpp"
 #include "games/fx/fx_scene.hpp"
 #include "games/light/light_scene.hpp"
 #include "games/hub/hub_scene.hpp"
+#include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
+#include "games/studio_shell/workspace_host.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -650,7 +651,12 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<sandbox::SandboxScene>());
+        // --sandbox is now a FRAME around the Studio's scene workspace, not a second
+        // editor. Same code the Studio's Scene tab runs, so undo, autosave and the
+        // command registry belong to both.
+        return run_window(cfg, std::make_unique<studioshell::WorkspaceHost>(
+                                   std::make_unique<studioshell::SceneWorkspace>(
+                                       "scenes/demo.scene")));
     }
 
     if (mode == "--maplab") {

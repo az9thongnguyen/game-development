@@ -12,9 +12,9 @@
 //  No SDL: it reads a platform::InputState (a plain struct) and draws through
 //  Renderer2D, so the whole thing runs in the headless golden test.
 //
-//  ponytail: one workspace, not a Workspace interface. An abstract base with a single
-//  implementation is a shape with one occupant; it arrives when the second workspace
-//  does, and it will be a better shape for having seen two.
+//  It was written WITHOUT a Workspace interface on purpose — an abstract base with one
+//  implementation is a shape moulded around its only occupant. The interface arrived
+//  with the second workspace (chapter 116), and this class now implements it.
 // =============================================================================
 #pragma once
 
@@ -26,46 +26,53 @@
 #include "engine/release/ops.hpp"
 #include "engine/tilemap/map_edit.hpp"
 #include "engine/ui/ui.hpp"
+#include "games/studio_shell/workspace.hpp"
 #include "platform/input.hpp"
 
 namespace gfx { class Renderer2D; }
 
 namespace studioshell {
 
-class MapWorkspace {
+class MapWorkspace : public Workspace {
 public:
     enum class Tool { Paint, Rect, Fill };
 
     // `map_path` is asset-relative and may be empty (the project declares no map).
     // Loading happens here so the shell can show WHY there is no canvas.
     explicit MapWorkspace(std::string map_path);
-    ~MapWorkspace();
+    ~MapWorkspace() override;
 
     // Bind this object's operations to command ids. Called by the shell; the
     // destructor unregisters them, because a handler that captured `this` and
     // outlives it is a dangling call the palette would happily make.
-    void register_commands();
+    void register_commands() override;
 
-    [[nodiscard]] bool               loaded() const { return loaded_; }
-    [[nodiscard]] const std::string& path() const { return path_; }
-    [[nodiscard]] const std::string& problem() const { return problem_; }
-    [[nodiscard]] bool               dirty() const { return stack_.dirty(); }
+    [[nodiscard]] const char*        name() const override { return "Map"; }
+    [[nodiscard]] bool               loaded() const override { return loaded_; }
+    [[nodiscard]] const std::string& path() const override { return path_; }
+    [[nodiscard]] const std::string& problem() const override { return problem_; }
+    [[nodiscard]] bool               dirty() const override { return stack_.dirty(); }
     [[nodiscard]] const tilemap::Map& map() const { return map_; }
+
+    // The tile under the cursor belongs in the status line, and only this workspace
+    // knows there are tiles at all — which is precisely why status() lives here.
+    [[nodiscard]] std::string status() const override;
+    [[nodiscard]] const char* hint() const override;
 
     // An autosave newer than the file was found on open. The shell owns the screen's
     // one modal, so it asks the question and calls back here.
-    [[nodiscard]] bool recovery_pending() const { return recovery_pending_; }
-    void take_recovery();
+    [[nodiscard]] bool recovery_pending() const override { return recovery_pending_; }
+    void take_recovery() override;
     // Decline: keep the saved file and LEAVE the autosave where it is, so declining
     // by reflex cannot destroy the work. A real save clears it; until then the offer
     // comes back next time the map is opened.
-    void dismiss_recovery();
+    void dismiss_recovery() override;
 
     // `interactive` is false while a modal is up: the workspace still draws, but a
     // click behind a dialog must not paint a tile.
-    void update(double dt, const platform::InputState& in, bool interactive);
-    void draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect area);
-    void draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect area);
+    void update(double dt, const platform::InputState& in, bool interactive) override;
+    void draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect area) override;
+    void draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect area) override;
 
     // Where a tile lands on the canvas, in logical pixels — the one place the pan and
     // zoom arithmetic lives, so a status bar, a test and the renderer cannot disagree
@@ -76,10 +83,10 @@ public:
     [[nodiscard]] int hover_y() const { return hover_y_; }
 
     // The last thing that happened, for the shell's toast. Cleared when read.
-    std::optional<engine::OpResult> take_message();
+    std::optional<engine::OpResult> take_message() override;
 
-    engine::OpResult save();
-    engine::OpResult reload();
+    engine::OpResult save() override;
+    engine::OpResult reload() override;
 
 private:
     void        load();

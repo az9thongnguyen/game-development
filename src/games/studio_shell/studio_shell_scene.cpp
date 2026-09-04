@@ -4,6 +4,7 @@
 #include "games/studio_shell/studio_shell_scene.hpp"
 
 #include <cstdio>
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -21,7 +22,7 @@ namespace studioshell {
 namespace th = ui::theme;
 
 namespace {
-const char* const kSections[] = {"Map", "Project", "Play", "Hub", "Guide", "Learn", "About"};
+const char* const kSections[] = {"Edit", "Project", "Play", "Hub", "Guide", "Learn", "About"};
 
 // Toolbar buttons, in the order they are drawn. Indices are what the draw pass
 // hands back to update(), because a click is discovered while drawing and acted
@@ -76,7 +77,7 @@ const char* const kGuideLines[] = {
     "",
     "THIS SHELL",
     "  Cmd+1..7|switch section (click the rail too)   Cmd+K = command palette",
-    "  Map|B/R/G tool, 0-9 brush, RMB erase, MMB pan, wheel zoom, Cmd+S save, Cmd+Z undo",
+    "  Edit|workspace tabs; Map: B/R/G tool, 0-9 brush, RMB erase, MMB pan, wheel zoom, Cmd+S/Cmd+Z",
     "  Project|declared assets + their hashes, and why the project is / is not shippable (R re-reads)",
     "  Play|run this project's entry scene in the Studio — Pause, Step one frame, Esc releases the keyboard",
     "  Hub|Space publish, 1 promote to preview, 2 to production, R refresh",
@@ -84,12 +85,13 @@ const char* const kGuideLines[] = {
 
 }  // namespace
 
-std::string StudioShellScene::map_asset_of(const std::string& project_path,
-                                           const std::vector<std::string>& known_entries) {
+std::string StudioShellScene::asset_of(const std::string& project_path,
+                                       const std::vector<std::string>& known_entries,
+                                       const char* type) {
     // The fifth copy of "read and parse the manifest" used to live here. It reads
-    // through engine::inspect now, so the workspace opens the map the browser lists.
+    // through engine::inspect now, so a workspace opens the file the browser lists.
     for (const engine::InspectedAsset& a : engine::inspect(project_path, known_entries).assets)
-        if (a.type == "map" && a.present) return a.path;
+        if (a.type == type && a.present) return a.path;
     return {};
 }
 
@@ -97,13 +99,19 @@ StudioShellScene::StudioShellScene(std::string project_path,
                                    std::vector<std::string> known_entries)
     : project_path_(std::move(project_path)),
       known_entries_(std::move(known_entries)),
-      map_(map_asset_of(project_path_, known_entries_)) {
+      map_(asset_of(project_path_, known_entries_, "map")),
+      scene_(asset_of(project_path_, known_entries_, "scene")) {
     rebuild();
-    // The workspace binds map.* to itself here, so the palette lists exactly what THIS
+    workspaces_ = {&map_, &scene_};
+    // Each workspace binds its own ids here, so the palette lists exactly what THIS
     // process can do. --cmd in a terminal sees the release commands and not these,
-    // which is the truth: there is no map open in a terminal.
-    map_.register_commands();
-    if (map_.recovery_pending()) modal_ = Modal::Recovery;
+    // which is the truth: there is no document open in a terminal.
+    for (Workspace* w : workspaces_) {
+        w->register_commands();
+        // First one wins: the screen has one modal, and asking about two recoveries
+        // at once would stack two cards on top of each other.
+        if (!recovering_ && w->recovery_pending()) { recovering_ = w; modal_ = Modal::Recovery; }
+    }
 }
 
 void StudioShellScene::flash(const engine::OpResult& r, double seconds) {
@@ -206,14 +214,22 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
             palette_.close();
         }
         // The palette owns the keyboard while it is up; nothing below sees this frame.
-        map_.update(dt, in, /*interactive*/ false);
+        for (Workspace* w : workspaces_) w->update(dt, in, /*interactive*/ false);
         play_.update(dt, in, /*focused*/ false);   // keeps running, receives nothing
         return;
     }
 
     // ---- the map workspace ----
-    map_.update(dt, in, /*interactive*/ modal_ == Modal::None && section_ == Map);
-    if (auto msg = map_.take_message()) flash(*msg);
+    // Every workspace updates every frame; only the visible one is interactive. A
+    // workspace that stopped ticking when you switched tabs would lose its autosave
+    // timer, which is exactly when an autosave matters most.
+    if (ws_click_ >= 0) { ws_ = ws_click_; ws_click_ = -1; }
+    for (std::size_t i = 0; i < workspaces_.size(); ++i) {
+        const bool live = modal_ == Modal::None && section_ == Edit &&
+                          static_cast<int>(i) == ws_;
+        workspaces_[i]->update(dt, in, live);
+        if (auto msg = workspaces_[i]->take_message()) flash(*msg);
+    }
 
     // ---- the play viewport --------------------------------------------------
     // Focus is claimed by clicking the frame and released with Escape. Without an
@@ -273,25 +289,44 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
 // The Map section: canvas on the left, inspector on the right, status strip under
 // both. The split is fixed — a draggable one needs a cursor shape, a hit zone and a
 // persisted position, and no second author has asked for it yet.
-void StudioShellScene::draw_map_section(gfx::Renderer2D& g, ui::Rect area) {
-    const int insp_w = 260;
-    const int status_h = th::sz_caption + th::space_md;
-    const ui::Rect body{area.x, area.y, area.w, area.h - status_h - th::space_sm};
+void StudioShellScene::draw_edit_section(gfx::Renderer2D& g, ui::Rect area) {
+    Workspace& ws = *workspaces_[static_cast<std::size_t>(ws_)];
 
-    map_.draw_canvas(ui_, g, ui::Rect{body.x, body.y,
-                                      body.w - insp_w - th::space_md, body.h});
-    map_.draw_inspector(ui_, g, ui::Rect{body.x + body.w - insp_w, body.y, insp_w, body.h});
+    // ---- the tab row: one per open workspace -------------------------------
+    // A dirty document is marked in the TAB, not only in the status strip. The strip
+    // describes the workspace you are looking at; the tab is the only place the other
+    // one can tell you it has unsaved work.
+    {
+        std::vector<std::string> labels;
+        std::vector<const char*> ptrs;
+        labels.reserve(workspaces_.size());
+        for (const auto& w : workspaces_)
+            labels.push_back(std::string(w->name()) + (w->dirty() ? " *" : ""));
+        for (const auto& l : labels) ptrs.push_back(l.c_str());
+        const int chosen = ui_.tabs("wstabs", ui::Rect{area.x, area.y, area.w, 30},
+                                    ptrs.data(), static_cast<int>(ptrs.size()), ws_);
+        if (chosen != ws_) ws_click_ = chosen;
+    }
+    const int tabs_h = 30 + th::space_md;
+
+    // The workspace asks for an inspector width; the shell decides. A narrow window
+    // must not leave a canvas thinner than the panel beside it.
+    int insp_w = ws.inspector_width();
+    if (insp_w > area.w / 2) insp_w = area.w / 2;
+
+    const int status_h = th::sz_caption + th::space_md;
+    const ui::Rect body{area.x, area.y + tabs_h, area.w,
+                        area.h - tabs_h - status_h - th::space_sm};
+
+    ws.draw_canvas(ui_, g, ui::Rect{body.x, body.y,
+                                    body.w - insp_w - th::space_md, body.h});
+    ws.draw_inspector(ui_, g, ui::Rect{body.x + body.w - insp_w, body.y, insp_w, body.h});
 
     g.set_font_size(th::sz_caption);
     const int sy = area.y + area.h - th::sz_caption;
-    std::string left = map_.loaded()
-                           ? map_.path() + (map_.dirty() ? "  *  unsaved" : "  saved")
-                           : std::string("no map");
-    if (map_.hover_x() >= 0)
-        left += "   tile " + std::to_string(map_.hover_x()) + ", " +
-                std::to_string(map_.hover_y());
-    g.draw_text(area.x, sy, left.c_str(), map_.dirty() ? th::warn : th::text_muted);
-    const char* hint = "Cmd+K commands   Cmd+S save   Cmd+Z undo   MMB pan   wheel zoom";
+    const std::string left = ws.status();
+    g.draw_text(area.x, sy, left.c_str(), ws.dirty() ? th::warn : th::text_muted);
+    const char* hint = ws.hint();
     g.draw_text(area.x + area.w - g.text_width(hint), sy, hint, th::text_muted);
 }
 
@@ -437,8 +472,8 @@ void StudioShellScene::render(const engine::Context& ctx) {
                         w - rail - th::space_xl * 2, h - th::space_xl * 2};
     int y = area.y;
 
-    if (section_ == Map) {
-        draw_map_section(g, area);
+    if (section_ == Edit) {
+        draw_edit_section(g, area);
     } else if (section_ == Project) {
         run(projectui::draw_project_panel(ui_, g, inspection_, area, asset_sel_));
     } else if (section_ == Play) {
@@ -503,13 +538,18 @@ void StudioShellScene::render(const engine::Context& ctx) {
     } else if (modal_ == Modal::Recovery) {
         const ui::Confirm c = ui_.confirm(
             "recover", "Unsaved changes were found",
-            ("An autosave of " + map_.path() + " is newer than the file.").c_str(),
+            ("An autosave of " + (recovering_ ? recovering_->path() : std::string()) +
+             " is newer than the file.").c_str(),
             "Recover", /*danger*/ false);
         // Cancel keeps the saved file AND leaves the autosave alone: declining by
         // reflex must not be the thing that destroys the work.
-        if (c == ui::Confirm::Yes)      { map_.take_recovery();    modal_ = Modal::None; }
-        else if (c == ui::Confirm::No)  { map_.dismiss_recovery(); modal_ = Modal::None; }
-        if (auto msg = map_.take_message()) flash(*msg);
+        if (c == ui::Confirm::Yes && recovering_) {
+            recovering_->take_recovery(); modal_ = Modal::None;
+        } else if (c == ui::Confirm::No && recovering_) {
+            recovering_->dismiss_recovery(); modal_ = Modal::None;
+        }
+        if (recovering_) if (auto msg = recovering_->take_message()) flash(*msg);
+        if (modal_ == Modal::None) recovering_ = nullptr;
     } else if (palette_.is_open()) {
         const std::string clicked = palette_.draw(ui_, g);
         if (!clicked.empty()) palette_click_ = clicked;

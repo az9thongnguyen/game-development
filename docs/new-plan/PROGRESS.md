@@ -26,7 +26,7 @@
 | S5 | Farm — vertical slice | ✅ xong | `feat/s5-farm` | 113 |
 | S6 | Asset browser · Validation panel · audit log trong cửa sổ | ✅ xong | `feat/s6-project-workspace` | 114 |
 | S6b | Play viewport + `FixedStep` + một bảng entry | ✅ xong | `feat/s6b-play-viewport` | 115 |
-| S7 | Sandbox → workspace thứ hai + `Workspace` interface (D23) | ⬜ chưa | | 116 |
+| S7 | Sandbox → workspace thứ hai + `Workspace` interface (D23) | ✅ xong | `feat/s7-workspaces` | 116 |
 | S8 | Farm v1 + BaaS + HUD | ⬜ chưa | | 117 |
 | S9 | Web: shell, Collection, touch, dashboard | ⬜ chưa | | 118 |
 | S10 | Creature RPG — MVP | ⬜ chưa | | 119–120 |
@@ -320,6 +320,11 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D41 | Input **chặn cửa**, không chuyển tiếp: chord và Escape không bao giờ tới game | Game ăn `Cmd+K` = palette không với tới; game nuốt Escape = nhốt bàn phím |
 | D42 | "Không có input" phải nói **không có con trỏ** (-1), không phải `InputState{}` | Chuột mặc định ở (0,0) là **một vị trí có thật** trong không gian game |
 | D43 | Bảng entry là **một**; `known_entries()` suy ra từ nó | "kept in sync with" là comment nhờ con người làm build step |
+| D44 | `status()`/`hint()` thuộc về **workspace**, không phải shell | Shell ghép "tile 4, 9" nghĩa là shell biết tài liệu có tile — điều một scene làm cho bất khả thi |
+| D45 | Recovery trong interface là **có mặc định**, không thuần ảo | Bắt workspace không autosave viết ba hàm rỗng = interface bắt đầu nói dối |
+| D46 | Undo của scene bằng **snapshot toàn cảnh**, một bước cho cả gesture | `to_scene/from_scene` đã round-trip; không có nghịch đảo nào để viết sai |
+| D47 | `commit()` **giữ lại selection** qua chính cú apply của nó | apply cài lại đúng thế giới đang có; xoá selection ở đó là artefact, không phải ý định |
+| D48 | Hấp thụ editor cũ, **không viết cái thứ hai** | Hai implementation của một ý tưởng chỉ đồng ý vào ngày chúng được viết |
 
 ---
 
@@ -402,28 +407,72 @@ khác** — cố ý, nhưng một scene đắt sẽ ăn frame time ở Map works
 
 ---
 
+## S7 — Hai workspace, và cái interface được nó tạo hình (chương 116) — XONG
+
+Commit: `7ff216c` (interface) · `11d7371` (Scene workspace + hấp thụ sandbox).
+
+**Cái gì đã chạy:**
+
+- `--shell` → section **Edit** có **tab**: `Map | Scene`. Tab bẩn hiện dấu `*` —
+  status strip chỉ nói về workspace đang xem, tab là chỗ duy nhất cái kia báo được.
+- `--sandbox` là `WorkspaceHost` mỏng bọc **chính đối tượng** mà tab Scene giữ.
+  `sandbox_scene.{hpp,cpp}` **đã xoá** (315 dòng).
+- Scene workspace có **undo** (snapshot toàn cảnh), **autosave + recovery**, và
+  `scene.save/undo/redo/reload/play` trong palette — trước đây sandbox **không có gì**
+  trong số đó.
+- `creator.gameproject` khai báo `asset scene scenes/demo.scene`, nên workspace mở cái
+  manifest nói, không phải đường dẫn cứng.
+
+**Bug thật tìm được (do test, không phải do nhìn màn hình):**
+
+1. **Mọi thao tác sửa đều xoá lựa chọn.** `push_apply` **apply**, apply cài lại thế
+   giới, cài lại dựng entity mới → xoá selection. Kéo slider một cái là mất chọn đúng
+   actor đang sửa. Nay `commit()` giữ selection qua chính cú apply của nó; undo/redo
+   thật vẫn xoá — đúng, vì cái đó dựng một thế giới **khác**.
+2. **Delete trễ một frame**: phím set cờ mà handler ở trên đã đi qua rồi.
+3. **Pixel giữa một actor là cái gạch hướng**, vẽ bằng màu nền có chủ ý. Probe ở đó
+   là đo cái gạch, không đo actor. Lần thứ ba trong ba chương một probe toạ độ đơn đo
+   nhầm thứ — **đếm** mới là phát biểu đúng của gần như mọi khẳng định thị giác.
+
+**Đã mutation-test 8 lần:** commit mỗi frame kéo · giữ index selection cũ qua restore ·
+ghi cả edit rỗng · Stop tính là edit · commit xoá selection · recovery tự áp dụng ·
+từ chối recovery mà xoá autosave · recovery không undo được.
+
+**Số liệu:** 71/71 test · ASan+UBSan sạch (71/71) · web build xanh · Release ss=2
+**1.13 ms** median (budget 8 ms) · golden path xanh (release id đổi vì manifest thêm
+asset — đúng như thiết kế).
+
+**Chưa xác minh:** chưa ai **bấm**. Scene canvas **không có pan/zoom**, không
+multi-select, không copy/paste, không grid/snap. **Spawner/OnOverlap** round-trip được
+nhưng **không có inspector** — sửa interval của Emitter phải sửa tay file `.scene`.
+Texture vẫn dò theo tên cố định. **`--maplab` vẫn còn và vẫn ghi `fpsmap1`** —
+`WorkspaceHost` giờ là cơ chế để nghỉ hưu nó, nhưng đó là quyết định về bề mặt CLI.
+
+---
+
 ## Việc kế tiếp
 
-**S7 — hấp thụ Sandbox → workspace thứ hai**, chương 116. Đây là lúc interface
-`Workspace` mới đáng tạo (D23): sẽ có **hai** implementation, nên cái khuôn sẽ đúng
-hình chứ không phải khuôn đúc quanh một người ở duy nhất. Map Lab (`--maplab`, vẫn ghi
-`fpsmap1`) đi cùng đợt đó.
+**S8 — Farm v1 + BaaS + HUD**, chương 117 (theo PLAN). Farm hiện đã chạy được trong
+Studio (Play viewport) nhưng chưa nói chuyện với BaaS: chưa có save đám mây, chưa có
+leaderboard, chưa có HUD thật. Đây là chỗ game thứ hai bắt đầu **tiêu thụ backend** —
+đúng Rule 1 của brief (golden path phải tiêu thụ tính năng).
 
-**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S7):
+Hoặc, nếu anh muốn Studio chín thêm trước: **hấp thụ Map Lab** (`--maplab` → workspace
+thứ ba, bỏ `fpsmap1`) là việc nhỏ hơn và dùng lại đúng `WorkspaceHost` vừa có.
+
+**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S8):
 
 1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã đi vào
-   `assets/projects/farm.gameproject`, `entries()` và `launch_entry`. Đổi sau vẫn rẻ,
-   nhưng càng để lâu càng nhiều chỗ nhắc tới.
+   `assets/projects/farm.gameproject`, `entries()` và `launch_entry`.
 2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) cho Farm — hay tự vẽ trong Studio?
-   Giờ đã **nhìn thấy game chạy trong Studio**, và nó trông đúng như một game chưa có art.
-3. **Xoá 10 flag CLI cũ** (`--hub-ui --shell --editor --sandbox --maplab` …) —
-   cần anh đồng ý (`PLAN.md §8` mục 3). **Chưa xoá gì cả.**
+3. **Xoá 10 flag CLI cũ.** Lưu ý: S7 vừa làm `--sandbox` thành một *khung* chứ không
+   phải một editor riêng, nên xoá nó bây giờ **rẻ hơn hẳn** — nó không còn giữ code
+   nào của riêng nó. **Chưa xoá gì cả.**
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
-- **Chuột vào Play viewport** — `draw()` đã trả về `shown` đúng cho phép biến đổi toạ
-  độ; chưa làm vì chưa game nào cần, và con trỏ sai một nửa tệ hơn không có.
-- Hấp thụ **Sandbox** và **Map Lab** vào Studio → S7 (D23).
-- Filter/paging cho audit log → `engine::log(channel)` đã hỗ trợ, panel chưa hỏi.
-- Cache hash theo mtime/size trong `inspect()` → 5 file thì không đáng; 100 texture thì đáng.
-- Hai Play viewport cạnh nhau (so bản đang sửa với bản đã publish) → chưa ai cần.
+- **Map Lab** → workspace thứ ba; `--maplab` vẫn ghi `fpsmap1`.
+- **Pan/zoom, multi-select, copy/paste, grid/snap** trong Scene canvas.
+- **Inspector cho Spawner/OnOverlap** — round-trip được, không sửa được trong UI.
+- **Chuột vào Play viewport** — `draw()` trả `shown` đúng cho phép biến đổi toạ độ.
+- Filter/paging cho audit log · cache hash theo mtime/size trong `inspect()`.
