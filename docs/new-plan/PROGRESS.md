@@ -352,6 +352,11 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D73 | Press **bắt đầu bên trong** thì giữ con trỏ tới khi nhả | Không thì game không bao giờ nghe thấy nhả, và giữ nút mãi |
 | D74 | "Bấm không ăn" phải **hỏi DOM và app**, đừng suy từ ảnh | Ảnh chụp canvas bị CSS scale — toạ độ trong ảnh **không phải** toạ độ game |
 | D75 | Mutation **sống sót thì ghi lại**, không giấu | Một hàng "8/8 giết" sai còn tệ hơn "7/8, và đây là lý do" |
+| D76 | **Một cửa cho mỗi loại**: game = manifest, Studio = `--shell`, còn lại = `--lab` | 12 flag là 12 bản sao của cùng một `platform::Config` |
+| D77 | `entries()` và `labs()` là **hai bảng**, dù cùng struct | Một bảng chung khiến `entry fx` trong manifest thành hợp lệ |
+| D78 | Flag lạ là **lỗi kèm danh sách**, không rơi xuống demo mặc định | Người hay gõ flag vừa xoá nhất chính là người dùng nó hôm qua |
+| D79 | Chỉ xoá cái mà **cửa khác tới được cùng căn phòng** | Xoá `--maplab` là xoá khả năng sửa entity; xoá lab là bỏ consumer runtime của 7 core |
+| D80 | Ledger có ngày tháng thì **thêm tên mới trong ngoặc**, không viết lại | Một phán quyết ghi ngày 2026-09-04 phải đọc như điều đúng vào ngày đó |
 
 ---
 
@@ -619,16 +624,74 @@ không đọc chuột nên phép biến đổi của viewport chỉ có **một*
 
 ---
 
+## S11 — Một cửa cho mỗi loại (chương 120) — XONG
+
+**Ba quyết định của anh đã được chốt và ghi vào tài liệu** (xem mục dưới). Slice này là
+quyết định số 3.
+
+`main.cpp` có **31 flag**; 12 trong số đó là 12 bản sao của cùng tám dòng
+`platform::Config`. Rút xuống **ba loại cửa**: game (`--project <manifest>`), Studio
+(`--shell`), lab (`--lab [id]`).
+
+- **Xoá hẳn `--hub-ui`** + `hub_scene.{hpp,cpp}` (2 file chết) — Hub section của Studio
+  vẽ **cùng một panel** từ cùng một view model.
+- **Gộp 12 flag** thành `--lab`: `scene map texture editor fx light audio anim 3d viz3d
+  iso colony`. `--lab` không tham số thì **liệt kê chính bảng đó**.
+- **Hai bảng, không phải một**: `entries()` (game — manifest khai báo được) và `labs()`.
+  Tách ra để `entry fx` trong manifest **vẫn bất khả**.
+
+**Lỗi thật sửa nhân tiện:** flag lạ trước đây **rơi xuống demo M0** — gõ sai hoặc gõ
+flag vừa xoá thì mở nhầm cửa sổ và **không nói gì**. Nay là lỗi `rc=2` kèm danh sách
+đầy đủ **và bảng "flag đã nghỉ hưu → đi đâu"**. `demo --help` in cùng nội dung.
+
+**Không xoá cái gì còn là đường duy nhất:** `--lab map` vẫn là nơi **duy nhất** sửa được
+entity/spawn; 7 lab kia là **consumer runtime duy nhất** của `particles_core`,
+`light_core`, `audio_core`, `tween_core`, `render3d_core`, `viz3d_core`, `studio_core`.
+Bề mặt giảm 13 flag, dự án **không mất gì**.
+
+**Trang web thôi là bản sao thứ hai của danh sách lab**: `?mode=lab-<id>` đi thẳng qua
+bảng, xác minh trong trình duyệt (`?mode=lab-fx` → particle playground, 481/4000 hạt).
+
+**Tài liệu đã cập nhật kỹ:** `CLAUDE.md` (viết lại mục lệnh), `README.md` (viết lại khối
+run; bảng tính năng lịch sử giữ nguyên nhưng tên flag trỏ đúng), `docs/PROJECT-BRIEF.md`
+(§Block 2 viết lại; **các dòng ledger giữ nguyên phán quyết có ngày tháng**, chỉ thêm
+tên mới trong ngoặc). **`docs/book/` không sửa** — một chương là điều đúng vào lúc nó
+được viết; chương 120 là nơi ghi thay đổi.
+
+**Số liệu:** 72/72 test · web build xanh · golden path xanh.
+
+**Chưa xác minh:** không có test nào phủ bề mặt CLI (chỉ chạy tay + smoke script của CI
+cho các verb spine). `--gui`/`--tui` vẫn ở top-level (chess có 2 tham số vị trí, và TUI
+không phải cửa sổ). `iso`/`colony` là game về mọi mặt trừ giấy tờ — cho chúng manifest
+sẽ xoá thêm 2 flag, nhưng `colony` **sinh sprite lúc chạy** nên resource closure sẽ từ
+chối; đó là việc thật, không phải đổi tên.
+
+---
+
+## Ba quyết định — ĐÃ CHỐT (2026-09-04)
+
+1. **Tên game: Farm / Creatures** — chốt. Không còn là tên tạm; đã nằm trong
+   `assets/projects/farm.gameproject`, `entries()` và `launch_entry`.
+2. **Art: hỗ trợ CẢ HAI.** Trước mắt dùng bộ pixel-art **license mở (CC0/CC-BY)** cho
+   đẹp; sau đó **clone và vẽ lại trong Studio**. Nghĩa là engine phải đọc tileset từ
+   **một đường duy nhất**, bất kể nguồn — file pack ngoài hay `.hrt` do Texture Lab
+   xuất. Kèm theo là chỗ ghi **attribution/license** (CC-BY bắt buộc ghi công).
+   *(Lưu ý vận hành: tôi **không tải** asset từ mạng về mà không hỏi trước — sẽ dựng cơ
+   chế + một bộ placeholder tự sinh bằng code của mình, rồi anh thả pack thật vào.)*
+3. **Xoá flag CLI cũ** — xong ở chương 120 (slice này).
+
 ## Việc kế tiếp
 
-- **Touch + điều khiển cảm ứng** cho farm (nốt phần còn lại của S9 trong PLAN), hoặc
-- **Hấp thụ Map Lab** (`--maplab` → workspace thứ ba, bỏ `fpsmap1`).
+**S12 — Farm có art**: đường đọc tileset dùng chung cho cả hai nguồn (pack mở +
+`.hrt` vẽ trong Studio), `assets/ATTRIBUTION.md`, và `map2` khai báo tileset. Đây là
+quyết định số 2 ở trên.
 
-**Ba quyết định vẫn cần anh chốt:**
+Sau đó (chưa xếp thứ tự):
 
-1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã vào manifest + `entries()`.
-2. **Tileset pixel-art license mở** (CC0/CC-BY) cho Farm — hay tự vẽ trong Studio?
-3. **Xoá 10 flag CLI cũ.** Chưa xoá gì cả.
+- **Touch + điều khiển cảm ứng** cho farm — điều kiện để chơi được trên điện thoại.
+- **Hấp thụ Map Lab** (`--lab map` → workspace thứ ba, bỏ `fpsmap1`, có UI cho
+  entity/spawn) — sau đó mới xoá được nó.
+- **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 

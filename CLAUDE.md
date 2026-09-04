@@ -46,30 +46,38 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-Everything is one `demo` executable; the first arg picks the mode. Windowed scenes:
+Everything is one `demo` executable; the first arg picks the mode. **`demo --help`
+prints every mode this build answers to** (and where the retired flags went — an
+unknown `--flag` is an error with that list, never a silently different window).
+
+The surface is deliberately small: a **game** is launched from its manifest, the
+**Studio** is one flag, and everything else windowed is a **lab** behind one door.
+Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 
 ```sh
 ./build/demo            # M0 engine demo (retro 480x270)
 ./build/demo --gui [hvh|hvai] [easy|medium|hard]   # chess GUI      (--tui = terminal)
 ./build/demo --fps      # M2 raycaster (loads the Map-Lab-authored maps/level_00.map)
-./build/demo --3d       # M3 software-rasterized 3D core     --viz3d = interactive sandbox
-./build/demo --iso      # M4 isometric farm sim (F5/F9 save/load)
-./build/demo --editor   # immediate-mode GUI + physics sandbox
-./build/demo --colony   # engine-core integration game (also the BaaS/SDK client)
-./build/demo --studio   # Mini Studio: procedural Texture Lab (.hrt export, sheet export)
-./build/demo --sandbox  # the Studio's Scene workspace, full-screen (same object,
-                        # same undo/autosave/palette as the Studio's Scene tab)
-./build/demo --maplab   # tile-grid level editor -> maps/level_NN.map
-./build/demo --fx | --light | --audio | --anim     # particles / 2D lights / mixer / flipbook
-./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio (1280x720, resizable)
-                                                  # --shell opens the Edit section: TABS of workspaces
-                                                  # (Map | Scene), Cmd+Z undo, Cmd+S save, Cmd+K palette,
-                                                  # Cmd+1..7 sections. Autosaves; offers recovery on open.
-                                                  # Project section = asset browser + validation verdict
-                                                  # (the same engine::inspect --project-inspect prints);
-                                                  # Play section RUNS the project's entry scene in a
-                                                  # framebuffer of its own — Pause, Step one frame, Esc
-                                                  # returns the keyboard; Hub also shows the audit log.
+
+./build/demo --lab      # list the labs; --lab <id> runs one
+#   scene    the Studio's Scene workspace, full-screen (the SAME object as its Scene tab)
+#   map      tile-grid level editor -> maps/level_NN.map (still fpsmap1; not yet absorbed)
+#   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
+#   editor   immediate-mode GUI + physics sandbox
+#   fx light audio anim     particles / 2D lights / mixer / flipbook
+#   3d viz3d                software-rasterized 3D core / interactive sandbox
+#   iso      M4 isometric farm sim (F5/F9 save/load)
+#   colony   engine-core integration game (also the BaaS/SDK client)
+
+./build/demo --shell [proj]     # the Studio (1280x720, resizable)
+                                # Edit section: TABS of workspaces (Map | Scene), Cmd+Z undo,
+                                # Cmd+S save, Cmd+K palette, Cmd+1..7 sections. Autosaves;
+                                # offers recovery on open.
+                                # Project section = asset browser + validation verdict (the
+                                # same engine::inspect --project-inspect prints).
+                                # Play section RUNS the project's entry scene in a framebuffer
+                                # of its own — Pause, Step one frame, the mouse and keyboard
+                                # reach the game, Esc returns them; Hub shows the audit log.
 ```
 
 **Headless platform-spine verbs** (no window; these are what CI smoke-tests, so keep
@@ -201,7 +209,7 @@ where `Context` carries the `Renderer2D`, input snapshot, timing, and shared UI 
 Each game is a `Scene`; `src/main.cpp` maps a CLI flag to a `platform::Config` + scene. The Studio's editors
 implement `studioshell::Workspace` (`src/games/studio_shell/workspace.hpp`) — canvas +
 inspector + status + save/undo/recovery. `WorkspaceHost` runs one full-screen (that is
-what `--sandbox` is), and the Studio's Edit section runs them as tabs, so an editor
+what `--lab scene` is), and the Studio's Edit section runs them as tabs, so an editor
 cannot exist in only one of the two frames. Manifest **entries**
 live in one table there (`entries()`): `launch_entry`, `known_entries()` and the
 Studio's Play viewport are all derived from it, so a game cannot be
@@ -234,7 +242,7 @@ is the thing most likely to be broken by a careless edit:
    timestamp, predecessor, reason). Re-publishing identical bytes is a verified no-op;
    publishing *different* bytes under an existing id is refused.
 5. **Hub** (`hub_core`) — one pure `hub_lines`/`recommend` shared by the headless
-   `--hub` and the windowed `--hub-ui`/`--shell`, so CLI and window can't drift.
+   `--hub` and the Studio's Hub section, so CLI and window can't drift.
 6. **Command registry** (`commands_core`) — every operation registers once under a
    stable id; `--cmd <id>`, the Studio's `Cmd+K` palette and a button all go through
    `cmd::run`, so an operation cannot exist in only one of them. The old CLI flags are

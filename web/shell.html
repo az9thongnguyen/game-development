@@ -6,7 +6,8 @@
      ONLY app-specific thing here is `Module.arguments`, which become argv[1..]
      in our unchanged main.cpp — that is how the web build picks which scene to
      run WITHOUT a recompile or any engine/game change. Edit the array to switch
-     scenes:  --gui (chess) | --iso (farm sim) | --3d | --viz3d | --fps | (none = M0 demo)
+     scenes:  ?mode=gui (chess) | ?project=<manifest> (a game) | ?shell=<manifest> (the
+     Studio) | ?mode=lab-<id> (a lab: fx, light, iso, 3d, …) | (none = M0 demo)
      ========================================================================= -->
 <html lang="en">
 <head>
@@ -43,23 +44,15 @@
     var statusEl = document.getElementById('status');
     var logEl    = document.getElementById('log');
     // Pick the scene from ?mode=… so one WASM build can run any demo without a
-    // recompile (default: chess, the M5 acceptance scene). ?mode=colony runs the
-    // BaaS integration demo (online leaderboard).
+    // recompile (default: chess, the M5 acceptance scene).
     var argsByMode = {
       gui:    ['--gui', 'hvai', 'medium'],
-      colony: ['--colony'],
-      editor: ['--editor'],
-      iso:    ['--iso'],
-      '3d':   ['--3d'],
-      viz3d:  ['--viz3d'],
       fps:    ['--fps'],
       // Golden path: launch the reference game from a game.project manifest — the same
       // named project the native build runs, so web/native pick the scene identically.
       project: ['--project', 'projects/creator.gameproject'],
       farm:    ['--project', 'projects/farm.gameproject'],
-      // The platform shells, browser-rendered from the same manifest (the web VFS is
-      // read-only, so channels show "unset" → the Hub recommends "publish").
-      hubui:  ['--hub-ui', 'projects/creator.gameproject'],
+      // The Studio, browser-rendered from the same manifest.
       shell:  ['--shell',  'projects/creator.gameproject'],
       demo:   []
     };
@@ -73,6 +66,10 @@
     var mode    = params.get('mode') || 'gui';
     if (project) argsByMode[mode = '_project'] = ['--project', project];
     if (shellOf) argsByMode[mode = '_shell']   = ['--shell', shellOf];
+    // ?mode=lab-<id> reaches any lab without this file listing them. Twelve named
+    // modes used to sit here, one per flag, and they went stale the moment main.cpp
+    // changed — the page should not be a second copy of the lab table.
+    if (mode.indexOf('lab-') === 0) argsByMode[mode] = ['--lab', mode.slice(4)];
     var Module = {
       arguments: argsByMode[mode] || argsByMode.gui,
       // The preloaded asset tree is MEMFS: it lives in this tab and dies with it. That

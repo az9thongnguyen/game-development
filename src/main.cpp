@@ -48,7 +48,6 @@
 #include "games/audio/audio_scene.hpp"
 #include "games/fx/fx_scene.hpp"
 #include "games/light/light_scene.hpp"
-#include "games/hub/hub_scene.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
 #include "games/studio_shell/workspace_host.hpp"
@@ -145,6 +144,127 @@ int launch_entry(const std::string& entry) {
     const Entry* e = find_entry(entry);
     if (!e) { std::fprintf(stderr, "unknown entry scene: %s\n", entry.c_str()); return 1; }
     return run_window(e->cfg, e->make());
+}
+
+// ---- labs: everything windowed that is NOT a game with a manifest ---------------
+//
+// Twelve of these used to be twelve top-level flags, each a copy of the same eight
+// lines of platform::Config. That is what "29 CLI modes" was made of, and it made the
+// surface of this project look like its inventory rather than its product.
+//
+// A LAB is a demo of an engine subsystem, or a scene that has not earned a manifest
+// yet. A GAME is declared by a manifest and launched with --project; the two tables
+// are separate on purpose, so `entry fx` in a manifest stays impossible.
+//
+// Same shape as entries(), for the same reason: one table, and every trigger derives
+// from it — `--lab` with no id lists exactly what `--lab <id>` can run.
+const std::vector<Entry>& labs() {
+    static const std::vector<Entry> table = [] {
+        auto win = [](const char* title, int w, int h, int ss) {
+            platform::Config c;
+            c.title = title;
+            c.fb_width = w; c.fb_height = h;
+            c.scale = 1; c.smooth = true; c.highdpi = true;
+            c.supersample = ss;
+            return c;
+        };
+        std::vector<Entry> v;
+        v.push_back({"scene", win("hand-engine — scene workspace", 960, 600, kAA), [] {
+            // The Studio's Scene tab, full-screen. The SAME object, not a second
+            // editor — that is what chapter 116 absorbed, and this is the frame.
+            return std::unique_ptr<engine::Scene>(new studioshell::WorkspaceHost(
+                std::make_unique<studioshell::SceneWorkspace>("scenes/demo.scene")));
+        }});
+        v.push_back({"map", win("hand-engine — map lab", 960, 600, kAA), [] {
+            // Still writes fpsmap1, still the only place entities/spawns can be
+            // edited. It stays until the Map workspace can do that.
+            return std::unique_ptr<engine::Scene>(new maplab::MaplabScene());
+        }});
+        v.push_back({"texture", win("hand-engine — texture lab", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new studio::StudioScene());
+        }});
+        v.push_back({"editor", win("hand-engine — editor (UI + physics)", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new editor::EditorScene());
+        }});
+        v.push_back({"fx", win("hand-engine — particle fx", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new fx::FxScene());
+        }});
+        // Lights are soft and per-pixel additive; SSAA would quadruple the fill for
+        // an edge that is not there.
+        v.push_back({"light", win("hand-engine — 2D lighting", 960, 600, 1), [] {
+            return std::unique_ptr<engine::Scene>(new lightdemo::LightScene());
+        }});
+        v.push_back({"audio", win("hand-engine — audio mixer", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new audiodemo::AudioScene());
+        }});
+        v.push_back({"anim", win("hand-engine — sprite animation", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new animdemo::AnimScene());
+        }});
+        v.push_back({"3d", win("hand-engine — 3D core", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new viz3d::Scene3D());
+        }});
+        v.push_back({"viz3d", win("hand-engine — viz3d sandbox", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new viz3d::EditorScene());
+        }});
+        v.push_back({"iso", win("hand-engine — iso farm sim", 960, 600, kAA), [] {
+            return std::unique_ptr<engine::Scene>(new iso::IsoScene());
+        }});
+        {   // the colony wants room for the taller design-system panel
+            platform::Config c = win("hand-engine — colony (ECS + jobs + UI)", 1000, 760, kAA);
+            v.push_back({"colony", c, [] {
+                return std::unique_ptr<engine::Scene>(new colony::ColonyScene());
+            }});
+        }
+        return v;
+    }();
+    return table;
+}
+
+// Every flag this build answers to, and — just as important — where the retired ones
+// went. Someone with muscle memory for `--maplab` should be told, not silently handed
+// a different window.
+int usage(const std::string& unknown) {
+    if (!unknown.empty()) std::fprintf(stderr, "unknown mode: %s\n\n", unknown.c_str());
+    std::fprintf(stderr,
+        "usage: demo [mode] [args]\n"
+        "\n  games\n"
+        "    --project <manifest>            launch a game from its game.project\n"
+        "    --gui | --tui [hvh|hvai] [easy|medium|hard]   chess\n"
+        "\n  authoring\n"
+        "    --shell [manifest]              the Studio\n"
+        "    --lab [id]                      a demo or an unshipped scene (no id lists them)\n"
+        "\n  the platform spine (headless)\n"
+        "    --project-new <path> <entry> <name>\n"
+        "    --project-inspect <manifest>    --project-package <manifest>\n"
+        "    --project-publish <manifest> <channel> <reason>\n"
+        "    --project-verify  <manifest> <channel>\n"
+        "    --release-promote <from> <to> <reason>\n"
+        "    --release-rollback <channel> <release-id> <reason>\n"
+        "    --release-status                --release-log [channel]\n"
+        "    --hub <manifest>                --cmd [id] [args...]\n"
+        "    --bench-ui [frames] [manifest]  --runner <base_url> <api_key>\n"
+        "\n  retired (chapter 120)\n"
+        "    --hub-ui   -> --shell, Hub section\n"
+        "    --sandbox  -> --lab scene        --maplab -> --lab map\n"
+        "    --studio   -> --lab texture      --editor -> --lab editor\n"
+        "    --3d --viz3d --iso --colony --fx --light --audio --anim -> --lab <same name>\n"
+        "\n  no mode at all runs the M0 engine demo.\n");
+    return unknown.empty() ? 0 : 2;
+}
+
+// `--lab` with no id lists what there is, the same way `--cmd` with no id does: a
+// door you cannot see through is a door nobody opens.
+int run_lab(const std::string& id) {
+    if (id.empty()) {
+        std::printf("labs (demos and scenes with no manifest):\n");
+        for (const Entry& e : labs()) std::printf("  %-8s %s\n", e.id.c_str(), e.cfg.title);
+        std::printf("\na game with a manifest is launched with: demo --project <path>\n");
+        return 0;
+    }
+    for (const Entry& e : labs())
+        if (e.id == id) return run_window(e.cfg, e.make());
+    std::fprintf(stderr, "unknown lab: %s   (run `demo --lab` to list them)\n", id.c_str());
+    return 1;
 }
 
 // DERIVED from the table, so a game cannot be launchable-but-unknown (the manifest
@@ -520,23 +640,14 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // Windowed: the graphical Hub shell — the same view, drawn; Space/1/2 drive the ops.
-    if (mode == "--hub-ui") {
-        const std::string proj = (argc > 2) ? argv[2] : "projects/creator.gameproject";
-        platform::Config cfg;
-        cfg.title     = "hand-engine — hub";
-        cfg.fb_width  = 760;
-        cfg.fb_height = 480;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;   // was missing: this and --shell were the ONLY windowed
-        auto scene = std::make_unique<hubui::HubScene>(proj);
-        scene->set_clipboard(&platform::clipboard_get, &platform::clipboard_set);
-        return run_window(cfg, std::move(scene));
-    }
-
     // Windowed: the Studio shell — nav rail (Hub / Guide / Learn / About) over the same domain.
+    if (mode == "--help" || mode == "-h") return usage("");
+
+    // One door for every windowed thing that is not a game: `--lab` lists, `--lab <id>`
+    // runs. This replaced twelve flags that each carried their own copy of the same
+    // window config.
+    if (mode == "--lab") return run_lab(argc > 2 ? argv[2] : "");
+
     if (mode == "--shell") {
         const std::string proj = (argc > 2) ? argv[2] : "projects/creator.gameproject";
         platform::Config cfg;
@@ -570,155 +681,6 @@ int main(int argc, char** argv) {
         return run_window(cfg, std::move(scene));
     }
 
-    if (mode == "--3d") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — 3D core";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<viz3d::Scene3D>());
-    }
-
-    if (mode == "--viz3d") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — viz3d sandbox";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<viz3d::EditorScene>());
-    }
-
-    if (mode == "--iso") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — iso farm sim";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<iso::IsoScene>());
-    }
-
-    if (mode == "--editor") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — editor (UI + physics)";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<editor::EditorScene>());
-    }
-
-    if (mode == "--colony") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — colony (ECS + jobs + UI)";
-        cfg.fb_width  = 1000;
-        cfg.fb_height = 760;   // room for the taller design-system panel
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<colony::ColonyScene>());
-    }
-
-    if (mode == "--studio") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — texture lab";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<studio::StudioScene>());
-    }
-
-    if (mode == "--sandbox") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — sandbox";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        // --sandbox is now a FRAME around the Studio's scene workspace, not a second
-        // editor. Same code the Studio's Scene tab runs, so undo, autosave and the
-        // command registry belong to both.
-        return run_window(cfg, std::make_unique<studioshell::WorkspaceHost>(
-                                   std::make_unique<studioshell::SceneWorkspace>(
-                                       "scenes/demo.scene")));
-    }
-
-    if (mode == "--maplab") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — map lab";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<maplab::MaplabScene>());
-    }
-
-    if (mode == "--fx") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — particle fx";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<fx::FxScene>());
-    }
-
-    if (mode == "--light") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — 2D lighting";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = 1;   // lights are soft; skip SSAA to keep the per-pixel add cheap
-        return run_window(cfg, std::make_unique<lightdemo::LightScene>());
-    }
-
-    if (mode == "--audio") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — audio mixer";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<audiodemo::AudioScene>());
-    }
-
-    if (mode == "--anim") {
-        platform::Config cfg;
-        cfg.title     = "hand-engine — sprite animation";
-        cfg.fb_width  = 960;
-        cfg.fb_height = 600;
-        cfg.scale     = 1;
-        cfg.smooth    = true;
-        cfg.highdpi   = true;
-        cfg.supersample = kAA;
-        return run_window(cfg, std::make_unique<animdemo::AnimScene>());
-    }
-
     // Headless test-run worker: polls a BaaS coordinator, runs claimed sandbox
     // scenarios, and posts results. Links the engine + SDK (the BaaS may not) — a
     // plain poll loop, not a windowed scene, so it bypasses platform::init.
@@ -734,6 +696,11 @@ int main(int argc, char** argv) {
                 std::this_thread::sleep_for(std::chrono::seconds(1));  // idle: back off
         }
     }
+
+    // An unknown flag used to fall through to the M0 demo — so a typo, or a flag that
+    // has been retired, opened the wrong window and said nothing. A CLI that answers a
+    // question you did not ask is worse than one that refuses.
+    if (mode.rfind("--", 0) == 0) return usage(mode);
 
     // No args: the M0 engine demo (retro 480x270, nearest scaling).
     platform::Config cfg;

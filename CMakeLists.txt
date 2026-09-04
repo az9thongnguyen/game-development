@@ -133,7 +133,6 @@ add_executable(demo
   src/games/light/light_scene.cpp
   src/games/audio/audio_scene.cpp
   src/games/anim/anim_scene.cpp
-  src/games/hub/hub_scene.cpp
   src/games/hub/hub_panel.cpp
   src/games/farm/farm_scene.cpp
   src/games/studio_shell/studio_shell_scene.cpp
@@ -464,7 +463,7 @@ target_link_libraries(test_viz3d PRIVATE viz3d_core render3d_core engine_flags)
 add_test(NAME viz3d COMMAND test_viz3d)
 
 # ---- Mini Studio (Track B): procedural content authoring — PURE core (no SDL) ----
-# noise -> texture_gen -> recipe. Testable headless; the --studio scene links it.
+# noise -> texture_gen -> recipe. Testable headless; the `--lab texture` scene links it.
 add_library(studio_core STATIC
   src/games/studio/noise.cpp
   src/games/studio/texture_gen.cpp
@@ -661,7 +660,7 @@ target_link_libraries(test_hub PRIVATE engine_flags)
 add_test(NAME hub COMMAND test_hub)
 
 # Hub view assembler (impure): reads a project + release store through the assets:: seam
-# into a HubView, shared by the CLI (--hub) and the graphical Hub Scene (--hub-ui). Its
+# into a HubView, shared by the CLI (--hub) and the Studio's Hub section. Its
 # assets:: symbols are provided by the final demo target (like renderer3d/Renderer2D).
 add_library(hub_build_core STATIC
   src/engine/hub/hub_build.cpp
