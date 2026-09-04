@@ -150,6 +150,21 @@ void MapWorkspace::note(bool ok, std::string msg) {
     message_ = engine::OpResult{ok, std::move(msg)};
 }
 
+// The status line, moved off the shell. It used to be assembled there, which meant
+// the shell knew this document had tiles — the one fact a second workspace made
+// impossible to keep.
+std::string MapWorkspace::status() const {
+    if (!loaded_) return problem_.empty() ? std::string("no map") : problem_;
+    std::string s = path_ + (dirty() ? "  *  unsaved" : "  saved");
+    if (hover_x_ >= 0)
+        s += "   tile " + std::to_string(hover_x_) + ", " + std::to_string(hover_y_);
+    return s;
+}
+
+const char* MapWorkspace::hint() const {
+    return "Cmd+K commands   Cmd+S save   Cmd+Z undo   MMB pan   wheel zoom";
+}
+
 std::optional<engine::OpResult> MapWorkspace::take_message() {
     auto m = message_;
     message_.reset();

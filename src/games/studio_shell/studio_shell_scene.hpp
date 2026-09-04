@@ -27,6 +27,7 @@
 #include "games/studio_shell/palette.hpp"
 #include "games/studio_shell/play_viewport.hpp"
 #include "games/studio_shell/project_panel.hpp"
+#include "games/studio_shell/workspace.hpp"
 
 namespace studioshell {
 
@@ -64,7 +65,7 @@ public:
 private:
     // Map first: this is an authoring tool, and the thing you came to do should be
     // the thing that is already open.
-    enum Section { Map = 0, Project, Play, Hub, Guide, Learn, About, SectionCount };
+    enum Section { Edit = 0, Project, Play, Hub, Guide, Learn, About, SectionCount };
     // One modal at a time, by construction. Two booleans would eventually both be
     // true and draw two cards on top of each other.
     enum class Modal { None, HubOp, Recovery };
@@ -80,13 +81,13 @@ private:
     void rebuild();
     void run(hubui::Op op);
     void flash(const engine::OpResult& r, double seconds = 5.0);
-    void draw_map_section(gfx::Renderer2D& g, ui::Rect area);
+    void draw_edit_section(gfx::Renderer2D& g, ui::Rect area);
     void draw_play_section(gfx::Renderer2D& g, ui::Rect area, text::Font* font, double dt);
     void run(projectui::Op op);
 
     std::string                    project_path_;
     std::vector<std::string>       known_entries_;
-    int                            section_ = Map;   // an authoring tool opens on the work
+    int                            section_ = Edit;  // an authoring tool opens on the work
     std::optional<engine::HubView> hub_;
     engine::Inspection             inspection_{};
     std::vector<engine::AuditRecord> history_;   // read with the rest, drawn newest-first
@@ -101,6 +102,13 @@ private:
     std::string                    reason_;
     int                            nav_click_ = -1;
     MapWorkspace                   map_;
+    // Concrete members, plus a vector of pointers to drive them through the interface.
+    // ponytail: the set is fixed at construction, so no allocation and no ownership
+    // question; it becomes unique_ptrs the day a workspace can be opened and closed.
+    std::vector<Workspace*>        workspaces_;
+    int                            ws_ = 0;          // the open tab
+    int                            ws_click_ = -1;   // a tab clicked during the last draw
+    Workspace*                     recovering_ = nullptr;   // whose autosave is being offered
     CommandPalette                 palette_;
     PlayViewport                   play_;
     bool                           play_focused_ = false;   // the game has the keyboard
