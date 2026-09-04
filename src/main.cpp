@@ -451,7 +451,7 @@ int main(int argc, char** argv) {
         std::printf("          build: %s\n", build);
 
         for (int ss : {1, 2}) {
-            studioshell::StudioShellScene scene(proj);
+            studioshell::StudioShellScene scene(proj, kKnownEntries);
             std::vector<std::uint32_t> buf(static_cast<std::size_t>(LW * ss) * (LH * ss), 0);
             platform::Framebuffer fb{buf.data(), LW * ss, LH * ss, LW * ss};
             platform::InputState  in{};
@@ -520,7 +520,7 @@ int main(int argc, char** argv) {
         // workspace itself registers. Same registry `--cmd` reads; what differs is
         // what a given process has registered, which is the honest difference.
         cmd::register_release_commands(kKnownEntries);
-        auto scene = std::make_unique<studioshell::StudioShellScene>(proj);
+        auto scene = std::make_unique<studioshell::StudioShellScene>(proj, kKnownEntries);
         scene->set_clipboard(&platform::clipboard_get, &platform::clipboard_set);
         return run_window(cfg, std::move(scene));
     }

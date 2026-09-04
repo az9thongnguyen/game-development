@@ -126,6 +126,7 @@ add_executable(demo
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
+  src/games/studio_shell/project_panel.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
@@ -258,6 +259,7 @@ add_executable(test_shell_golden tests/test_shell_golden.cpp
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
+  src/games/studio_shell/project_panel.cpp
   src/games/hub/hub_panel.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp

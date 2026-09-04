@@ -9,7 +9,7 @@
 #include "engine/assets.hpp"
 #include "engine/commands/registry.hpp"
 #include "engine/hub/hub_build.hpp"
-#include "engine/project/project.hpp"
+#include "engine/project/inspect.hpp"
 #include "engine/release/ops.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/ui/theme.hpp"
@@ -20,7 +20,7 @@ namespace studioshell {
 namespace th = ui::theme;
 
 namespace {
-const char* const kSections[] = {"Map", "Hub", "Guide", "Learn", "About"};
+const char* const kSections[] = {"Map", "Project", "Hub", "Guide", "Learn", "About"};
 
 // The Learn panel is a static map from the platform to its documentation — the roadmap's
 // "build your first project" journey, pointing at the guide and the chapters behind it.
@@ -69,28 +69,29 @@ const char* const kGuideLines[] = {
     "  --shell|this Studio: Map workspace + Hub + these pages",
     "",
     "THIS SHELL",
-    "  Cmd+1..5|switch section (click the rail too)   Cmd+K = command palette",
+    "  Cmd+1..6|switch section (click the rail too)   Cmd+K = command palette",
     "  Map|B/R/G tool, 0-9 brush, RMB erase, MMB pan, wheel zoom, Cmd+S save, Cmd+Z undo",
+    "  Project|declared assets + their hashes, and why the project is / is not shippable (R re-reads)",
     "  Hub|Space publish, 1 promote to preview, 2 to production, R refresh",
 };
 
 }  // namespace
 
-std::string StudioShellScene::map_asset_of(const std::string& project_path) {
-    const auto bytes = assets::load_file(project_path);
-    if (!bytes) return {};
-    const auto proj = engine::parse_project(std::string(bytes->begin(), bytes->end()));
-    if (!proj) return {};
-    for (const engine::AssetRef& a : proj->assets)
-        if (a.type == "map") return a.path;
+std::string StudioShellScene::map_asset_of(const std::string& project_path,
+                                           const std::vector<std::string>& known_entries) {
+    // The fifth copy of "read and parse the manifest" used to live here. It reads
+    // through engine::inspect now, so the workspace opens the map the browser lists.
+    for (const engine::InspectedAsset& a : engine::inspect(project_path, known_entries).assets)
+        if (a.type == "map" && a.present) return a.path;
     return {};
 }
 
-StudioShellScene::StudioShellScene(std::string project_path)
+StudioShellScene::StudioShellScene(std::string project_path,
+                                   std::vector<std::string> known_entries)
     : project_path_(std::move(project_path)),
-      known_entries_{"fps"},
-      map_(map_asset_of(project_path_)) {
-    rebuild_hub();
+      known_entries_(std::move(known_entries)),
+      map_(map_asset_of(project_path_, known_entries_)) {
+    rebuild();
     // The workspace binds map.* to itself here, so the palette lists exactly what THIS
     // process can do. --cmd in a terminal sees the release commands and not these,
     // which is the truth: there is no map open in a terminal.
@@ -108,18 +109,39 @@ void StudioShellScene::set_clipboard(std::function<std::string()> get,
     clip_set_ = std::move(set);
 }
 
-void StudioShellScene::rebuild_hub() { hub_ = engine::build_hub_view(project_path_, known_entries_); }
+void StudioShellScene::rebuild() {
+    hub_        = engine::build_hub_view(project_path_, known_entries_);
+    inspection_ = engine::inspect(project_path_, known_entries_);
+}
+
+void StudioShellScene::run(projectui::Op op) {
+    switch (op) {
+        case projectui::Op::Reinspect:
+            rebuild();
+            flash(engine::OpResult{true, "re-read " + project_path_ + " and re-hashed " +
+                                         std::to_string(inspection_.assets.size()) + " asset(s)"},
+                  3.0);
+            break;
+        case projectui::Op::CopyPackageHash:
+            if (!inspection_.package.empty() && clip_set_) {
+                clip_set_(inspection_.package);
+                flash(engine::OpResult{true, "copied " + inspection_.package}, 3.0);
+            }
+            break;
+        case projectui::Op::None: break;
+    }
+}
 
 void StudioShellScene::run(hubui::Op op) {
     auto did = [&](const engine::OpResult& r) {
-        flash_ = r.message; flash_ok_ = r.ok; flash_t_ = 5.0; rebuild_hub();
+        flash_ = r.message; flash_ok_ = r.ok; flash_t_ = 5.0; rebuild();
     };
     const std::string why = reason_.empty() ? std::string("shell") : reason_;
     switch (op) {
         case hubui::Op::Publish:           did(engine::publish(project_path_, "development", why, known_entries_)); break;
         case hubui::Op::PromotePreview:    did(engine::promote("development", "preview", why)); break;
         case hubui::Op::PromoteProduction: did(engine::promote("preview", "production", why)); break;
-        case hubui::Op::Refresh:           rebuild_hub(); break;
+        case hubui::Op::Refresh:           rebuild(); break;
         case hubui::Op::CopySourceHash:
             if (hub_ && !hub_->local_package.empty() && clip_set_) {
                 clip_set_(hub_->local_package);
@@ -171,7 +193,7 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
                 flash(engine::OpResult{false, chosen + " needs arguments: " + info->args_help});
             } else {
                 flash(cmd::run(chosen));
-                rebuild_hub();
+                rebuild();
             }
             palette_.close();
         }
@@ -183,6 +205,11 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
     // ---- the map workspace ----
     map_.update(dt, in, /*interactive*/ modal_ == Modal::None && section_ == Map);
     if (auto msg = map_.take_message()) flash(*msg);
+
+    // R re-reads from disk: the panel is a snapshot, and the files it describes are
+    // edited by other tools while the Studio is open.
+    if (section_ == Project && modal_ == Modal::None && !cmd && in.pressed(platform::Key::R))
+        run(projectui::Op::Reinspect);
 
     // ---- hub operations ----
     hubui::Op asked = requested_;
@@ -262,7 +289,7 @@ void StudioShellScene::render(const engine::Context& ctx) {
 
     g.set_font_size(th::sz_caption);
     const int hint_line = th::sz_caption + th::space_xs;
-    g.draw_text(th::space_lg, h - th::space_lg - hint_line * 2, "Cmd+1..5  switch section",
+    g.draw_text(th::space_lg, h - th::space_lg - hint_line * 2, "Cmd+1..6  switch section",
                 th::text_muted);
     g.draw_text(th::space_lg, h - th::space_lg - hint_line, "Cmd+K  command palette",
                 th::text_muted);
@@ -274,6 +301,8 @@ void StudioShellScene::render(const engine::Context& ctx) {
 
     if (section_ == Map) {
         draw_map_section(g, area);
+    } else if (section_ == Project) {
+        run(projectui::draw_project_panel(ui_, g, inspection_, area, asset_sel_));
     } else if (section_ == Hub) {
         const hubui::Op clicked = hubui::draw_hub_panel(ui_, g, hub_ ? &*hub_ : nullptr,
                                                         project_path_, area);

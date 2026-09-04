@@ -23,13 +23,19 @@
 #include "engine/ui/ui.hpp"
 #include "games/hub/hub_panel.hpp"
 #include "games/studio_shell/map_workspace.hpp"
+#include "engine/project/inspect.hpp"
 #include "games/studio_shell/palette.hpp"
+#include "games/studio_shell/project_panel.hpp"
 
 namespace studioshell {
 
 class StudioShellScene : public engine::Scene {
 public:
-    explicit StudioShellScene(std::string project_path);
+    // known_entries is INJECTED, not built here. The scene used to hold its own
+    // {"fps"} literal while main.cpp knew {"fps","farm"}, so the Studio reported the
+    // farm project as having an unknown entry while --project-inspect said OK. One
+    // list, owned by the thing that can actually launch an entry.
+    StudioShellScene(std::string project_path, std::vector<std::string> known_entries);
     void update(double dt, const platform::InputState& input) override;
     void render(const engine::Context& ctx) override;
 
@@ -40,6 +46,10 @@ public:
     void set_clipboard(std::function<std::string()> get,
                        std::function<void(const std::string&)> set);
 
+    // The project as this scene last read it — the same engine::inspect answer the
+    // CLI prints. Exposed so a test can assert the Studio and the CLI agree.
+    [[nodiscard]] const engine::Inspection& inspection() const { return inspection_; }
+
     // The map the workspace opened, for tests and for the status bar.
     [[nodiscard]] const MapWorkspace& map_workspace() const { return map_; }
     [[nodiscard]] MapWorkspace&       map_workspace() { return map_; }
@@ -47,24 +57,31 @@ public:
 private:
     // Map first: this is an authoring tool, and the thing you came to do should be
     // the thing that is already open.
-    enum Section { Map = 0, Hub, Guide, Learn, About, SectionCount };
+    enum Section { Map = 0, Project, Hub, Guide, Learn, About, SectionCount };
     // One modal at a time, by construction. Two booleans would eventually both be
     // true and draw two cards on top of each other.
     enum class Modal { None, HubOp, Recovery };
 
     // The first `asset map` the manifest declares, or empty. Static so it can run in
     // the member-init list, before the object exists.
-    static std::string map_asset_of(const std::string& project_path);
+    static std::string map_asset_of(const std::string& project_path,
+                                    const std::vector<std::string>& known_entries);
 
-    void rebuild_hub();
+    // One refresh: the hub view and the inspection are two readings of the same
+    // files, and letting them go stale independently is how a panel ends up
+    // disagreeing with the panel next to it.
+    void rebuild();
     void run(hubui::Op op);
     void flash(const engine::OpResult& r, double seconds = 5.0);
     void draw_map_section(gfx::Renderer2D& g, ui::Rect area);
+    void run(projectui::Op op);
 
     std::string                    project_path_;
     std::vector<std::string>       known_entries_;
     int                            section_ = Map;   // an authoring tool opens on the work
     std::optional<engine::HubView> hub_;
+    engine::Inspection             inspection_{};
+    int                            asset_sel_ = 0;
     std::string                    flash_;
     bool                           flash_ok_ = true;
     double                         flash_t_ = 0;
