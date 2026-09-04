@@ -231,10 +231,24 @@ bool init(const Config& cfg) {
     const int win_h = cfg.fb_height * cfg.scale;
 
     g_quit_on_escape = cfg.quit_on_escape;
-    g_resizable      = cfg.resizable;
+    // A resizable window is a DESKTOP idea. On the web the canvas is an element the
+    // page sizes, and asking SDL for SDL_WINDOW_RESIZABLE makes it adopt that element's
+    // current CSS size instead of the one requested — which is how the Studio came up
+    // as a 3x3 canvas in a browser, i.e. invisible. The page scales the canvas to fit
+    // already, so the honest translation of "resizable" here is "let the page do it".
+    //
+    // The decision lives at the platform seam, not in the game: --shell asks for a
+    // workspace that fits the screen it is on, and what that means per platform is
+    // exactly what this layer is for.
+#ifdef __EMSCRIPTEN__
+    const bool resizable = false;
+#else
+    const bool resizable = cfg.resizable;
+#endif
+    g_resizable      = resizable;
     const Uint32 win_flags = SDL_WINDOW_SHOWN |
                              (cfg.highdpi ? SDL_WINDOW_ALLOW_HIGHDPI : 0u) |
-                             (cfg.resizable ? SDL_WINDOW_RESIZABLE : 0u);
+                             (resizable ? SDL_WINDOW_RESIZABLE : 0u);
     g_window = SDL_CreateWindow(cfg.title,
                                 SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                 win_w, win_h, win_flags);
@@ -246,9 +260,24 @@ bool init(const Config& cfg) {
     g_renderer = SDL_CreateRenderer(g_window, -1,
                                     SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!g_renderer) {
+        // No accelerated driver. On the web that means WebGL is unavailable — a browser
+        // with it disabled, a machine with no GPU, a headless run — and the whole app
+        // used to die there with one line on a console nobody reads. Everything above
+        // this layer draws into a CPU framebuffer anyway; the renderer's entire job is
+        // to put ONE textured quad on the screen, which software does perfectly well.
+        std::fprintf(stderr, "platform: no accelerated renderer (%s); using software\n",
+                     SDL_GetError());
+        g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_SOFTWARE);
+    }
+    if (!g_renderer) {
         std::fprintf(stderr, "platform: SDL_CreateRenderer failed: %s\n", SDL_GetError());
         return false;
     }
+    // Say which one we got. A screenshot that came out aliased and a screenshot that
+    // came out smooth are different evidence, and the difference is this line.
+    if (SDL_RendererInfo info; SDL_GetRendererInfo(g_renderer, &info) == 0)
+        std::fprintf(stderr, "platform: renderer '%s'%s\n", info.name,
+                     (info.flags & SDL_RENDERER_ACCELERATED) ? " (accelerated)" : " (software)");
 
     // Smooth (linear) present for real artwork; nearest for crisp retro pixels.
     // SSAA (g_ss>1) REQUIRES linear + non-integer so the physical texture is
