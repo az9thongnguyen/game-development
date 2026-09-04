@@ -81,6 +81,7 @@ private:
     int                            section_ = Map;   // an authoring tool opens on the work
     std::optional<engine::HubView> hub_;
     engine::Inspection             inspection_{};
+    std::vector<engine::AuditRecord> history_;   // read with the rest, drawn newest-first
     int                            asset_sel_ = 0;
     std::string                    flash_;
     bool                           flash_ok_ = true;

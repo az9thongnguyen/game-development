@@ -43,6 +43,7 @@ private:
     std::string                    path_;
     std::vector<std::string>       known_entries_;
     std::optional<engine::HubView> view_;
+    std::vector<engine::AuditRecord> history_;   // the audit log, read with the view
     std::string                    flash_;        // last op result message
     bool                           flash_ok_ = true;
     double                         flash_t_ = 0;  // seconds the flash stays visible

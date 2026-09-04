@@ -112,6 +112,7 @@ void StudioShellScene::set_clipboard(std::function<std::string()> get,
 void StudioShellScene::rebuild() {
     hub_        = engine::build_hub_view(project_path_, known_entries_);
     inspection_ = engine::inspect(project_path_, known_entries_);
+    history_    = engine::log();
 }
 
 void StudioShellScene::run(projectui::Op op) {
@@ -305,7 +306,7 @@ void StudioShellScene::render(const engine::Context& ctx) {
         run(projectui::draw_project_panel(ui_, g, inspection_, area, asset_sel_));
     } else if (section_ == Hub) {
         const hubui::Op clicked = hubui::draw_hub_panel(ui_, g, hub_ ? &*hub_ : nullptr,
-                                                        project_path_, area);
+                                                        project_path_, area, history_);
         if (clicked != hubui::Op::None) requested_ = clicked;
     } else if (section_ == Guide) {
         g.set_font_size(th::sz_title);

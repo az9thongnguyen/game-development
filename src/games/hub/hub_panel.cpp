@@ -4,6 +4,7 @@
 #include "games/hub/hub_panel.hpp"
 
 #include <cstdio>
+#include <ctime>
 
 #include "engine/renderer2d.hpp"
 #include "engine/ui/theme.hpp"
@@ -35,6 +36,28 @@ gfx::Color channel_tone(const std::string& name) {
     if (name == "development") return th::chan_dev;
     if (name == "preview")     return th::chan_preview;
     return th::chan_prod;                                 // production
+}
+
+// UTC, not local time: an audit log is read by whoever is on call, and two operators
+// comparing timestamps must not have to ask each other where they were sitting.
+std::string when(long long epoch) {
+    const std::time_t t = static_cast<std::time_t>(epoch);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%04d-%02d-%02d %02d:%02d",
+                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min);
+    return buf;
+}
+
+gfx::Color action_tone(const std::string& action) {
+    if (action == "rollback") return th::danger;    // the only one that moves backwards
+    if (action == "promote")  return th::accent;
+    return th::text_dim;                            // publish
 }
 
 void card(gfx::Renderer2D& g, ui::Rect r) {
@@ -80,7 +103,7 @@ bool op_is_destructive(Op op) { return op == Op::PromoteProduction; }
 
 Op draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
                   const engine::HubView* view, const std::string& project_path,
-                  ui::Rect area) {
+                  ui::Rect area, const std::vector<engine::AuditRecord>& history) {
     Op op = Op::None;
 
     if (!view) {
@@ -210,11 +233,57 @@ Op draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
         ui.end_layout();
     }
 
+    // The footer is taken from the FAR END first, so the history below can claim
+    // everything that is left without having to know how tall the footer is.
     {
         const ui::Rect r = ui.slot_end(th::sz_caption);
         g.set_font_size(th::sz_caption);
         g.draw_text(r.x, r.y, "Space publishes  ·  1 and 2 promote  ·  R refreshes  ·  Tab moves focus",
                     th::text_muted);
+    }
+
+    // ---- history: why each channel points where it points --------------------
+    // status() says WHERE a release is; only the audit log says how it got there and
+    // who said why. The data has been available since the store was written and no
+    // window has ever shown it — which is most of why "operational evidence" is still
+    // an empty box in the brief's ledger.
+    {
+        const ui::Rect r = ui.slot_rest();
+        const int row_h = th::sz_body + th::space_sm;
+        const int head_h = th::space_md + th::sz_caption + th::space_sm;
+        if (r.h >= head_h + row_h) {
+            card(g, r);
+            g.set_font_size(th::sz_caption);
+            g.draw_text(r.x + th::space_md, r.y + th::space_md, "HISTORY", th::text_muted);
+            const ui::Rect body{r.x + th::space_md, r.y + head_h,
+                                r.w - th::space_md * 2, r.h - head_h - th::space_sm};
+            if (history.empty()) {
+                g.set_font_size(th::sz_body);
+                g.draw_text(body.x, body.y, "Nothing has been published yet.", th::text_muted);
+            } else {
+                const int n = static_cast<int>(history.size());
+                ui.push_id("history");
+                const ui::Rect in = ui.begin_scroll("log", body, n * row_h);
+                for (int i = 0; i < n; ++i) {
+                    // Newest first: reverse the read order rather than the stored one.
+                    // The log on disk is append-only and must stay oldest-first.
+                    const engine::AuditRecord& e = history[static_cast<std::size_t>(n - 1 - i)];
+                    const int ry = in.y + i * row_h;
+                    g.set_font_size(th::sz_caption);
+                    g.draw_text(in.x, ry + 2, when(e.epoch).c_str(), th::text_muted);
+                    g.set_font_size(th::sz_body);
+                    g.draw_text(in.x + 120, ry, e.action.c_str(), action_tone(e.action));
+                    g.draw_text(in.x + 200, ry, e.channel.c_str(), channel_tone(e.channel));
+                    g.draw_text(in.x + 300, ry, short_hash(e.release).c_str(), th::text_dim);
+                    // The reason last and widest: it is the only column a human wrote,
+                    // and the only one that answers "why".
+                    if (!e.reason.empty())
+                        g.draw_text(in.x + 400, ry, e.reason.c_str(), th::text);
+                }
+                ui.end_scroll();
+                ui.pop_id();
+            }
+        }
     }
 
     ui.end_layout();

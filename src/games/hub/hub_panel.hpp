@@ -14,7 +14,10 @@
 
 #include <string>
 
+#include <vector>
+
 #include "engine/hub/hub.hpp"
+#include "engine/release/ops.hpp"   // AuditRecord — the history this panel shows
 #include "engine/ui/ui.hpp"
 
 namespace gfx { class Renderer2D; }
@@ -33,9 +36,14 @@ enum class Op {
 
 // Draw one project's hub inside `area` and return what was clicked. `view` may be
 // null (project unreadable), which draws the error state.
+//
+// `history` is the audit log, oldest first — read by the caller, because reading is
+// I/O and this file performs none. It is drawn newest-first: the question a release
+// history answers is "what just happened", and making that the last line you reach
+// is how a log stops being read.
 Op draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
                   const engine::HubView* view, const std::string& project_path,
-                  ui::Rect area);
+                  ui::Rect area, const std::vector<engine::AuditRecord>& history = {});
 
 // Human wording for a confirmation dialog about `op`, so the two scenes cannot
 // describe the same irreversible action differently.

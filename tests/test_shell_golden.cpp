@@ -24,6 +24,8 @@
 #include "engine/text/font.hpp"
 #include "engine/ui/theme.hpp"
 #include "engine/project/inspect.hpp"
+#include "engine/release/ops.hpp"
+#include "games/hub/hub_panel.hpp"
 #include "games/studio_shell/project_panel.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
 
@@ -161,6 +163,74 @@ int main() {
     // Six sections, six different screens.
     for (std::size_t i = 1; i < prints.size(); ++i) CHECK(prints[i] != prints[i - 1]);
     CHECK(prints[0] != prints[prints.size() - 1]);
+
+    // ---------------------------------------------------------------------
+    //  The Hub's history: status says WHERE a release is, the log says how it got
+    //  there. Newest first, because "what just happened" is the question it answers.
+    // ---------------------------------------------------------------------
+    {
+        const auto view = engine::build_hub_view(kProject, kKnownEntries);
+        CHECK(view.has_value());
+
+        const auto render_hub = [&](const std::vector<engine::AuditRecord>& hist) {
+            std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+            platform::Framebuffer f{b.data(), PW, PH, PW};
+            gfx::Renderer2D r(f, SS);
+            r.set_font(font.get(), th::sz_body);
+            r.clear(th::bg);
+            ui::Context u;
+            u.begin(&r, ui::Input{}, LW, LH);
+            hubui::draw_hub_panel(u, r, &*view, kProject,
+                                  ui::Rect{224, 24, LW - 248, LH - 48}, hist);
+            u.end();
+            return b;
+        };
+
+        engine::AuditRecord older;
+        older.epoch = 1000000000; older.action = "publish"; older.channel = "development";
+        older.release = "aaaaaaaaaaaaaaaa"; older.reason = "the older one";
+        engine::AuditRecord newer;
+        newer.epoch = 1700000000; newer.action = "promote"; newer.channel = "production";
+        newer.release = "bbbbbbbbbbbbbbbb"; newer.reason = "the newer one";
+
+        const auto empty = render_hub({});
+        const auto both  = render_hub({older, newer});   // stored oldest-first
+        const auto just_new = render_hub({newer});
+        const auto just_old = render_hub({older});
+
+        // Drawn at all, and each record adds to it. A ratio against the empty state
+        // would be measuring the card outline more than the rows; monotonic growth
+        // across none → one → two records is the property that actually holds.
+        const auto ink_below = [&](const std::vector<std::uint32_t>& b, int y0) {
+            int n = 0;
+            for (int y = y0 * SS; y < PH; ++y)
+                for (int x = 224 * SS; x < PW; ++x) {
+                    const std::uint32_t p = b[static_cast<std::size_t>(y) * PW + x];
+                    if (p != th::bg && p != th::elevated && p != th::border) ++n;
+                }
+            return n;
+        };
+        CHECK(ink_below(empty, 340) < ink_below(just_new, 340));
+        CHECK(ink_below(just_new, 340) < ink_below(both, 340));
+
+        // ...and NEWEST FIRST, pinned so the direction can actually fail. The first
+        // pixel row where {older,newer} differs from {newer} alone must be DEEPER than
+        // where it differs from {older} alone: both lists open with the newer record,
+        // so their top row is identical and the difference only appears one row down.
+        // Reverse the order and this inverts.
+        const auto first_diff_row = [&](const std::vector<std::uint32_t>& a,
+                                        const std::vector<std::uint32_t>& b, int y0) {
+            for (int y = y0 * SS; y < PH; ++y)
+                for (int x = 224 * SS; x < PW; ++x)
+                    if (a[static_cast<std::size_t>(y) * PW + x] !=
+                        b[static_cast<std::size_t>(y) * PW + x]) return y;
+            return PH;
+        };
+        const int d_vs_new = first_diff_row(both, just_new, 340);
+        const int d_vs_old = first_diff_row(both, just_old, 340);
+        CHECK(d_vs_new > d_vs_old);
+        CHECK(d_vs_old < PH);          // they DO differ somewhere, or the test proves nothing
+    }
 
     // ---------------------------------------------------------------------
     //  The Project section: the Studio's verdict is the CLI's verdict.
