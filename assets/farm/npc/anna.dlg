@@ -1,0 +1,16 @@
+dlg 1
+node start
+  say Anna Morning. You must be the one who took the old plot.
+  choice Ask about farming -> farming
+  choice Ask about the town -> town
+  choice Say goodbye -> bye
+node farming
+  say Anna Till it, plant it, water it. Water it every day or it just sits there.
+  say Anna Parsnips take four days. Turnips are quicker if you want coins today.
+  goto bye
+node town
+  say Anna Not much of one yet. The shop opens at nine, if I remember to open it.
+  goto bye
+node bye
+  say Anna Go on then. Daylight is the part you cannot buy back.
+  end

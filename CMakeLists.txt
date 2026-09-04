@@ -122,13 +122,14 @@ add_executable(demo
   src/games/anim/anim_scene.cpp
   src/games/hub/hub_scene.cpp
   src/games/hub/hub_panel.cpp
+  src/games/farm/farm_scene.cpp
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core map_edit_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core map_edit_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -373,6 +374,18 @@ add_executable(test_farm tests/test_farm.cpp)
 target_include_directories(test_farm PRIVATE src)
 target_link_libraries(test_farm PRIVATE farm_core engine_flags)
 add_test(NAME farm COMMAND test_farm)
+
+# The farm PLAYED, with no window: press the keys, check the world changed, and check
+# the screen changed with it — a simulation the render ignores looks like a frozen game.
+add_executable(test_farm_scene tests/test_farm_scene.cpp
+  src/games/farm/farm_scene.cpp
+  src/engine/renderer2d.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_farm_scene PRIVATE src)
+target_compile_definitions(test_farm_scene PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_farm_scene PRIVATE farm_core ui_core text_core engine_flags)
+add_test(NAME farm_scene COMMAND test_farm_scene)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;

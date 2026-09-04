@@ -1,0 +1,5 @@
+# Crops. days = waterings from planting to harvest; stages = drawn growth steps
+# (the last stage is the ripe one). Edit and rerun — no build needed.
+crop parsnip season=spring days=4 stages=5 sell=35 seed=20
+crop turnip  season=spring days=2 stages=3 sell=15 seed=8
+crop pumpkin season=autumn days=6 stages=4 sell=90 seed=50

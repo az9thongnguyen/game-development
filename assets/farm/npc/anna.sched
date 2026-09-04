@@ -1,0 +1,8 @@
+sched 1
+npc anna
+# Times are minutes past midnight, written as HH:MM. Places are map entities, so
+# moving Anna's shop means editing the map, not this file.
+at 06:00 anna_home
+at 09:00 anna_shop
+at 17:00 anna_square
+at 21:00 anna_home

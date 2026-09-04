@@ -33,6 +33,7 @@
 #include "demo/demo_scene.hpp"
 #include "games/chess/chess_gui.hpp"
 #include "games/chess/chess_tui.hpp"
+#include "games/farm/farm_scene.hpp"
 #include "games/fps/raycast_scene.hpp"
 #include "games/viz3d/scene3d.hpp"
 #include "games/viz3d/editor_scene.hpp"
@@ -104,12 +105,23 @@ int launch_entry(const std::string& entry) {
         cfg.highdpi   = true;
         return run_window(cfg, std::make_unique<fps::RaycastScene>());
     }
+    if (entry == "farm") {
+        platform::Config cfg;
+        cfg.title     = "hand-engine — farm";
+        cfg.fb_width  = 640;
+        cfg.fb_height = 360;
+        cfg.scale     = 2;
+        cfg.smooth    = false;   // a tile game wants crisp pixels, not a soft upscale
+        cfg.highdpi   = true;
+        cfg.supersample = kAA;
+        return run_window(cfg, std::make_unique<farm::FarmScene>());
+    }
     std::fprintf(stderr, "unknown entry scene: %s\n", entry.c_str());
     return 1;
 }
 
 // The entry ids a project manifest may name — kept in sync with launch_entry.
-const std::vector<std::string> kKnownEntries = {"fps"};
+const std::vector<std::string> kKnownEntries = {"fps", "farm"};
 
 // Resolve a project's declared assets to packaged resources, each content-hashed
 // through the assets:: seam. Any asset that does not resolve is appended to

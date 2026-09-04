@@ -241,6 +241,29 @@ static void test_camera() {
     Camera2D c;
     c.set_viewport(100, 80);
 
+    // Setting the VIEWPORT or the BOUNDS re-clamps. Bounds are a relationship between
+    // the world and the view, so a camera that was legal for the old size is not
+    // automatically legal for the new one — and a scene learns its framebuffer size
+    // only when it first draws, which is after it has already snapped the camera.
+    // Without this the first frame of a world smaller than the window is off-centre.
+    {
+        Camera2D late;
+        late.set_bounds(384.0f, 288.0f);
+        late.snap_to(Vec2f{72.0f, 136.0f});     // no viewport known yet
+        late.set_viewport(640, 360);            // ...now it is
+        // The world is smaller than the viewport, so it must be CENTRED.
+        CHECK(approx(late.centre().x, 384.0f / 2.0f));
+        CHECK(approx(late.centre().y, 288.0f / 2.0f));
+
+        Camera2D shrink;
+        shrink.set_viewport(100, 80);
+        shrink.set_bounds(1000.0f, 1000.0f);
+        shrink.snap_to(Vec2f{990.0f, 990.0f});
+        CHECK(approx(shrink.centre().x, 950.0f));    // clamped to the far edge
+        shrink.set_viewport(400, 400);               // a much wider view
+        CHECK(approx(shrink.centre().x, 800.0f));    // ...re-clamped for it
+    }
+
     // Rigid follow puts the target at the centre.
     c.set_smoothing(1.0f);
     c.follow(Vec2f{200.0f, 150.0f}, 1.0f / 60.0f);

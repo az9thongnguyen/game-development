@@ -23,7 +23,7 @@
 | S3 | `tilemap_core` v2 + `camera2d` | ✅ xong | `feat/s3-tilemap` | 110 |
 | S4a | `commands_core` + undo/autosave (nền) | ✅ xong | `feat/s4-commands` | 111 |
 | S4b | Map workspace + command palette (consumer) | ✅ xong | `feat/s4b-map-workspace` | 112 |
-| S5 | Farm — vertical slice | ⬜ chưa | | 113 |
+| S5 | Farm — vertical slice | ✅ xong | `feat/s5-farm` | 113 |
 | S6 | Asset browser · Validation · Release workspace · Play viewport | ⬜ chưa | | 114 |
 | S7 | Studio asset tooling | ⬜ chưa | | 115–116 |
 | S8 | Farm v1 + BaaS + HUD | ⬜ chưa | | 117 |
@@ -233,6 +233,43 @@ mà chương 111 đã ghi thẳng ra.
 - Chưa render tileset (tile id vẽ bằng bảng 10 màu cố định); chưa sửa entity/trigger;
   zoom chưa neo theo con trỏ; `set_cursor` vẫn chưa có consumer.
 
+### S5 — Farm vertical slice ✅ 2026-09-04 · chương 113
+
+Merge `feat/s5-farm`. Game thứ hai, và là game **đầu tiên vào bằng manifest**:
+`--project projects/farm.gameproject` → `entry farm` → `launch_entry` → scene. Không
+thêm flag CLI nào.
+
+- **`farm_core`** (không renderer): đồng hồ 06:00→02:00, năng lượng, cuốc/tưới/trồng/
+  thu, tăng trưởng cây, lịch NPC (giải qua **entity của `map2`**, nên đổi chỗ cửa hàng
+  là sửa map chứ không sửa file lịch), dialogue dạng data, save có version.
+- **`save_core`** (`engine/document/save`) generic: version + chuỗi migration. Save của
+  bản **mới hơn bị từ chối**; **thiếu bước** trong chuỗi cũng bị từ chối.
+- **`FarmScene`** không SDL → chạy được trong test không cửa sổ.
+- Data ở `assets/farm/*.def` — cân bằng số liệu **không cần build lại**.
+
+**✅ Đã chạy:** `ctest` **69/69**; **ASan/UBSan sạch**; render game ra ngoài màn hình ở
+640×360×ss2 (ngày / vừa trồng / đêm) rồi **soi ảnh**; `--project-inspect`,
+`--project-package`, `--hub` chạy trên `farm.gameproject` **không sửa gì**; web build
+xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
+
+**Hai bug thật do consumer lộ ra:**
+1. **Tăng trưởng cây**: "chín" từng suy ra từ chỉ số stage đã làm tròn → cây có số
+   stage không chia hết số ngày **thu hoạch được sớm một ngày**. Parsnip (4/5, chia hết)
+   không thể lộ ra. Nay **chín** (theo lịch) và **hình dạng** là hai quyết định tách rời,
+   và test có cây 5 ngày / 3 stage.
+2. **`Camera2D::set_viewport` không clamp lại** → thế giới nhỏ hơn cửa sổ không được
+   căn giữa ở frame đầu; và resize cửa sổ sẽ đẩy view ra ngoài thế giới. `set_bounds`
+   cũng vậy. Đây là **consumer đầu tiên** của `Camera2D` kể từ chương 110.
+
+**⚠️ Chưa xác minh:**
+- **Chưa từng chơi trong cửa sổ thật** — nhịp bước, cảm giác camera khi đi, và "12 phút
+  thật một ngày có đúng không" đều là câu hỏi **cảm giác**, test không trả lời được.
+- **Chưa có art**: tile là màu phẳng, nhân vật là hình tròn. Tileset CC0 và **tên game
+  thật** vẫn là quyết định đang chờ.
+- Map do script sinh ra, chưa ai ngồi vẽ; **một map duy nhất**, chưa dùng trigger nên
+  chưa có nhà trong / thị trấn.
+- Chưa có shop / mùa / thời tiết / friendship / câu cá (v1 — S8); cloud save chưa nối.
+
 ---
 
 ## Quyết định kiến trúc đã chốt (đừng đảo lại mà không có lý do mới)
@@ -265,24 +302,35 @@ mà chương 111 đã ghi thẳng ra.
 | D24 | Scene đăng ký lệnh gắn với `this` **phải** gỡ trong destructor | Handler sống lâu hơn object = cú gọi vào bộ nhớ đã giải phóng |
 | D25 | Palette **không** thu tham số | Ba giá trị cần validate thuộc về dialog của Hub, không phải một ô một dòng |
 | D26 | Test round-trip phải seed **từ struct**, không chỉ từ file | Seed từ file chỉ kiểm parser; tool thì đi chiều ngược lại |
+| D27 | Balance data (crop/item) là **file text**, không phải literal C++ | Cân bằng số liệu là công việc lặp lại; nó không nên cần build |
+| D28 | Số sai trong file def là **lỗi**, không phải 0 âm thầm | `days=four` → cây không bao giờ lớn mà không có dòng nào giải thích |
+| D29 | **Chín** và **hình dạng** của cây là hai quyết định tách rời | Suy cái này từ cái kia biến một lựa chọn làm tròn thành bug cân bằng |
+| D30 | Save của bản **mới hơn** bị từ chối, và **thiếu bước** migration cũng vậy | Đọc rồi ghi lại = mất dữ liệu đội lốt tương thích |
+| D31 | Runner giữ việc **tăng version**, migration chỉ mô tả đổi dữ liệu | Migration quên bump = vòng lặp vô hạn |
+| D32 | `set_viewport`/`set_bounds` **clamp lại** | Bounds là quan hệ giữa thế giới và **view**; đổi view thì vị trí cũ có thể không còn hợp lệ |
+| D33 | Fixture của test phải **phá vỡ sự trùng hợp tiện lợi** | 4 và 5-1 tình cờ bằng nhau, và chính sự trùng hợp đó đang làm việc thay cho code |
 
 ---
 
 ## Việc kế tiếp
 
-**S5 — Farm vertical slice**, chương 113.
+**S6 — Studio: Asset browser, Validation panel, Release workspace, Play viewport**,
+chương 114.
 
-Năm slice vừa rồi đều là hạ tầng, và S4b vừa đóng nợ "motion without connection".
-Theo Rule 5 (blend) của brief thì **S5 mới là lựa chọn đúng tiếp theo**: nó chỉ phụ
-thuộc S3 (xong) và giờ có thêm một editor thật để tạo map cho nó.
+Farm giờ là *lý do* để Studio trưởng thành: có một game thứ hai để duyệt asset, để
+validate, và để **Play viewport** chạy thử ngay trong Studio thay vì phải mở cửa sổ
+riêng. S6 cũng là chỗ hấp thụ Sandbox → workspace thứ hai, và **khi đó** interface
+`Workspace` mới đáng tạo (D23).
 
-**Hai quyết định cần anh chốt trước khi S5 tới phần nhìn được** (`PLAN.md §8`):
-1. **Tên hai game** (đang dùng placeholder *Farm* / *Creatures*).
-2. **Bộ asset pixel-art license mở** (CC0/CC-BY) để dùng tạm — hay chờ tới S7 tự vẽ
-   trong Studio?
-
-Phần `farm_core` thuần (đồng hồ, năng lượng, cuốc/tưới/thu hoạch, mô phỏng
-deterministic + test) **không phụ thuộc cả hai**, nên làm được ngay.
+**Ba quyết định vẫn cần anh chốt:**
+1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm và đã đi vào
+   `assets/projects/farm.gameproject` + `launch_entry`. Đổi tên sau là một lần sửa
+   manifest + entry id, không đắt, nhưng càng để lâu càng nhiều chỗ nhắc tới.
+2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) để Farm có art — hay chờ S7 tự vẽ
+   trong Studio? Hôm nay game vẽ bằng màu phẳng và hình tròn, và nó **trông đúng như
+   thế**.
+3. **Xoá 10 flag CLI cũ** ở S6 (`--hub-ui --shell --editor --sandbox --maplab` …) —
+   cần anh đồng ý (`PLAN.md §8` mục 3).
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
