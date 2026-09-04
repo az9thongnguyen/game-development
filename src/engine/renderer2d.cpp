@@ -24,12 +24,35 @@ inline float fpart(float x)  { return x - std::floor(x); }
 inline float rfpart(float x) { return 1.0f - fpart(x); }
 } // namespace
 
+// ---- clipping ---------------------------------------------------------------
+void Renderer2D::push_clip(int x, int y, int w, int h) {
+    if (clip_depth_ < kMaxClipDepth) clip_stack_[clip_depth_] = clip_;
+    ++clip_depth_;
+    if (clip_depth_ > kMaxClipDepth) return;   // absurdly deep: keep the parent clip
+
+    // Intersect, never replace — a child can only ever shrink the drawable area.
+    const int px0 = x * ss_, py0 = y * ss_;
+    const int px1 = (x + w) * ss_, py1 = (y + h) * ss_;
+    if (px0 > clip_.x0) clip_.x0 = px0;
+    if (py0 > clip_.y0) clip_.y0 = py0;
+    if (px1 < clip_.x1) clip_.x1 = px1;
+    if (py1 < clip_.y1) clip_.y1 = py1;
+    if (clip_.x1 < clip_.x0) clip_.x1 = clip_.x0;   // empty, not inverted
+    if (clip_.y1 < clip_.y0) clip_.y1 = clip_.y0;
+}
+
+void Renderer2D::pop_clip() {
+    if (clip_depth_ <= 0) return;               // unbalanced pop: ignore rather than corrupt
+    --clip_depth_;
+    if (clip_depth_ < kMaxClipDepth) clip_ = clip_stack_[clip_depth_];
+}
+
 // ---- physical sinks (no scaling) --------------------------------------------
 void Renderer2D::fill_phys(int x, int y, int w, int h, Color c) {
-    int x0 = x < 0 ? 0 : x;
-    int y0 = y < 0 ? 0 : y;
-    int x1 = x + w; if (x1 > fb_.width)  x1 = fb_.width;
-    int y1 = y + h; if (y1 > fb_.height) y1 = fb_.height;
+    int x0 = x < clip_.x0 ? clip_.x0 : x;
+    int y0 = y < clip_.y0 ? clip_.y0 : y;
+    int x1 = x + w; if (x1 > clip_.x1)  x1 = clip_.x1;
+    int y1 = y + h; if (y1 > clip_.y1)  y1 = clip_.y1;
     for (int yy = y0; yy < y1; ++yy) {
         Color* row = &fb_.pixels[yy * fb_.pitch];
         for (int xx = x0; xx < x1; ++xx) row[xx] = c;
@@ -41,7 +64,7 @@ void Renderer2D::fill_phys(int x, int y, int w, int h, Color c) {
 // the AA primitives (Wu lines, coverage shapes) all deposit partial coverage here.
 void Renderer2D::blend_cov(int x, int y, Color c, std::uint8_t coverage) {
     if (coverage == 0) return;
-    if (x < 0 || y < 0 || x >= fb_.width || y >= fb_.height) return;
+    if (x < clip_.x0 || y < clip_.y0 || x >= clip_.x1 || y >= clip_.y1) return;
     const std::uint32_t a = static_cast<std::uint32_t>(a_of(c)) * coverage / 255u;
     if (a == 0) return;
     Color& dst = fb_.pixels[y * fb_.pitch + x];
@@ -54,7 +77,7 @@ void Renderer2D::blend_cov(int x, int y, Color c, std::uint8_t coverage) {
 // is left alone (the framebuffer stays opaque).
 void Renderer2D::add_cov(int x, int y, Color c, std::uint8_t coverage) {
     if (coverage == 0) return;
-    if (x < 0 || y < 0 || x >= fb_.width || y >= fb_.height) return;
+    if (x < clip_.x0 || y < clip_.y0 || x >= clip_.x1 || y >= clip_.y1) return;
     const std::uint32_t w = static_cast<std::uint32_t>(a_of(c)) * coverage / 255u;  // weight 0..255
     if (w == 0) return;
     Color& dst = fb_.pixels[y * fb_.pitch + x];
@@ -70,10 +93,9 @@ void Renderer2D::add_cov(int x, int y, Color c, std::uint8_t coverage) {
 
 // ---- logical primitives (scale by ss_, then hit the sinks) ------------------
 void Renderer2D::clear(Color c) {
-    for (int y = 0; y < fb_.height; ++y) {
-        Color* row = &fb_.pixels[y * fb_.pitch];
-        for (int x = 0; x < fb_.width; ++x) row[x] = c;
-    }
+    // Respects the clip, so "clear this region" works and the ordinary whole-frame
+    // clear is unchanged (the clip starts as the entire framebuffer).
+    fill_phys(clip_.x0, clip_.y0, clip_.x1 - clip_.x0, clip_.y1 - clip_.y0, c);
 }
 
 void Renderer2D::set_pixel(int x, int y, Color c) {

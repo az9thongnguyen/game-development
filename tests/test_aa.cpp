@@ -162,6 +162,103 @@ int main() {
         r.blit_scaled(s, 0, 0, 0, 4);                    // non-positive dw -> no-op (no crash)
     }
 
+    // ---------------------------------------------------------------------
+    //  Clip stack. Without it a panel cannot contain its own contents — the only
+    //  bound was the framebuffer edge — so there is no scroll region and no popup
+    //  that clips to its frame.
+    // ---------------------------------------------------------------------
+    {
+        constexpr int W = 20, H = 20;
+        constexpr std::uint32_t BG = 0xFF000000, FG = 0xFFFFFFFF, FG2 = 0xFF00FF00;
+        std::vector<std::uint32_t> buf(static_cast<std::size_t>(W) * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        gfx::Renderer2D r(fb);
+        const auto at = [&](int x, int y) { return buf[static_cast<std::size_t>(y) * W + x]; };
+
+        // A fill larger than the clip is cut down to it, on all four sides.
+        r.push_clip(5, 5, 6, 6);                 // [5,11) x [5,11)
+        r.fill_rect(0, 0, W, H, FG);
+        r.pop_clip();
+        CHECK(at(4, 8)  == BG);   CHECK(at(5, 8)  == FG);
+        CHECK(at(10, 8) == FG);   CHECK(at(11, 8) == BG);
+        CHECK(at(8, 4)  == BG);   CHECK(at(8, 5)  == FG);
+        CHECK(at(8, 10) == FG);   CHECK(at(8, 11) == BG);
+
+        // After popping, drawing is unrestricted again.
+        r.fill_rect(0, 0, 2, 2, FG2);
+        CHECK(at(0, 0) == FG2);
+
+        // Nesting INTERSECTS: a child asking for more than its parent still gets
+        // only the parent's area. This is the property that makes a scrolled list
+        // inside a panel safe.
+        for (auto& p : buf) p = BG;
+        r.push_clip(5, 5, 6, 6);
+        r.push_clip(0, 0, W, H);                 // asks for everything...
+        r.fill_rect(0, 0, W, H, FG);             // ...still confined to [5,11)
+        r.pop_clip();
+        r.pop_clip();
+        CHECK(at(4, 8) == BG);
+        CHECK(at(5, 8) == FG);
+        CHECK(at(11, 8) == BG);
+
+        // An empty intersection draws nothing at all rather than inverting.
+        for (auto& p : buf) p = BG;
+        r.push_clip(0, 0, 4, 4);
+        r.push_clip(10, 10, 4, 4);               // disjoint from the parent
+        r.fill_rect(0, 0, W, H, FG);
+        r.pop_clip();
+        r.pop_clip();
+        int lit = 0;
+        for (auto p : buf) if (p != BG) ++lit;
+        CHECK(lit == 0);
+
+        // The clip binds the anti-aliased sink too, not just solid fills — glyphs,
+        // Wu lines and coverage shapes all deposit through blend_cov.
+        for (auto& p : buf) p = BG;
+        r.push_clip(0, 0, 10, 20);
+        r.fill_circle(10, 10, 8, FG);            // centred on the clip's right edge
+        r.pop_clip();
+        int right_of_clip = 0;
+        for (int y = 0; y < H; ++y)
+            for (int x = 10; x < W; ++x) if (at(x, y) != BG) ++right_of_clip;
+        CHECK(right_of_clip == 0);
+        CHECK(at(6, 10) != BG);                  // ...and it did draw inside
+
+        // clear() respects the clip, so a region can be reset without touching
+        // the rest of the frame.
+        for (auto& p : buf) p = FG;
+        r.push_clip(2, 2, 3, 3);
+        r.clear(BG);
+        r.pop_clip();
+        CHECK(at(2, 2) == BG);
+        CHECK(at(4, 4) == BG);
+        CHECK(at(1, 1) == FG);
+        CHECK(at(5, 5) == FG);
+
+        // An unbalanced pop is ignored rather than corrupting the state.
+        r.pop_clip(); r.pop_clip();
+        for (auto& p : buf) p = BG;
+        r.fill_rect(0, 0, 3, 3, FG);
+        CHECK(at(0, 0) == FG);
+    }
+
+    // Supersampling: the clip is given in LOGICAL coordinates like everything else.
+    {
+        constexpr int LW = 10, LH = 10, SS = 2;
+        constexpr std::uint32_t BG = 0xFF000000, FG = 0xFFFFFFFF;
+        std::vector<std::uint32_t> buf(static_cast<std::size_t>(LW * SS) * (LH * SS), BG);
+        platform::Framebuffer fb{buf.data(), LW * SS, LH * SS, LW * SS};
+        gfx::Renderer2D r(fb, SS);
+        r.push_clip(2, 2, 4, 4);
+        r.fill_rect(0, 0, LW, LH, FG);
+        r.pop_clip();
+        const auto phys = [&](int px, int py) { return buf[static_cast<std::size_t>(py) * (LW * SS) + px]; };
+        CHECK(phys(3, 5) == BG);       // logical x=1.5 -> outside
+        CHECK(phys(4, 5) == FG);       // logical x=2   -> inside
+        CHECK(phys(11, 5) == FG);      // logical x=5.5 -> inside
+        CHECK(phys(12, 5) == BG);      // logical x=6   -> outside
+    }
+
     if (g_failures == 0) std::printf("aa: all tests passed\n");
     else                 std::printf("aa: %d FAILURE(S)\n", g_failures);
     return g_failures;

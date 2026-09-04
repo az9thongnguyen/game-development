@@ -32,7 +32,7 @@ public:
     // logical size. The whole public API is in LOGICAL coordinates — every method
     // scales by ss internally — so game code is unaware of SSAA. ss=1 is a no-op.
     explicit Renderer2D(platform::Framebuffer fb, int ss = 1)
-        : fb_(fb), ss_(ss < 1 ? 1 : ss) {}
+        : clip_{0, 0, fb.width, fb.height}, fb_(fb), ss_(ss < 1 ? 1 : ss) {}
 
     int width()  const { return fb_.width  / ss_; }   // LOGICAL size
     int height() const { return fb_.height / ss_; }
@@ -63,6 +63,18 @@ public:
     // alpha is the total darkness, divided across layers.
     void drop_shadow(int x, int y, int w, int h, int radius, int dx, int dy, int spread, Color c);
 
+    // ---- Clipping -----------------------------------------------------------
+    // Restrict every subsequent draw to `rect` (LOGICAL coords), intersected with
+    // whatever clip is already in force. Intersecting rather than replacing is what
+    // makes nesting correct: a scrolled list inside a panel must not be able to draw
+    // outside the panel by pushing a bigger rect.
+    //
+    // Without this a panel cannot contain its contents at all — the only bound was
+    // the framebuffer edge — so there could be no scroll regions and no popup that
+    // clips to its own frame.
+    void push_clip(int x, int y, int w, int h);
+    void pop_clip();
+
     void blit(const Sprite& s, int x, int y);  // alpha-blended sprite (native size)
     // Nearest-neighbour resample of `s` into the logical dw×dh rect at (dx,dy).
     void blit_scaled(const Sprite& s, int dx, int dy, int dw, int dh);
@@ -89,6 +101,15 @@ private:
     void fill_phys(int px, int py, int pw, int ph, Color c);           // solid rect
     void blend_cov(int px, int py, Color c, std::uint8_t coverage);    // coverage blend
     void add_cov(int px, int py, Color c, std::uint8_t coverage);      // additive coverage (glow)
+
+    // The active clip in PHYSICAL coords, half-open [x0,x1) x [y0,y1). Every sink
+    // clamps to this instead of to the framebuffer; it starts as the whole
+    // framebuffer, so code that never clips behaves exactly as before.
+    struct ClipRect { int x0, y0, x1, y1; };
+    ClipRect clip_{0, 0, 0, 0};
+    static constexpr int kMaxClipDepth = 16;
+    ClipRect clip_stack_[kMaxClipDepth]{};
+    int      clip_depth_ = 0;    // may exceed kMaxClipDepth; deeper pushes keep the parent clip
 
     platform::Framebuffer fb_;
     text::Font*           font_    = nullptr;
