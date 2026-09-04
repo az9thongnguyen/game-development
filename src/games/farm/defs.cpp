@@ -94,6 +94,86 @@ std::optional<Defs> parse_defs(const std::string& text) {
     return d;
 }
 
+namespace {
+
+// One `key=value` onto a crop. Returns an error phrase, or "" when it assigned.
+// Split out so the two record kinds share the "what went wrong" wording, and so the
+// caller can decide to apply nothing when any field fails.
+std::string assign_crop(CropDef& c, const std::string& k, const std::string& v) {
+    if (k == "season") { c.season = v; return {}; }
+    if (k == "days")   return to_int(v, c.days)   ? std::string() : "'" + v + "' is not a number";
+    if (k == "stages") return to_int(v, c.stages) ? std::string() : "'" + v + "' is not a number";
+    if (k == "sell")   return to_int(v, c.sell)   ? std::string() : "'" + v + "' is not a number";
+    if (k == "seed")   return to_int(v, c.seed)   ? std::string() : "'" + v + "' is not a number";
+    return "unknown field '" + k + "'";
+}
+
+std::string assign_item(ItemDef& i, const std::string& k, const std::string& v) {
+    if (k == "type") { i.type = v; return {}; }
+    if (k == "sell") return to_int(v, i.sell) ? std::string() : "'" + v + "' is not a number";
+    if (k == "tier") return to_int(v, i.tier) ? std::string() : "'" + v + "' is not a number";
+    return "unknown field '" + k + "'";
+}
+
+} // namespace
+
+OverrideReport apply_overrides(Defs& into, const std::string& text) {
+    OverrideReport rep;
+    std::istringstream in(text);
+    std::string        line;
+    while (std::getline(in, line)) {
+        if (const auto hash = line.find('#'); hash != std::string::npos) line.erase(hash);
+        std::istringstream ln(line);
+        std::string        kind, name;
+        if (!(ln >> kind)) continue;
+        if (kind != "crop" && kind != "item") {
+            rep.problems.push_back("unknown record '" + kind + "'");
+            continue;
+        }
+        if (!(ln >> name)) { rep.problems.push_back(kind + " line with no name"); continue; }
+        const std::string where = kind + " " + name;
+
+        // Locate the record first: an override names something that already exists, so
+        // an unknown name is a typo, not a new definition. Adding a crop from a
+        // dashboard would give the operator a way to ship content that no client has
+        // a sprite, a season or a seed item for.
+        const int at   = kind == "crop" ? into.crop_index(name) : -1;
+        ItemDef*  item = nullptr;
+        if (kind == "item")
+            for (ItemDef& it : into.items)
+                if (it.name == name) { item = &it; break; }
+        if ((kind == "crop" && at < 0) || (kind == "item" && item == nullptr)) {
+            rep.problems.push_back("unknown " + where);
+            continue;
+        }
+
+        // Everything lands on a COPY and is committed only if the whole line worked. A
+        // line that sets three fields and mistypes the fourth must not leave the record
+        // half-changed: that is a balance nobody chose and nobody can see.
+        CropDef c = at >= 0 ? into.crops[static_cast<std::size_t>(at)] : CropDef{};
+        ItemDef i = item ? *item : ItemDef{};
+
+        int         applied = 0;
+        std::string tok, k, v, why;
+        while (why.empty() && (ln >> tok)) {
+            if (!split_kv(tok, k, v)) { why = "'" + tok + "' is not key=value"; break; }
+            why = kind == "crop" ? assign_crop(c, k, v) : assign_item(i, k, v);
+            if (why.empty()) ++applied;
+        }
+        // Remote config must not be able to brick a running game: a crop that never
+        // grows, or one whose stage count divides by zero when it is drawn, is refused
+        // here rather than discovered on the field.
+        if (why.empty() && kind == "crop" && (c.days < 1 || c.stages < 2))
+            why = "days/stages would make it unplayable";
+
+        if (!why.empty()) { rep.problems.push_back(where + ": " + why); continue; }
+        if (at >= 0) into.crops[static_cast<std::size_t>(at)] = c;
+        else         *item = i;
+        rep.applied += applied;
+    }
+    return rep;
+}
+
 void merge_defs(Defs& into, const Defs& more) {
     for (const CropDef& c : more.crops) {
         const int at = into.crop_index(c.name);

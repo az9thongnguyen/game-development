@@ -14,6 +14,7 @@
 
 #include "engine/document/save.hpp"
 #include "games/farm/defs.hpp"
+#include "games/farm/cloud.hpp"
 #include "games/farm/dialogue.hpp"
 #include "games/farm/world.hpp"
 
@@ -458,8 +459,118 @@ static void test_three_days_are_reproducible() {
     CHECK(a.soil.size() == 6);
 }
 
+
+// -----------------------------------------------------------------------------
+//  Overrides: the same text, arriving from a dashboard instead of a file.
+//  The claim under test is that an override touches ONLY what it names — which is
+//  exactly what merge_defs does not do, and why this function had to exist.
+// -----------------------------------------------------------------------------
+static void test_overrides() {
+    Defs d = *parse_defs(
+        "crop parsnip season=spring days=6 stages=5 sell=35 seed=20\n"
+        "crop kale    season=summer days=9 stages=4 sell=60 seed=40\n"
+        "item hoe type=tool tier=1\n");
+
+    // A price change is a price change. The five other fields survive it — this is
+    // the whole reason apply_overrides is not merge_defs.
+    OverrideReport r = apply_overrides(d, "crop parsnip sell=70\n");
+    CHECK(r.applied == 1);
+    CHECK(r.problems.empty());
+    CHECK(d.crop("parsnip")->sell   == 70);
+    CHECK(d.crop("parsnip")->days   == 6);      // NOT reset to the struct default (4)
+    CHECK(d.crop("parsnip")->stages == 5);
+    CHECK(d.crop("parsnip")->seed   == 20);
+    CHECK(d.crop("parsnip")->season == "spring");
+    CHECK(d.crop("kale")->sell == 60);          // untouched record
+
+    // Several fields, several records, one blob — the shape a live event payload has.
+    r = apply_overrides(d, "crop parsnip sell=100 days=3\ncrop kale sell=90\nitem hoe tier=3\n");
+    CHECK(r.applied == 4);
+    CHECK(r.problems.empty());
+    CHECK(d.crop("parsnip")->sell == 100 && d.crop("parsnip")->days == 3);
+    CHECK(d.crop("kale")->sell == 90);
+    CHECK(d.item("hoe")->tier == 3);
+
+    // A typo is a typo: reported, and NOTHING from that line lands. The sell=5 in
+    // front of the bad field must not survive, or the operator gets a price they can
+    // see and a field they think they set.
+    r = apply_overrides(d, "crop parsnip sell=5 dayz=1\n");
+    CHECK(r.applied == 0);
+    CHECK(r.problems.size() == 1);
+    CHECK(d.crop("parsnip")->sell == 100);      // the earlier value, untouched
+
+    r = apply_overrides(d, "crop parsnip sell=abc\n");
+    CHECK(r.applied == 0 && r.problems.size() == 1);
+    CHECK(d.crop("parsnip")->sell == 100);
+
+    // Remote config cannot brick the game: a crop that never grows is refused here,
+    // not discovered on the field with a division by zero.
+    r = apply_overrides(d, "crop parsnip stages=1\n");
+    CHECK(r.applied == 0 && r.problems.size() == 1);
+    CHECK(d.crop("parsnip")->stages == 5);
+    r = apply_overrides(d, "crop parsnip days=0\n");
+    CHECK(r.applied == 0 && r.problems.size() == 1);
+    CHECK(d.crop("parsnip")->days == 3);
+
+    // An override NAMES something that exists. Inventing a crop from a dashboard
+    // would ship content no client has a seed item or a sprite for.
+    r = apply_overrides(d, "crop turnip sell=10\n");
+    CHECK(r.applied == 0 && r.problems.size() == 1);
+    CHECK(d.crop("turnip") == nullptr);
+    CHECK(d.crops.size() == 2);
+
+    // Comments and blank lines behave like the file they came from.
+    r = apply_overrides(d, "# festival\n\ncrop kale sell=120   # double\n");
+    CHECK(r.applied == 1 && r.problems.empty());
+    CHECK(d.crop("kale")->sell == 120);
+
+    // Nothing at all is not an error, it is a quiet Tuesday.
+    r = apply_overrides(d, "");
+    CHECK(r.applied == 0 && r.problems.empty());
+}
+
+// -----------------------------------------------------------------------------
+//  Which save wins. The one operation in this project that can destroy work by
+//  succeeding, so the whole table is pinned rather than the happy path.
+// -----------------------------------------------------------------------------
+static void test_sync_decision() {
+    // Fresh install, nothing anywhere.
+    CHECK(decide_sync(LocalSave{}, RemoteSave{}) == Sync::InSync);
+
+    // Played offline, never uploaded.
+    CHECK(decide_sync(LocalSave{true, 111, 0, 0}, RemoteSave{}) == Sync::Push);
+
+    // New machine, cloud has a save.
+    CHECK(decide_sync(LocalSave{}, RemoteSave{true, 4, 222}) == Sync::Pull);
+
+    // Byte-identical: content decides, not the version counter. Another machine
+    // saving the same world must not make this one upload it again.
+    CHECK(decide_sync(LocalSave{true, 999, 1, 999}, RemoteSave{true, 7, 999}) == Sync::InSync);
+
+    // Agreed at v4/hash 222; this machine has played since. Cloud has not moved.
+    CHECK(decide_sync(LocalSave{true, 333, 4, 222}, RemoteSave{true, 4, 222}) == Sync::Push);
+
+    // Agreed at v4; the cloud moved to v5 and this machine did not play.
+    CHECK(decide_sync(LocalSave{true, 222, 4, 222}, RemoteSave{true, 5, 555}) == Sync::Pull);
+
+    // BOTH moved. The only honest answer is to ask.
+    CHECK(decide_sync(LocalSave{true, 333, 4, 222}, RemoteSave{true, 5, 555}) == Sync::Conflict);
+
+    // The bookmark says nobody moved, yet the bytes differ — impossible, so it is
+    // reported rather than resolved in local's favour by accident.
+    CHECK(decide_sync(LocalSave{true, 222, 4, 222}, RemoteSave{true, 4, 555}) == Sync::Conflict);
+
+    // A machine that has never synced but has both saves cannot claim "unchanged":
+    // synced_hash 0 differs from any real hash, so it is a conflict, not a silent push.
+    CHECK(decide_sync(LocalSave{true, 333, 0, 0}, RemoteSave{true, 2, 555}) == Sync::Conflict);
+
+    CHECK(std::string(sync_text(Sync::Conflict)) != std::string(sync_text(Sync::InSync)));
+}
+
 int main() {
     test_defs();
+    test_overrides();
+    test_sync_decision();
     test_a_day_of_farming();
     test_crops_ripen_on_schedule();
     test_clock_and_collapse();
