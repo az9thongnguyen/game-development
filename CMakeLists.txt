@@ -126,7 +126,7 @@ add_executable(demo
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core tilemap_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -263,6 +263,24 @@ target_link_libraries(test_shell_golden PRIVATE
   hub_build_core hub_core release_ops_core release_core project_core resource_core
   ui_core text_core engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
+
+# ---- Tilemap: the shared 2D map format, follow camera and autotile rule -----------
+# PURE: text in, structs out; no renderer, no I/O. Replaces two incompatible private
+# grids (fps::Map, iso::TileMap) with one format that has layers, collision, entities
+# and triggers — the things a second 2D game cannot be authored without.
+add_library(tilemap_core STATIC
+  src/engine/tilemap/map2.cpp
+  src/engine/tilemap/camera2d.cpp
+  src/engine/tilemap/autotile.cpp
+)
+target_include_directories(tilemap_core PUBLIC src)
+target_link_libraries(tilemap_core PRIVATE engine_flags)
+
+add_executable(test_tilemap tests/test_tilemap.cpp)
+target_include_directories(test_tilemap PRIVATE src)
+target_compile_definitions(test_tilemap PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_tilemap PRIVATE tilemap_core engine_flags)
+add_test(NAME tilemap COMMAND test_tilemap)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;
@@ -589,10 +607,11 @@ add_library(fps_core STATIC
   src/games/fps/textures.cpp
 )
 target_include_directories(fps_core PUBLIC src)
-target_link_libraries(fps_core PRIVATE engine_flags)
+target_link_libraries(fps_core PUBLIC tilemap_core PRIVATE engine_flags)
 
 add_executable(test_fps tests/test_fps.cpp)
-target_link_libraries(test_fps PRIVATE fps_core engine_flags)
+target_compile_definitions(test_fps PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_fps PRIVATE fps_core tilemap_core engine_flags)
 add_test(NAME fps COMMAND test_fps)
 
 # ---- Native webserver (requirements.md §11): SEPARATE process, NOT engine core --

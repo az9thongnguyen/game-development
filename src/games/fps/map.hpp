@@ -39,4 +39,12 @@ Map default_map();  // a small hand-built level
 std::string        to_text(const Map& m);
 std::optional<Map> from_text(const std::string& s);  // nullopt if malformed
 
+// Read a level through the shared tilemap format, which accepts BOTH `map2` and the
+// old `fpsmap1` and migrates the latter. The raycaster keeps its own dense uint8
+// grid — it is a DDA over an array and there is no reason for it to be anything
+// else — so this narrows a tilemap::Map down to what the DDA needs: the `wall` layer
+// and the `spawn_player` entity. Ids above 255 clamp, which is the price of the
+// wider format meeting an 8-bit consumer.
+std::optional<Map> from_shared_text(const std::string& s);
+
 } // namespace fps

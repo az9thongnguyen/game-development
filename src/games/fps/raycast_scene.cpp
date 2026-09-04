@@ -19,9 +19,16 @@ namespace fps {
 namespace {
 // Load a level authored in the Map/Level Lab (--maplab), falling back to the
 // hand-built default_map() when the asset is absent or malformed.
+//
+// It goes through tilemap::load, which reads BOTH the old `fpsmap1` and the new
+// `map2` and migrates the former on the way in. So the raycaster gained the ability
+// to run a map2 level without knowing that format exists, and — more usefully — the
+// migration is now exercised by the app and by CI's golden path rather than only by
+// its unit test. The raycaster's own grid is unchanged: it is a DDA over a dense
+// uint8 array, and there is no reason to make it something else.
 Map load_level() {
     if (auto bytes = assets::load_file("maps/level_00.map")) {
-        if (auto m = from_text(std::string(bytes->begin(), bytes->end()))) return *m;
+        if (auto m = from_shared_text(std::string(bytes->begin(), bytes->end()))) return *m;
     }
     return default_map();
 }

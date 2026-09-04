@@ -9,6 +9,13 @@
 
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
+
+#ifndef ASSET_ROOT
+#define ASSET_ROOT "."
+#endif
 
 using namespace fps;
 
@@ -121,7 +128,64 @@ static void test_map_serialize() {
     CHECK(rbad && rbad->spawn_cx == -1);
 }
 
+
+// ---------------------------------------------------------------------------
+//  The raycaster now loads through the shared tilemap format, which migrates the
+//  old fpsmap1 on the way in. This is the check that the migration changed
+//  NOTHING: the real authored level, read both ways, must be identical grid for
+//  grid and spawn for spawn. Without it, a subtly wrong migration would ship and
+//  only show up as a level that looks slightly wrong.
+// ---------------------------------------------------------------------------
+static void test_shared_load_matches_legacy() {
+    std::ifstream f(std::string(ASSET_ROOT) + "/assets/maps/level_00.map");
+    CHECK(f.good());
+    if (!f.good()) return;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const std::string text = ss.str();
+
+    auto legacy = from_text(text);
+    auto shared = from_shared_text(text);
+    CHECK(legacy.has_value());
+    CHECK(shared.has_value());
+    if (!legacy || !shared) return;
+
+    CHECK(shared->w == legacy->w);
+    CHECK(shared->h == legacy->h);
+    CHECK(shared->cells == legacy->cells);
+    CHECK(shared->spawn_cx == legacy->spawn_cx);
+    CHECK(shared->spawn_cy == legacy->spawn_cy);
+    CHECK(shared->spawn_dir == legacy->spawn_dir);
+
+    // ...and the same for a hand-built level, so the check does not depend on one
+    // asset happening to be simple.
+    const Map d = default_map();
+    auto via_shared = from_shared_text(to_text(d));
+    CHECK(via_shared.has_value());
+    if (via_shared) {
+        CHECK(via_shared->cells == d.cells);
+        CHECK(via_shared->spawn_cx == d.spawn_cx);
+        CHECK(via_shared->spawn_cy == d.spawn_cy);
+    }
+
+    // A map2 file is readable by the raycaster too, which is the point of the
+    // shared format: the Lab can start writing map2 without touching --fps.
+    auto native = from_shared_text(
+        "map2 1\nname n\nsize 2 2\ntile 16\n"
+        "layer wall tiles w\nrow 1 0\nrow 0 2\n"
+        "entity spawn_player 1 0 dir=0\n");
+    CHECK(native.has_value());
+    if (native) {
+        CHECK(native->at(0, 0) == 1);
+        CHECK(native->at(1, 1) == 2);
+        CHECK(native->spawn_cx == 1 && native->spawn_cy == 0);
+    }
+
+    CHECK(!from_shared_text("garbage").has_value());
+}
+
 int main() {
+    test_shared_load_matches_legacy();
     test_map();
     test_cast_east();
     test_cast_south();
