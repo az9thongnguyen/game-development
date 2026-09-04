@@ -76,7 +76,10 @@ public:
     void draw_text(int x, int y, const char* s, Color c);  // font-backed (or 8x8 fallback)
 
     // Legacy 8x8 bitmap text (retro look / no-font paths). `scale` blocks each px.
+    // Both paths are UTF-8 aware; the 8x8 face only covers ASCII, so anything else
+    // draws as a hollow box rather than as '?'.
     void draw_char(int x, int y, char ch, Color c, int scale = 1);
+    void draw_glyph8(int x, int y, char32_t cp, Color c, int scale = 1);
     void draw_text(int x, int y, const char* s, Color c, int scale);  // explicit 8x8
 
 private:

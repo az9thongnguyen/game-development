@@ -10,6 +10,7 @@
 
 #include "engine/font8x8.hpp"
 #include "engine/text/font.hpp"
+#include "engine/text/utf8.hpp"
 
 #include <algorithm>  // std::swap
 #include <cmath>      // std::floor, std::round
@@ -310,10 +311,19 @@ void Renderer2D::blit_scaled(const Sprite& s, int dx, int dy, int dw, int dh) {
 }
 
 // ---- 8x8 bitmap text (legacy / fallback) ------------------------------------
+namespace {
+// A hollow 8x8 box: what a code point outside the vendored 128-glyph table looks
+// like. Drawing the gap beats printing '?', which is indistinguishable from a
+// question mark the author actually typed.
+constexpr unsigned char kTofu8x8[8] = {0x7E, 0x42, 0x42, 0x42, 0x42, 0x42, 0x7E, 0x00};
+} // namespace
+
 void Renderer2D::draw_char(int x, int y, char ch, Color c, int scale) {
-    unsigned uc = static_cast<unsigned char>(ch);
-    if (uc >= 128) uc = static_cast<unsigned char>('?');
-    const unsigned char* glyph = kFont8x8[uc];
+    draw_glyph8(x, y, static_cast<unsigned char>(ch), c, scale);
+}
+
+void Renderer2D::draw_glyph8(int x, int y, char32_t cp, Color c, int scale) {
+    const unsigned char* glyph = (cp < 128) ? kFont8x8[cp] : kTofu8x8;
     for (int row = 0; row < 8; ++row) {
         const unsigned bits = glyph[row];
         for (int col = 0; col < 8; ++col) {
@@ -326,10 +336,14 @@ void Renderer2D::draw_char(int x, int y, char ch, Color c, int scale) {
 }
 
 void Renderer2D::draw_text(int x, int y, const char* s, Color c, int scale) {
+    if (!s) return;
+    const char* end = s;
+    while (*end) ++end;
     int cx = x;
-    for (; *s; ++s) {
-        if (*s == '\n') { y += 8 * scale; cx = x; continue; }
-        draw_char(cx, y, *s, c, scale);
+    for (const char* p = s; p < end; ) {
+        const char32_t cp = text::utf8_next(p, end);
+        if (cp == U'\n') { y += 8 * scale; cx = x; continue; }
+        draw_glyph8(cx, y, cp, c, scale);
         cx += 8 * scale;   // fixed-width font: 8px advance per glyph
     }
 }
@@ -339,9 +353,16 @@ void Renderer2D::set_font(text::Font* f, int px) { font_ = f; font_px_ = px; }
 void Renderer2D::set_font_size(int px)           { font_px_ = px; }
 
 int Renderer2D::text_width(const char* s) const {
-    if (font_ && font_px_ > 0) return font_->text_width(font_px_ * ss_, s) / ss_;
-    int n = 0; for (const char* p = s; p && *p; ++p) ++n;   // 8x8 fallback: 8px/char
-    return n * 8;
+    if (font_ && font_px_ > 0) {
+        // The pen runs in PHYSICAL pixels; this returns LOGICAL ones, so the answer
+        // has to be divided. Round rather than truncate: truncation biased every
+        // centred label left by up to ss-1 physical pixels, which at ss=2 is a
+        // visible half-pixel wobble between differently-sized labels.
+        // ponytail: an int logical API cannot do better than +/-0.5 logical px.
+        const int phys = font_->text_width(font_px_ * ss_, s);
+        return (phys + ss_ / 2) / ss_;
+    }
+    return static_cast<int>(text::utf8_count(s)) * 8;   // 8x8 fallback: 8px per CHARACTER
 }
 
 void Renderer2D::draw_text(int x, int y, const char* s, Color c) {
@@ -353,9 +374,12 @@ void Renderer2D::draw_text(int x, int y, const char* s, Color c) {
     const int asc  = font_->ascent(rpx);
     int       base = y * ss_ + asc;                 // physical baseline (y is the line top)
     int       pen  = x * ss_;
-    for (; *s; ++s) {
-        if (*s == '\n') { base += lh; pen = x * ss_; continue; }
-        const text::Glyph* g = font_->glyph(rpx, *s);
+    const char* end = s;
+    while (*end) ++end;
+    for (const char* p = s; p < end; ) {
+        const char32_t cp = text::utf8_next(p, end);
+        if (cp == U'\n') { base += lh; pen = x * ss_; continue; }
+        const text::Glyph* g = font_->glyph(rpx, cp);
         if (!g) continue;
         if (g->cov) {
             const int gx = pen + g->bearing_x;
