@@ -13,6 +13,7 @@
 //  and folding the Labs in come when a second author actually needs them.
 // =============================================================================
 #pragma once
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -30,21 +31,33 @@ public:
     void update(double dt, const platform::InputState& input) override;
     void render(const engine::Context& ctx) override;
 
+    // Clipboard access is INJECTED rather than called. The scene must stay linkable
+    // without the SDL backend — that is what lets test_shell_golden drive the whole
+    // shell headless — so main.cpp wires these to platform::clipboard_* and a test
+    // leaves them unset (copying then does nothing, which is the truth).
+    void set_clipboard(std::function<std::string()> get,
+                       std::function<void(const std::string&)> set);
+
 private:
     enum Section { Hub = 0, Guide, Learn, About, SectionCount };
 
     void rebuild_hub();
-    void run(const hubui::Action& a);
+    void run(hubui::Op op);
 
     std::string                    project_path_;
     std::vector<std::string>       known_entries_;
     int                            section_ = Hub;
     std::optional<engine::HubView> hub_;
     std::string                    flash_;
+    bool                           flash_ok_ = true;
     double                         flash_t_ = 0;
     ui::Context                    ui_;
-    hubui::Action                  pending_{};   // panel click, applied on the next update
+    hubui::Op                      requested_  = hubui::Op::None;   // asked this frame
+    hubui::Op                      confirming_ = hubui::Op::None;   // dialog on screen
+    std::string                    reason_;
     int                            nav_click_ = -1;
+    std::function<std::string()>            clip_get_;
+    std::function<void(const std::string&)> clip_set_;
 };
 
 } // namespace studioshell

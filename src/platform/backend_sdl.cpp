@@ -14,6 +14,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 #ifdef __EMSCRIPTEN__
@@ -38,6 +39,10 @@ int                   g_log_w = 0;   // LOGICAL size the game/mouse reason in
 int                   g_log_h = 0;
 int                   g_ss    = 1;   // supersample factor
 bool                  g_quit  = false;
+bool                  g_quit_on_escape = true;
+bool                  g_resizable      = false;
+SDL_Cursor*           g_cursors[7]     = {};   // one per platform::Cursor, created lazily
+Cursor                g_cursor_now     = Cursor::Arrow;
 InputState            g_input;
 
 #ifndef __EMSCRIPTEN__
@@ -49,44 +54,141 @@ SDL_AudioDeviceID g_audio_dev  = 0;
 int               g_audio_rate = 44100;
 bool              g_audio_ok   = false;
 
+// The scancode table. Every Key maps to exactly one scancode, and the pump loops
+// over this — so adding a key is one row here plus one enumerator, nothing else.
+struct KeyMap { Key k; SDL_Scancode sc; };
+
+const std::vector<KeyMap>& kmap_repeat() {
+    static const std::vector<KeyMap> t = {
+        {Key::Up, SDL_SCANCODE_UP}, {Key::Down, SDL_SCANCODE_DOWN},
+        {Key::Left, SDL_SCANCODE_LEFT}, {Key::Right, SDL_SCANCODE_RIGHT},
+        {Key::Space, SDL_SCANCODE_SPACE}, {Key::Enter, SDL_SCANCODE_RETURN},
+        {Key::Escape, SDL_SCANCODE_ESCAPE},
+        {Key::A, SDL_SCANCODE_A}, {Key::B, SDL_SCANCODE_B}, {Key::C, SDL_SCANCODE_C},
+        {Key::D, SDL_SCANCODE_D}, {Key::E, SDL_SCANCODE_E}, {Key::F, SDL_SCANCODE_F},
+        {Key::G, SDL_SCANCODE_G}, {Key::H, SDL_SCANCODE_H}, {Key::I, SDL_SCANCODE_I},
+        {Key::J, SDL_SCANCODE_J}, {Key::K, SDL_SCANCODE_K}, {Key::L, SDL_SCANCODE_L},
+        {Key::M, SDL_SCANCODE_M}, {Key::N, SDL_SCANCODE_N}, {Key::O, SDL_SCANCODE_O},
+        {Key::P, SDL_SCANCODE_P}, {Key::Q, SDL_SCANCODE_Q}, {Key::R, SDL_SCANCODE_R},
+        {Key::S, SDL_SCANCODE_S}, {Key::T, SDL_SCANCODE_T}, {Key::U, SDL_SCANCODE_U},
+        {Key::V, SDL_SCANCODE_V}, {Key::W, SDL_SCANCODE_W}, {Key::X, SDL_SCANCODE_X},
+        {Key::Y, SDL_SCANCODE_Y}, {Key::Z, SDL_SCANCODE_Z},
+        {Key::Num0, SDL_SCANCODE_0}, {Key::Num1, SDL_SCANCODE_1}, {Key::Num2, SDL_SCANCODE_2},
+        {Key::Num3, SDL_SCANCODE_3}, {Key::Num4, SDL_SCANCODE_4}, {Key::Num5, SDL_SCANCODE_5},
+        {Key::Num6, SDL_SCANCODE_6}, {Key::Num7, SDL_SCANCODE_7}, {Key::Num8, SDL_SCANCODE_8},
+        {Key::Num9, SDL_SCANCODE_9},
+        {Key::Minus, SDL_SCANCODE_MINUS}, {Key::Equals, SDL_SCANCODE_EQUALS},
+        {Key::Tab, SDL_SCANCODE_TAB}, {Key::Delete, SDL_SCANCODE_DELETE},
+        {Key::Backspace, SDL_SCANCODE_BACKSPACE},
+        {Key::Home, SDL_SCANCODE_HOME}, {Key::End, SDL_SCANCODE_END},
+        {Key::PageUp, SDL_SCANCODE_PAGEUP}, {Key::PageDown, SDL_SCANCODE_PAGEDOWN},
+        {Key::F1, SDL_SCANCODE_F1}, {Key::F2, SDL_SCANCODE_F2}, {Key::F3, SDL_SCANCODE_F3},
+        {Key::F4, SDL_SCANCODE_F4}, {Key::F5, SDL_SCANCODE_F5}, {Key::F6, SDL_SCANCODE_F6},
+        {Key::F7, SDL_SCANCODE_F7}, {Key::F8, SDL_SCANCODE_F8}, {Key::F9, SDL_SCANCODE_F9},
+        {Key::F10, SDL_SCANCODE_F10}, {Key::F11, SDL_SCANCODE_F11}, {Key::F12, SDL_SCANCODE_F12},
+    };
+    return t;
+}
+
+// A resizable window changes the LOGICAL size, so the CPU framebuffer and the
+// streaming texture both have to be rebuilt. Nothing above the platform layer sees
+// this beyond InputState::window_resized — a scene lays itself out from
+// Renderer2D::width()/height() every frame anyway.
+void on_window_resized() {
+    if (!g_resizable || !g_window) return;
+    int ww = 0, wh = 0;
+    SDL_GetWindowSize(g_window, &ww, &wh);
+    if (ww <= 0 || wh <= 0) return;
+    if (ww == g_log_w && wh == g_log_h) return;
+
+    g_log_w = ww;
+    g_log_h = wh;
+    g_fb_w  = g_log_w * g_ss;
+    g_fb_h  = g_log_h * g_ss;
+    g_pixels.assign(static_cast<size_t>(g_fb_w) * static_cast<size_t>(g_fb_h), 0xFF000000u);
+
+    SDL_RenderSetLogicalSize(g_renderer, g_log_w, g_log_h);
+    if (g_texture) SDL_DestroyTexture(g_texture);
+    g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ARGB8888,
+                                  SDL_TEXTUREACCESS_STREAMING, g_fb_w, g_fb_h);
+
+    g_input.window_resized = true;
+    g_input.win_w = g_log_w;
+    g_input.win_h = g_log_h;
+}
+
 void pump_events() {
-    // Pump the OS queue (also updates SDL's internal input state) + watch quit.
+    // Per-frame transients: anything that describes "what happened this frame" must
+    // be cleared BEFORE the queue is drained, or it accumulates forever.
+    g_input.text_len       = 0;
+    g_input.wheel_x        = 0;
+    g_input.wheel_y        = 0;
+    g_input.window_resized = false;
+    for (bool& r : g_input.key_repeat) r = false;
+
+    // Pump the OS queue (this also updates SDL's internal keyboard/mouse state, which
+    // the polling below reads) and pick out the things polling cannot tell us:
+    // committed text, wheel ticks, auto-repeat, and resizes.
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) g_quit = true;
+        switch (e.type) {
+            case SDL_QUIT:
+                g_quit = true;
+                break;
+
+            case SDL_TEXTINPUT: {
+                // What the OS decided the keystrokes MEAN — after dead keys, compose
+                // sequences, IME candidates and whatever layout the user actually has.
+                // A text field must read this rather than reconstruct characters from
+                // key edges, which only ever works for US-ASCII typists.
+                const char* t = e.text.text;
+                for (std::size_t i = 0; t[i] && g_input.text_len < InputState::kTextMax; ++i)
+                    g_input.text[g_input.text_len++] = t[i];
+                break;
+            }
+
+            case SDL_MOUSEWHEEL: {
+                const int dir = (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) ? -1 : 1;
+                g_input.wheel_x += e.wheel.x * dir;
+                g_input.wheel_y += e.wheel.y * dir;
+                break;
+            }
+
+            case SDL_KEYDOWN:
+                // Only the repeat flag comes from the event; the down/pressed/released
+                // edges below stay poll-derived so held keys behave identically to
+                // before this change.
+                if (e.key.repeat) {
+                    for (const auto& m : kmap_repeat())
+                        if (m.sc == e.key.keysym.scancode) { g_input.key_repeat[int(m.k)] = true; break; }
+                }
+                break;
+
+            case SDL_WINDOWEVENT:
+                if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) on_window_resized();
+                break;
+
+            default:
+                break;
+        }
     }
 
     // ---- Keyboard: poll state, edge-detect against last frame ----
     const Uint8* ks = SDL_GetKeyboardState(nullptr);
-    struct KeyMap { Key k; SDL_Scancode sc; };
-    static const KeyMap kmap[] = {
-        {Key::Up, SDL_SCANCODE_UP}, {Key::Down, SDL_SCANCODE_DOWN},
-        {Key::Left, SDL_SCANCODE_LEFT}, {Key::Right, SDL_SCANCODE_RIGHT},
-        {Key::W, SDL_SCANCODE_W}, {Key::A, SDL_SCANCODE_A},
-        {Key::S, SDL_SCANCODE_S}, {Key::D, SDL_SCANCODE_D},
-        {Key::Space, SDL_SCANCODE_SPACE}, {Key::Enter, SDL_SCANCODE_RETURN},
-        {Key::Escape, SDL_SCANCODE_ESCAPE},
-        {Key::Num1, SDL_SCANCODE_1}, {Key::Num2, SDL_SCANCODE_2},
-        {Key::Num3, SDL_SCANCODE_3}, {Key::Num4, SDL_SCANCODE_4},
-        {Key::Q, SDL_SCANCODE_Q}, {Key::E, SDL_SCANCODE_E}, {Key::R, SDL_SCANCODE_R},
-        {Key::F, SDL_SCANCODE_F}, {Key::G, SDL_SCANCODE_G}, {Key::C, SDL_SCANCODE_C},
-        {Key::X, SDL_SCANCODE_X},
-        {Key::Minus, SDL_SCANCODE_MINUS}, {Key::Equals, SDL_SCANCODE_EQUALS},
-        {Key::Tab, SDL_SCANCODE_TAB}, {Key::Delete, SDL_SCANCODE_DELETE},
-        {Key::Backspace, SDL_SCANCODE_BACKSPACE},
-        {Key::Num5, SDL_SCANCODE_5}, {Key::Num6, SDL_SCANCODE_6},
-        {Key::Num7, SDL_SCANCODE_7}, {Key::Num8, SDL_SCANCODE_8},
-        {Key::Num9, SDL_SCANCODE_9}, {Key::Num0, SDL_SCANCODE_0},
-        {Key::F5, SDL_SCANCODE_F5}, {Key::F9, SDL_SCANCODE_F9},
-    };
-    for (const KeyMap& m : kmap) {
+    for (const KeyMap& m : kmap_repeat()) {
         const bool now = ks[m.sc] != 0;
         const bool was = g_input.key_down[int(m.k)];
         g_input.key_pressed[int(m.k)]  = now && !was;
         g_input.key_released[int(m.k)] = !now && was;
         g_input.key_down[int(m.k)]     = now;
     }
-    if (g_input.key_down[int(Key::Escape)]) g_quit = true;
+    if (g_quit_on_escape && g_input.key_down[int(Key::Escape)]) g_quit = true;
+
+    const SDL_Keymod km = SDL_GetModState();
+    g_input.mods.shift = (km & KMOD_SHIFT) != 0;
+    g_input.mods.ctrl  = (km & KMOD_CTRL)  != 0;
+    g_input.mods.alt   = (km & KMOD_ALT)   != 0;
+    g_input.mods.super = (km & KMOD_GUI)   != 0;
 
     // ---- Mouse: poll position + buttons; map window points -> framebuffer ----
     int mx = 0, my = 0;
@@ -128,8 +230,11 @@ bool init(const Config& cfg) {
     const int win_w = cfg.fb_width  * cfg.scale;   // the window stays at logical*scale
     const int win_h = cfg.fb_height * cfg.scale;
 
+    g_quit_on_escape = cfg.quit_on_escape;
+    g_resizable      = cfg.resizable;
     const Uint32 win_flags = SDL_WINDOW_SHOWN |
-                             (cfg.highdpi ? SDL_WINDOW_ALLOW_HIGHDPI : 0u);
+                             (cfg.highdpi ? SDL_WINDOW_ALLOW_HIGHDPI : 0u) |
+                             (cfg.resizable ? SDL_WINDOW_RESIZABLE : 0u);
     g_window = SDL_CreateWindow(cfg.title,
                                 SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                 win_w, win_h, win_flags);
@@ -162,6 +267,12 @@ bool init(const Config& cfg) {
 
     g_pixels.assign(static_cast<size_t>(g_fb_w) * static_cast<size_t>(g_fb_h), 0xFF000000u);
 
+    // Ask the OS to deliver composed text. Without this there are no SDL_TEXTINPUT
+    // events at all, and a text field can only ever see raw key edges.
+    SDL_StartTextInput();
+    g_input.win_w = g_log_w;
+    g_input.win_h = g_log_h;
+
 #ifndef __EMSCRIPTEN__
     if (const char* s = std::getenv("HAND_ENGINE_FRAMES")) {
         g_max_frames = std::strtol(s, nullptr, 10);
@@ -171,7 +282,38 @@ bool init(const Config& cfg) {
     return true;
 }
 
+void set_cursor(Cursor c) {
+    // Setting the same shape every frame is the natural way for an immediate-mode UI
+    // to drive this, so make the repeat case free.
+    if (c == g_cursor_now && g_cursors[static_cast<int>(c)]) return;
+
+    static const SDL_SystemCursor kSys[] = {
+        SDL_SYSTEM_CURSOR_ARROW, SDL_SYSTEM_CURSOR_HAND,   SDL_SYSTEM_CURSOR_IBEAM,
+        SDL_SYSTEM_CURSOR_SIZEWE, SDL_SYSTEM_CURSOR_SIZENS, SDL_SYSTEM_CURSOR_SIZEALL,
+        SDL_SYSTEM_CURSOR_CROSSHAIR,
+    };
+    const int i = static_cast<int>(c);
+    if (i < 0 || i >= 7) return;
+    if (!g_cursors[i]) g_cursors[i] = SDL_CreateSystemCursor(kSys[i]);
+    if (!g_cursors[i]) return;                 // creation failed: keep whatever we had
+    SDL_SetCursor(g_cursors[i]);
+    g_cursor_now = c;
+}
+
+std::string clipboard_get() {
+    if (SDL_HasClipboardText() == SDL_FALSE) return {};
+    char* t = SDL_GetClipboardText();          // SDL allocates; we own it
+    if (!t) return {};
+    std::string out(t);
+    SDL_free(t);
+    return out;
+}
+
+void clipboard_set(const std::string& text) { SDL_SetClipboardText(text.c_str()); }
+
 void shutdown() {
+    for (SDL_Cursor*& c : g_cursors) { if (c) { SDL_FreeCursor(c); c = nullptr; } }
+    g_cursor_now = Cursor::Arrow;
     if (g_texture)  { SDL_DestroyTexture(g_texture);   g_texture  = nullptr; }
     if (g_renderer) { SDL_DestroyRenderer(g_renderer); g_renderer = nullptr; }
     if (g_window)   { SDL_DestroyWindow(g_window);     g_window   = nullptr; }
@@ -188,6 +330,9 @@ Framebuffer framebuffer() {
 int supersample() { return g_ss; }
 
 void present() {
+    // A resize recreates the texture; if that ever fails there is nothing to present
+    // and SDL_UpdateTexture(nullptr, ...) would take the process down with it.
+    if (!g_texture) return;
     SDL_UpdateTexture(g_texture, nullptr, g_pixels.data(),
                       g_fb_w * static_cast<int>(sizeof(uint32_t)));
     SDL_RenderClear(g_renderer);

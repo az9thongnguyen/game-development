@@ -42,9 +42,9 @@ namespace {
 constexpr int LW = 1280, LH = 720, SS = 2;       // the same size --shell runs at
 constexpr int PW = LW * SS, PH = LH * SS;
 
-void dump_ppm(const std::vector<std::uint32_t>& buf, const char* name) {
+void dump_ppm(const std::vector<std::uint32_t>& buf, int pw, int ph, const char* name) {
     if (FILE* f = std::fopen(name, "wb")) {
-        std::fprintf(f, "P6\n%d %d\n255\n", PW, PH);
+        std::fprintf(f, "P6\n%d %d\n255\n", pw, ph);
         for (auto p : buf) {
             const unsigned char rgb[3] = {static_cast<unsigned char>((p >> 16) & 0xFF),
                                           static_cast<unsigned char>((p >> 8) & 0xFF),
@@ -127,7 +127,130 @@ int main() {
         }
         CHECK(accent_rows == 1);
 
-        dump_ppm(buf, (std::string("shell_") + names[section] + ".ppm").c_str());
+        dump_ppm(buf, PW, PH, (std::string("shell_") + names[section] + ".ppm").c_str());
+    }
+
+    // ---------------------------------------------------------------------
+    //  The window is resizable, so the shell must lay out at any size. This is
+    //  the half of resizing that can break in our code; SDL's own resize event
+    //  path is not exercised here (see the chapter's verification note).
+    // ---------------------------------------------------------------------
+    {
+        struct Size { int w, h, ss; };
+        const Size sizes[] = {{1280, 720, 2}, {900, 560, 2}, {1600, 1000, 1}, {700, 420, 1}};
+        for (const Size& sz : sizes) {
+            const int pw = sz.w * sz.ss, ph = sz.h * sz.ss;
+            std::vector<std::uint32_t> b(static_cast<std::size_t>(pw) * ph, 0);
+            platform::Framebuffer f{b.data(), pw, ph, pw};
+            gfx::Renderer2D r(f, sz.ss);
+            const engine::Context c{r, input, 1.0 / 60.0, 0.0, 0.0, font.get()};
+
+            studioshell::StudioShellScene sc(kProject);      // fresh: starts on Hub
+            sc.update(1.0 / 60.0, input);
+            sc.render(c);
+
+            const auto px = [&](int lx, int ly) { return b[(ly * sz.ss) * pw + (lx * sz.ss)]; };
+
+            // The rail spans the FULL height whatever that height is — the bug a
+            // hard-coded panel height produces is a rail that stops short.
+            CHECK(px(60, 2) == th::elevated);
+            CHECK(px(60, sz.h - 3) == th::elevated);
+            CHECK(px(199, sz.h / 2) == th::border);
+
+            // Nothing overflows the right edge. Checking a single corner is not
+            // enough — the button row was running off the side while the corner
+            // stayed clean. Scan the whole last logical column instead.
+            bool right_edge_clean = true;
+            for (int ly = 0; ly < sz.h; ++ly)
+                if (px(sz.w - 1, ly) != th::bg) right_edge_clean = false;
+            CHECK(right_edge_clean);
+
+            // ...and the content area is not EMPTY either. Without this, a layout
+            // that drew everything off-screen would pass every check above.
+            int ink = 0;
+            for (int y = 0; y < ph; ++y)
+                for (int x = 210 * sz.ss; x < pw; ++x)
+                    if (b[static_cast<std::size_t>(y) * pw + x] != th::bg) ++ink;
+            CHECK(ink > 1000);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    //  The confirmation screen. This is the one the safety checklist cares about:
+    //  an irreversible operation must be confirmed and must record a reason.
+    // ---------------------------------------------------------------------
+    {
+        std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+        platform::Framebuffer f{b.data(), PW, PH, PW};
+
+        studioshell::StudioShellScene sc(kProject);
+
+        // Space asks to publish; the scene should raise a dialog, not publish.
+        platform::InputState space{};
+        space.key_pressed[static_cast<int>(platform::Key::Space)] = true;
+        sc.update(1.0 / 60.0, space);
+
+        // Type a reason, the way the operator would.
+        platform::InputState typing{};
+        const char* why = "checking the confirmation screen";
+        for (std::size_t i = 0; why[i] && i < platform::InputState::kTextMax; ++i)
+            typing.text[typing.text_len++] = why[i];
+
+        // Render once to lay the dialog out (the text field only exists once drawn),
+        // then feed the typing through.
+        for (int i = 0; i < 2; ++i) {
+            gfx::Renderer2D r(f, SS);
+            const engine::Context c{r, i == 0 ? input : typing, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            sc.render(c);
+            sc.update(1.0 / 60.0, i == 0 ? input : typing);
+        }
+
+        for (auto& p : b) p = 0;
+        gfx::Renderer2D r(f, SS);
+        const engine::Context c{r, input, 1.0 / 60.0, 0.0, 0.0, font.get()};
+        sc.render(c);
+
+        const auto at = [&](int lx, int ly) { return b[(ly * SS) * PW + (lx * SS)]; };
+
+        // The scrim darkened the screen behind: the nav rail is no longer its own
+        // flat colour. Without begin_inert() + the scrim this pixel would be
+        // untouched, and the dialog would be merely on top rather than modal.
+        CHECK(at(60, 400) != th::elevated);
+        CHECK(at(60, 400) != th::bg);
+
+        // The card is drawn over the middle of the screen. Probe between the reason
+        // field and the buttons — the card's own surface, not a control on it.
+        CHECK(at(LW / 2, 420) == th::elevated);
+
+        // With a reason typed, the accept button is live (accent fill). This is the
+        // assertion that matters: it says the operator CAN proceed once they have
+        // explained why.
+        // Probe inside the accept button but clear of its centred label — the middle
+        // pixel lands on a glyph.
+        const int accept_x = (LW - 460) / 2 + 460 - 16 - 120 + 8;
+        const int accept_y = (LH - 240) / 2 + 240 - 16 - 30 + 15;
+        CHECK(at(accept_x, accept_y) == th::accent);
+
+        dump_ppm(b, PW, PH, "shell_confirm.ppm");
+
+        // ...and the negative control: a fresh dialog with NO reason typed must show
+        // the accept button disabled. Without this, the check above would pass just
+        // as happily if the reason requirement were not enforced at all.
+        {
+            studioshell::StudioShellScene sc2(kProject);
+            platform::InputState sp{};
+            sp.key_pressed[static_cast<int>(platform::Key::Space)] = true;
+            sc2.update(1.0 / 60.0, sp);
+
+            std::vector<std::uint32_t> b2(static_cast<std::size_t>(PW) * PH, 0);
+            platform::Framebuffer f2{b2.data(), PW, PH, PW};
+            gfx::Renderer2D r2(f2, SS);
+            const engine::Context c2{r2, input, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            sc2.render(c2);
+
+            const auto at2 = [&](int lx, int ly) { return b2[(ly * SS) * PW + (lx * SS)]; };
+            CHECK(at2(accept_x, accept_y) == th::ctrl_disabled);
+        }
     }
 
     if (g_failures == 0) std::printf("shell_golden: all tests passed\n");

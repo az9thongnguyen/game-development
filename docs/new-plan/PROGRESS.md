@@ -19,7 +19,7 @@
 | Phase 0 | Housekeeping repo | ✅ xong | *(main)* | — |
 | Phase A | Sửa PLAN/SPEC theo code | ✅ xong | `docs/new-plan-corrections` | — |
 | S1 | UTF-8 + độ nét + Studio dùng design system | ✅ xong | `feat/s1-text-utf8` | 108 |
-| S2 | `ui` v2 (seam → clip → overlay → id → focus → layout → widget) | ⬜ chưa | `feat/s2-ui-v2` | 109 |
+| S2 | `ui` v2 (seam → clip → overlay → id → focus → layout → widget) | ✅ xong | `feat/s2-ui-v2` | 109 |
 | S3 | `tilemap_core` v2 + `camera2d` | ⬜ chưa | | 110 |
 | S4 | Studio shell + `commands_core` + undo | ⬜ chưa | | 111–112 |
 | S5 | Farm — vertical slice | ⬜ chưa | | 113 |
@@ -93,6 +93,38 @@ Merge `feat/s1-text-utf8`. Bốn commit:
 - Chưa thử chữ CJK thật (không bundle font CJK); không có shaping/kerning/bidi —
   đây là bộ vẽ theo codepoint, không phải text shaper.
 
+### S2 — `ui` v2 ✅ 2026-09-04 · chương 109
+
+Merge `feat/s2-ui-v2`. Bảy commit, đúng thứ tự bắt buộc (mỗi bước mở khoá bước sau):
+
+| Commit | Việc |
+|---|---|
+| `46726d8` | Platform seam: `Key` đủ bảng chữ cái + Home/End/PageUp/Down + F1–F12; `Mods`; `SDL_TEXTINPUT`; wheel; key repeat; `resizable` + `quit_on_escape`. |
+| `825ef38` | Test shell ở 4 kích thước cửa sổ — bắt được hàng nút tràn khỏi mép phải dưới ~1000px. |
+| `6b9aa91` | `set_cursor` + clipboard ở seam. |
+| `2706a80` | Clip stack trong `Renderer2D` — **giao**, không thay. |
+| `2f9adf8` | Id stack, focus bàn phím, input dạng **ý định** (`ui_input.hpp` là nơi duy nhất biết Cmd vs Ctrl). |
+| `f1255f6` | Badge, overlay hoãn, `begin_inert`, modal confirm + `fill_rect_blend` + token còn thiếu. |
+| `ed8bb05` | `text_input` (caret đi theo ranh giới UTF-8), scroll, tabs, list row. |
+| `5cee7a0` | Viết lại Hub panel + Studio shell: layout engine, confirm **bắt buộc nhập lý do**, toast, copy hash. |
+
+**✅ Đã chạy và thấy kết quả:**
+- `ctest` **62/62 xanh**.
+- **Mutation test** (không chỉ tick xanh): thay bước ranh giới UTF-8 bằng `at-1` → 4 assertion đỏ;
+  bỏ kiểm `shift` trong di chuyển caret → 1 assertion đỏ. Test có thật.
+- Render màn confirm ra ngoài màn hình ở đúng 1280×720×2 và **soi ảnh**, kèm
+  **negative control**: có lý do → nút accent; vừa mở, chưa nhập → nút disabled.
+- Web build (Emscripten) vẫn xanh.
+- `--bench-ui` cùng máy cùng phiên, **trước → sau S2**: Release ss=2 `2.4–4.4 ms → 1.4–2.6 ms`.
+  Toàn bộ tầng UI mới **không tốn gì đo được** — tải là fill-bound, đúng như ch.108 kết luận.
+
+**⚠️ Chưa chạy / chưa xác minh:**
+- **Chưa mở cửa sổ thật**; cũng **chưa resize thật** (không có quyền Accessibility để lái
+  cửa sổ). Phần kiểm được là scene tự bố cục đúng ở 4 kích thước framebuffer.
+- Clipboard **chưa chạy với clipboard thật của OS** — widget test bằng fake tiêm vào.
+- `set_cursor` **chưa có consumer** (splitter chưa tồn tại).
+- Chưa thử IME / gõ không phải Latin.
+
 ---
 
 ## Quyết định kiến trúc đã chốt (đừng đảo lại mà không có lý do mới)
@@ -106,24 +138,30 @@ Merge `feat/s1-text-utf8`. Bốn commit:
 | D5 | Pixel editor dùng `.hrt`, không PNG | Repo không có encoder *lẫn* decoder PNG; `.hrt` đã có codec + test + consumer |
 | D6 | Bộ widget S2 rút gọn; thêm khi một workspace thật cần | Xây 20 widget trước là đúng cái bẫy §10b của `docs/strategy/02` |
 | D7 | Sửa bug ở **chỗ chung**, không vá call site | `→` hỏng ở 2 nơi; mọi chuỗi non-ASCII tương lai cũng sẽ hỏng |
+| D8 | `ui::Input` mang **ý định**, không mang phím | Một nơi duy nhất biết Cmd vs Ctrl; và widget test được không cần SDL |
+| D9 | `push_clip` **giao**, không thay | Con trong không thể vẽ ra ngoài cha — điều kiện để lồng nhau đúng |
+| D10 | Dịch vụ platform được **tiêm vào scene**, không gọi thẳng | Scene gọi `platform::clipboard_*` là không link được nếu thiếu SDL → giết `test_shell_golden` |
+| D11 | Hộp thoại huỷ diệt mở với **Cancel** đang focus | Enter đầu tiên sau khi dialog bật lên thường là phản xạ còn sót |
+| D12 | Mọi thao tác ghi audit log phải **nhập lý do** | Biến log từ danh sách timestamp thành lời giải thích |
 
 ---
 
 ## Việc kế tiếp
 
-**S2 — `ui` v2**, branch `feat/s2-ui-v2`, chương 109. Thứ tự bắt buộc (mỗi bước một
-commit + test), vì bước sau không làm được nếu thiếu bước trước:
+**S3 — `tilemap_core` v2 + `camera2d`**, branch `feat/s3-tilemap`, chương 110.
 
-1. Platform seam: `Key` enum thêm Ctrl/Shift/Alt/Home/End/F1–F12; `InputState` thêm
-   `wheel`, `text` (UTF-8 nhận trong frame), `mods`, key repeat.
-2. `set_cursor` + `clipboard_get/set` (web: no-op fallback).
-3. `Renderer2D::push_clip/pop_clip`.
-4. Hoãn **riêng overlay** (D4) — không làm draw list đầy đủ.
-5. Id stack (đóng ceiling `ui.hpp:50-53`).
-6. Focus + bàn phím (Tab/Shift-Tab/Enter/Space/Esc).
-7. Layout engine.
-8. Widget rút gọn (D6).
-9. Cửa sổ resizable.
-10. Chương 109.
+Nền tảng cần trước khi có bất kỳ game 2D nào. Hôm nay có **hai lưới ô độc lập**:
+`fps::Map` (uint8 + text `fpsmap1`, nằm trong `games/fps`) và `iso::TileMap`
+(enum `Terrain`, không có text I/O riêng). Map Lab không có layer / collision mask /
+trigger / tileset ảnh / autotile, và `engine/` không có camera 2D nào.
 
-Chạy `--bench-ui` lại ở cuối S2 và so với mốc 4.63 ms.
+Việc:
+1. Format `map2` (text versioned): tileset refs, N layer, layer collide, entity, trigger.
+2. Migration `fpsmap1 → map2` + test round-trip (mọi format mới phải có migration test).
+3. Autotile 47-blob (dữ liệu rule trong tileset def; editor để S7).
+4. `camera2d`: follow + deadzone + smoothing (dùng `tween_core` đã có) + clamp + snap pixel.
+5. Render có culling theo viewport; y-sort cho entity layer.
+6. `--fps` vẫn chạy được bằng map đã migrate — CI golden path không đổi.
+
+Sau S3 là **S5 Farm vertical slice** (S4 Studio shell/commands có thể hoán đổi thứ tự
+theo blend — xem `PLAN.md §4`).

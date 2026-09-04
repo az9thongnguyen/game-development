@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 
 #include "platform/input.hpp"
 
@@ -43,6 +44,10 @@ struct Config {
     bool        highdpi   = true;   // use the display's full resolution for a crisp present
     int         supersample = 1;    // SSAA: render the framebuffer at NxN and downsample on present
                                     // (1=off). Costs N^2 fill; the game still uses LOGICAL coords.
+    bool        resizable = false;  // let the user resize; the framebuffer follows the window
+    // Escape quits. True for a game (it is the universal "get me out of here"); false
+    // for a tool, where Escape means "close this popup" and quitting on it loses work.
+    bool        quit_on_escape = true;
 };
 
 // ---- Lifetime ----
@@ -73,6 +78,21 @@ const InputState& input();
 bool init_audio();
 int  audio_rate();
 void play_sound(const int16_t* samples, int count);
+
+// ---- Cursor ----
+// The pointer shape is feedback, not decoration: an I-beam over a text field and a
+// resize arrow over a splitter tell the user what a drag will do before they try it.
+// Setting the same shape repeatedly is cheap (the backend ignores no-ops), so a UI
+// can set it every frame from whatever is hovered.
+enum class Cursor { Arrow, Hand, IBeam, ResizeH, ResizeV, Move, Crosshair };
+void set_cursor(Cursor c);
+
+// ---- Clipboard ----
+// Text only. Returns an empty string when the clipboard is empty, holds something
+// that is not text, or the platform denies access (the web build, where reading
+// requires a user gesture and may simply be refused).
+std::string clipboard_get();
+void        clipboard_set(const std::string& text);
 
 // ---- Quit control ----
 bool should_quit();

@@ -42,6 +42,30 @@ inline constexpr gfx::Color accent_press = 0xFF3E86BE;
 inline constexpr gfx::Color success = 0xFF4CC38A;
 inline constexpr gfx::Color warn    = 0xFFE5B454;
 inline constexpr gfx::Color danger  = 0xFFE5657A;
+inline constexpr gfx::Color info    = 0xFF67C7E5;
+
+// Added, not renamed: nine scenes already draw from the names above, so a rename
+// would be churn with no gain. These are the ones that were genuinely missing.
+inline constexpr gfx::Color scrim         = 0x8C000000;   // black @ 55% behind a modal
+inline constexpr gfx::Color border_strong = 0xFF3A4356;   // popup/input outline
+
+// Channel identity. The release pipeline is the one place a colour means a NAME
+// rather than a state, so these live beside the semantic colours and not inside it.
+inline constexpr gfx::Color chan_dev     = 0xFF5AAAE6;
+inline constexpr gfx::Color chan_preview = 0xFFC792EA;
+inline constexpr gfx::Color chan_prod    = 0xFF4CC38A;
+
+// Mix an opaque colour toward another (pct = how much of `fg`). Badges want a tinted
+// background, and mixing gives a solid colour that fill_rect can take the fast path
+// with rather than an alpha blend per pixel.
+constexpr gfx::Color mix(gfx::Color fg, gfx::Color bg, int pct) {
+    const auto ch = [&](int shift) {
+        const int a = static_cast<int>((fg >> shift) & 0xFFu);
+        const int b = static_cast<int>((bg >> shift) & 0xFFu);
+        return static_cast<std::uint32_t>((a * pct + b * (100 - pct)) / 100) << shift;
+    };
+    return 0xFF000000u | ch(16) | ch(8) | ch(0);
+}
 
 // ---- Spacing scale (px, logical) --------------------------------------------
 inline constexpr int space_xs = 4;
