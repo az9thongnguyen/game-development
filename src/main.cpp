@@ -26,7 +26,7 @@
 #include "engine/project/project.hpp"
 #include "engine/release/ops.hpp"
 #include "engine/commands/registry.hpp"
-#include "engine/commands/release_commands.hpp"
+#include "engine/commands/all_commands.hpp"
 #include "engine/release/release.hpp"
 #include "engine/resource/resource.hpp"
 #include "engine/text/font.hpp"
@@ -302,7 +302,7 @@ std::optional<engine::Inspection> resolve_project(const std::string& path) {
 // report goes to stdout either way — "not shippable, here is why" is this verb's
 // ANSWER, not a malfunction, and a caller redirecting stderr must still get it.
 int inspect_project(const std::string& path) {
-    cmd::register_release_commands(known_entries());
+    cmd::register_all(known_entries());
     const engine::OpResult r = cmd::run("project.inspect", {path});
     std::printf("%s\n", r.message.c_str());
     return r.ok ? 0 : 1;
@@ -376,7 +376,7 @@ int print_op(const engine::OpResult& r) {
 // and a Studio button are provably the same code, and adding a command cannot add it
 // to only some of them.
 int run_command(const char* id, const std::vector<std::string>& args) {
-    cmd::register_release_commands(known_entries());
+    cmd::register_all(known_entries());
     return print_op(cmd::run(id, args));
 }
 int publish_project(const std::string& path, const std::string& channel, const std::string& reason) {
@@ -521,7 +521,7 @@ int main(int argc, char** argv) {
     // The older flags below are kept and are now one-line aliases onto the same
     // handlers, so CI and every script keep working unchanged.
     if (mode == "--cmd") {
-        cmd::register_release_commands(known_entries());
+        cmd::register_all(known_entries());
         if (argc < 3) {
             std::printf("usage: --cmd <id> [args...]\n\nregistered commands:\n");
             for (const auto& i : cmd::all())
@@ -664,7 +664,7 @@ int main(int argc, char** argv) {
         // command palette lists everything this process can do — not only what the
         // workspace itself registers. Same registry `--cmd` reads; what differs is
         // what a given process has registered, which is the honest difference.
-        cmd::register_release_commands(known_entries());
+        cmd::register_all(known_entries());
         auto scene = std::make_unique<studioshell::StudioShellScene>(proj, known_entries());
         scene->set_clipboard(&platform::clipboard_get, &platform::clipboard_set);
                 // The Play viewport builds its scene from the SAME entry table --project

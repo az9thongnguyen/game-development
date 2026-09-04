@@ -162,6 +162,30 @@ endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
 #   ctest --test-dir build --output-on-failure
 enable_testing()
 
+# ---- DEFLATE (subsystem: reading a foreign format) ---------------------------
+# Hand-written RFC 1951/1950 decompression, so a PNG can be read without a third
+# party. Decompress only: nothing here writes one, and half a codec with a consumer
+# beats a whole one without.
+add_library(inflate_core STATIC src/engine/compress/inflate.cpp)
+target_include_directories(inflate_core PUBLIC src)
+target_link_libraries(inflate_core PRIVATE engine_flags)
+
+add_executable(test_inflate tests/test_inflate.cpp)
+target_link_libraries(test_inflate PRIVATE inflate_core engine_flags)
+add_test(NAME inflate COMMAND test_inflate)
+
+# ---- PNG (reading a format we did not invent) --------------------------------
+# Decode only, on top of inflate_core. `.hrt` stays the format the engine ships;
+# this is the door that lets an open-licence art pack in through `asset.import`.
+add_library(png_core STATIC src/engine/image_png.cpp src/engine/image.cpp)
+target_include_directories(png_core PUBLIC src)
+target_link_libraries(png_core PUBLIC inflate_core PRIVATE engine_flags)
+
+add_executable(test_png tests/test_png.cpp src/engine/assets.cpp)
+target_compile_definitions(test_png PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_png PRIVATE png_core engine_flags)
+add_test(NAME png COMMAND test_png)
+
 add_executable(test_math tests/test_math.cpp)
 target_include_directories(test_math PRIVATE src)
 target_link_libraries(test_math PRIVATE engine_flags)
@@ -323,11 +347,13 @@ add_test(NAME document COMMAND test_document)
 # The registry itself is pure. release_commands binds the platform-spine ops to ids,
 # so --cmd, a palette and a button all reach the same release_ops function.
 add_library(commands_core STATIC
+  src/engine/commands/all_commands.cpp
+  src/engine/commands/asset_commands.cpp
   src/engine/commands/registry.cpp
   src/engine/commands/release_commands.cpp
 )
 target_include_directories(commands_core PUBLIC src)
-target_link_libraries(commands_core PUBLIC release_ops_core PRIVATE engine_flags)
+target_link_libraries(commands_core PUBLIC release_ops_core png_core PRIVATE engine_flags)
 
 # Compiles the spine sources directly (like test_release_ops) so the test binary owns
 # a complete assets:: implementation without linking a window or a backend.
@@ -351,6 +377,7 @@ add_test(NAME commands COMMAND test_commands)
 # grids (fps::Map, iso::TileMap) with one format that has layers, collision, entities
 # and triggers — the things a second 2D game cannot be authored without.
 add_library(tilemap_core STATIC
+  src/engine/tilemap/tileset.cpp
   src/engine/tilemap/map2.cpp
   src/engine/tilemap/camera2d.cpp
   src/engine/tilemap/autotile.cpp
@@ -358,7 +385,8 @@ add_library(tilemap_core STATIC
 target_include_directories(tilemap_core PUBLIC src)
 target_link_libraries(tilemap_core PRIVATE engine_flags)
 
-add_executable(test_tilemap tests/test_tilemap.cpp)
+add_executable(test_tilemap tests/test_tilemap.cpp
+  src/engine/image.cpp src/engine/assets.cpp)
 target_include_directories(test_tilemap PRIVATE src)
 target_compile_definitions(test_tilemap PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_tilemap PRIVATE tilemap_core engine_flags)
@@ -395,6 +423,7 @@ add_test(NAME map_workspace COMMAND test_map_workspace)
 # test can play three days and check the parsnips came up when the definition says.
 add_library(farm_core STATIC
   src/games/farm/defs.cpp
+  src/games/farm/theme.cpp
   src/games/farm/world.cpp
   src/games/farm/dialogue.cpp
   src/games/farm/cloud.cpp
@@ -410,6 +439,7 @@ add_test(NAME farm COMMAND test_farm)
 # The farm PLAYED, with no window: press the keys, check the world changed, and check
 # the screen changed with it — a simulation the render ignores looks like a frozen game.
 add_executable(test_farm_scene tests/test_farm_scene.cpp
+  src/engine/image.cpp
   src/games/farm/farm_scene.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp

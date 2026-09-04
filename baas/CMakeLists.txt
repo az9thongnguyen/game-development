@@ -182,6 +182,7 @@ add_test(NAME sdk_live COMMAND test_sdk_live)
 add_executable(test_farm_live ${CMAKE_SOURCE_DIR}/tests/test_farm_live.cc
   ${CMAKE_SOURCE_DIR}/src/games/farm/farm_scene.cpp
   ${CMAKE_SOURCE_DIR}/src/engine/renderer2d.cpp
+  ${CMAKE_SOURCE_DIR}/src/engine/image.cpp
   ${CMAKE_SOURCE_DIR}/src/engine/assets.cpp)
 target_include_directories(test_farm_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_definitions(test_farm_live PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
