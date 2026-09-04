@@ -71,10 +71,11 @@ void AuthController::login(const drogon::HttpRequestPtr& req,
 void AuthController::guest(const drogon::HttpRequestPtr& req,
                           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
     const long  pid  = req->attributes()->get<long>(kProjectId);
-    const auto  body = req->getJsonObject();   // optional body: {display_name?}
+    const auto  body = req->getJsonObject();   // optional body: {display_name?, device_id?}
     const std::string name = body ? (*body).get("display_name", "").asString() : "";
+    const std::string dev  = body ? (*body).get("device_id", "").asString() : "";
     try {
-        cb(respond(auth::guest(pid, name), pid));
+        cb(respond(auth::guest(pid, name, dev), pid));
     } catch (const std::exception&) {
         cb(make_error(500, "internal", "guest creation failed"));
     }

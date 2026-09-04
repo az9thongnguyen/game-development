@@ -210,6 +210,24 @@ CREATE TABLE IF NOT EXISTS operators (
 );
 )SQL";
 
+// Migrations 7 and 8 — a device id on a guest account. A guest used to be a NEW user
+// every launch, which is fine until something belongs to the player: cloud save then
+// lands in a fresh account each time and can never be read back. The client keeps an
+// opaque id for the installation and hands it over; the same id returns the same guest.
+// Nullable, because every existing guest predates it and NULLs stay distinct under a
+// unique index — old rows do not collide with each other.
+//
+// Split in two because ALTER ... ADD COLUMN is not idempotent, and the invariant below
+// says a migration is one statement or all-idempotent. One statement each keeps it,
+// with no transaction machinery.
+constexpr const char* kMigration7GuestDevice = R"SQL(
+ALTER TABLE users ADD COLUMN device_id TEXT;
+)SQL";
+
+constexpr const char* kMigration8GuestDeviceIndex = R"SQL(
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_device ON users(project_id, device_id);
+)SQL";
+
 constexpr Migration kMigrations[] = {
     {1, "initial schema", kMigration1},
     {2, "audit log", kMigration2Audit},
@@ -217,6 +235,8 @@ constexpr Migration kMigrations[] = {
     {4, "idempotency keys", kMigration4Idempotency},
     {5, "store catalog", kMigration5Catalog},
     {6, "operators", kMigration6Operators},
+    {7, "guest device id", kMigration7GuestDevice},
+    {8, "guest device id index", kMigration8GuestDeviceIndex},
 };
 
 bool is_blank(const std::string& s) {
@@ -324,6 +344,35 @@ std::string seed(const DbClientPtr& db) {
             std::string("2000-01-01 00:00:00"), std::string("2999-01-01 00:00:00"),
             std::string("{\"wood_mult\":2}"));
     }
+
+    // ---- the farm demo -------------------------------------------------------
+    // A second project, because the farm is a second GAME: its prices, its live
+    // event and its save slot must not be able to collide with the colony's. The
+    // config value and the event payload are both a `defs` OVERRIDE BLOB in the same
+    // text format the game's own `farm/crops.def` uses — opaque to the server, which
+    // is the point: an operator changes a price by typing the line they would have
+    // typed in the file, and nothing here needs to know what a crop is.
+    const std::string farm_key = "pk_demo_farm";
+    if (db->execSqlSync("SELECT id FROM projects WHERE public_key=?", farm_key).empty()) {
+        const auto ins = db->execSqlSync(
+            "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
+            std::string("Farm Demo"), farm_key, pw::hash("sk_demo_farm"));
+        const auto pid = ins.insertId();
+        // No leaderboard: the farm does not submit a score, and a seeded row nothing
+        // reads is a row someone later mistakes for a feature.
+        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+                        static_cast<long>(pid), std::string("farm_defs"),
+                        std::string("crop parsnip sell=40\n"));
+        // Seeded NOT active (it started and ended in the past), so the festival is a
+        // switch an operator flips in the dashboard rather than a permanent buff.
+        db->execSqlSync(
+            "INSERT INTO live_events(project_id, key, name, starts_at, ends_at, payload) VALUES(?,?,?,?,?,?)",
+            static_cast<long>(pid), std::string("harvest_festival"),
+            std::string("Harvest Festival"),
+            std::string("2000-01-01 00:00:00"), std::string("2000-01-02 00:00:00"),
+            std::string("crop parsnip sell=90\ncrop pumpkin sell=180\n"));
+    }
+
     return public_key;
 }
 

@@ -169,9 +169,14 @@ DayReport end_day(World& w, const Defs& defs, bool collapsed) {
 
     for (auto& [name, count] : w.shipped) {
         if (count <= 0) continue;
+        // A crop's price belongs to the CROP. It used to be whichever of the two files
+        // mentioned the name first — and both did, with the same number, which is how
+        // a price ends up written twice and changed once. Now `crop parsnip sell=40`
+        // is the only line that moves a parsnip's price, wherever it arrives from:
+        // the file, remote config, or a live event.
         int unit = 0;
-        if (const ItemDef* it = defs.item(name); it && it->sell > 0) unit = it->sell;
-        else if (const CropDef* c = defs.crop(name)) unit = c->sell;
+        if (const CropDef* c = defs.crop(name)) unit = c->sell;
+        else if (const ItemDef* it = defs.item(name)) unit = it->sell;
         // A small daily swing so the economy is not a spreadsheet. Deterministic,
         // because it comes out of the day's own stream.
         const int jitter = rng.range(-2, 2);

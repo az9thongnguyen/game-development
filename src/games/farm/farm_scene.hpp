@@ -12,6 +12,13 @@
 //
 //  No SDL: a Scene sees only a platform::InputState and a Renderer2D, so this can be
 //  rendered offscreen and checked like the Studio shell is.
+//
+//  It is also the second consumer of the BaaS, and the first one that treats the
+//  backend as something a game DEPENDS on rather than demonstrates: prices arrive
+//  from remote config, a live event changes them again, and the save is reconciled
+//  with the cloud copy before either is trusted. Everything degrades to a playable
+//  offline game — the connection is pumped from update(), never waited on, because
+//  a frame that waits for a socket is the blocking loop this project does not have.
 // =============================================================================
 #pragma once
 
@@ -20,7 +27,10 @@
 #include <string>
 #include <vector>
 
+#include "gbaas/gbaas.h"
+
 #include "engine/scene.hpp"
+#include "games/farm/cloud.hpp"
 #include "engine/tilemap/camera2d.hpp"
 #include "engine/tilemap/map2.hpp"
 #include "games/farm/defs.hpp"
@@ -34,7 +44,15 @@ public:
     // `map_path` and the data files are asset-relative. Everything is loaded here so
     // a failure has one place to be reported from, and the scene still runs (drawing
     // the reason) rather than launching into a black window.
-    FarmScene();
+    // `cfg` says where the backend is; `transport` says how to reach it, and a null
+    // one means the platform's own. One constructor rather than three overloads: a
+    // test drives the whole cloud path through a fake transport (the alternative is a
+    // unit test that opens a socket, which is a unit test that fails on a train), and
+    // the end-to-end test needs a real transport pointed at a port it chose.
+    explicit FarmScene(gbaas::Config cfg = default_config(),
+                       std::unique_ptr<gbaas::ITransport> transport = nullptr);
+
+    static gbaas::Config default_config();
 
     void update(double dt, const platform::InputState& input) override;
     void render(const engine::Context& ctx) override;
@@ -43,11 +61,38 @@ public:
     [[nodiscard]] bool         ready() const { return ready_; }
     [[nodiscard]] const std::string& problem() const { return problem_; }
     [[nodiscard]] const World& world() const { return world_; }
+    [[nodiscard]] const Defs&  defs()  const { return defs_; }
+
+    // Cloud state, for tests and for the HUD (same source, so they cannot disagree).
+    [[nodiscard]] const std::string& cloud_line() const { return cloud_line_; }
+    // What the HUD chip actually says. render() draws THIS, so a test that reads it is
+    // reading the screen rather than a parallel opinion about the screen.
+    [[nodiscard]] std::string cloud_chip() const;
+    [[nodiscard]] const std::string& config_problem() const { return config_problem_; }
+    [[nodiscard]] bool  online()   const { return link_ == Link::Online; }
+    [[nodiscard]] bool  conflict() const { return conflict_; }
+    [[nodiscard]] const std::string& event_name() const { return event_name_; }
 
 private:
+    // What the connection is doing. Offline is the resting state, not an error: the
+    // farm is a complete game with no backend at all.
+    enum class Link { Offline, Connecting, Online, Failed };
     enum class Tab { Hoe = 0, Water, Seed, Harvest };
 
     void        load();
+    void        connect();                  // guest sign-in, then everything below
+    std::string device_id();                // stable per installation; created once
+    void        pull_config();              // remote config + live events -> overrides
+    void        sync_saves();               // download, decide, and act (or ask)
+    void        push_save();                // upload the world we are holding
+    void        adopt_cloud();              // accept the downloaded copy
+    void        adopt_world(World w);       // install a world: NPCs, camera, message
+    std::optional<World> world_from_text(const std::string& text, std::string* why) const;
+    LocalSave   local_stamp() const;
+    std::string bookmark_path() const;
+    void        read_bookmark();
+    void        write_bookmark(long long version, std::uint64_t hash);
+    void        track(const char* name, const std::string& props = "{}");
     void        interact();                 // the Z/Space key
     void        sleep_now(bool collapsed);
     std::string save_path() const;
@@ -75,6 +120,25 @@ private:
     double step_cooldown_ = 0.0;
     Tab    tool_ = Tab::Hoe;
     int    seed_ = 0;                       // index into defs_.crops
+
+    // ---- cloud ----
+    gbaas::Client client_;
+    Link          link_ = Link::Offline;
+    std::string   cloud_line_ = "offline";
+    std::string   event_name_;
+    int           overrides_applied_ = 0;
+    std::string   config_problem_;          // the operator's typo, shown to whoever is playing
+    // The downloaded copy is HELD, not applied, whenever the player has to choose.
+    std::string   cloud_text_;
+    long long     cloud_version_ = 0;
+    bool          conflict_      = false;
+    // True from the moment the cloud copy is asked for until the verdict lands. A save
+    // made inside that window must not upload: the decision about to be taken is
+    // computed from a snapshot of the cloud taken BEFORE the upload, and acting on
+    // both is how a save gets sent twice — or, in the wrong order, overwritten.
+    bool          syncing_       = false;
+    long long     synced_version_ = 0;
+    std::uint64_t synced_hash_    = 0;
 
     std::string message_;
     double      message_t_ = 0.0;

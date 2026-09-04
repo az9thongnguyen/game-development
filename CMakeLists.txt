@@ -276,7 +276,7 @@ target_include_directories(test_shell_golden PRIVATE src)
 target_compile_definitions(test_shell_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_shell_golden PRIVATE
   hub_build_core hub_core release_ops_core release_core project_core inspect_core resource_core
-  commands_core map_edit_core document_core ui_core text_core farm_core sandbox_core ecs_core engine_flags)
+  commands_core map_edit_core document_core ui_core text_core farm_core sandbox_core ecs_core gbaas_sdk engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
 
 # ---- Documents: undo/redo history and autosave+recovery for an edited file -------
@@ -377,6 +377,7 @@ add_library(farm_core STATIC
   src/games/farm/defs.cpp
   src/games/farm/world.cpp
   src/games/farm/dialogue.cpp
+  src/games/farm/cloud.cpp
 )
 target_include_directories(farm_core PUBLIC src)
 target_link_libraries(farm_core PUBLIC tilemap_core document_core PRIVATE engine_flags)
@@ -395,7 +396,7 @@ add_executable(test_farm_scene tests/test_farm_scene.cpp
 )
 target_include_directories(test_farm_scene PRIVATE src)
 target_compile_definitions(test_farm_scene PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
-target_link_libraries(test_farm_scene PRIVATE farm_core ui_core text_core engine_flags)
+target_link_libraries(test_farm_scene PRIVATE farm_core ui_core text_core gbaas_sdk engine_flags)
 add_test(NAME farm_scene COMMAND test_farm_scene)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------

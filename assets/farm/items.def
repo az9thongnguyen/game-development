@@ -1,9 +1,11 @@
 # Tools are what you hold; crops and seeds are what you carry.
 item hoe          type=tool tier=1
 item watering_can type=tool tier=1
-item parsnip type=crop sell=35
-item turnip  type=crop sell=15
-item pumpkin type=crop sell=90
+# No `sell=` on a crop item: crops.def owns the price. Two files carrying the same
+# number is how one of them stops being read.
+item parsnip type=crop
+item turnip  type=crop
+item pumpkin type=crop
 item parsnip_seed type=seed sell=10
 item turnip_seed  type=seed sell=4
 item pumpkin_seed type=seed sell=25

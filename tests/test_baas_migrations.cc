@@ -33,13 +33,15 @@ int main() {
     // A fresh database applies every migration in order and records each one.
     web::db::run_migrations(db);
     auto applied = web::db::applied_migrations(db);
-    CHECK(applied.size() == 6);
+    CHECK(applied.size() == 8);
     CHECK(applied[0].version == 1 && applied[0].name == "initial schema");
     CHECK(applied[1].version == 2 && applied[1].name == "audit log");
     CHECK(applied[2].version == 3 && applied[2].name == "analytics release column");
     CHECK(applied[3].version == 4 && applied[3].name == "idempotency keys");
     CHECK(applied[4].version == 5 && applied[4].name == "store catalog");
     CHECK(applied[5].version == 6 && applied[5].name == "operators");
+    CHECK(applied[6].version == 7 && applied[6].name == "guest device id");
+    CHECK(applied[7].version == 8 && applied[7].name == "guest device id index");
     CHECK(!applied[0].applied_at.empty());
 
     // Migration 2 really created the table: an insert into it must succeed.
@@ -56,9 +58,12 @@ int main() {
     CHECK(platform_rows[0].action == "config.rotate");
     CHECK(platform_rows[0].project_id == 0);
 
-    // Running migrations again is a no-op: no duplicate version rows, no error.
+    // Running migrations again is a no-op: no duplicate version rows, no error. This
+    // matters most for migration 7 — ALTER ... ADD COLUMN fails on a second run, so
+    // "already applied, skip" is load-bearing rather than merely tidy.
+    const std::size_t n = applied.size();
     web::db::run_migrations(db);
-    CHECK(web::db::applied_migrations(db).size() == 6);
+    CHECK(web::db::applied_migrations(db).size() == n);
     // ...and the audit rows survived (idempotent migrations do not wipe data).
     CHECK(web::audit::recent(42, 10).size() == 1);
 

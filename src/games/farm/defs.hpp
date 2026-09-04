@@ -57,4 +57,25 @@ std::optional<Defs> parse_defs(const std::string& text);
 // so an override file can sit after the base one).
 void merge_defs(Defs& into, const Defs& more);
 
+// ---- overrides: the same text, from somewhere nobody can rebuild ----------------
+//
+// Remote config and live events deliver balance changes in THIS format — the operator
+// edits the same lines they would edit in the file. What they do not get is
+// `merge_defs`: that replaces a whole record, so `crop parsnip sell=70` typed into a
+// dashboard would silently reset days/stages/seed to the struct defaults, and a
+// price change would quietly re-balance growth. An override assigns only the fields
+// the line actually names.
+//
+// The other difference is what happens to a mistake. A FILE is additive and
+// forward-compatible, so parse_defs ignores an unknown key. A dashboard field was
+// typed by a person thirty seconds ago, so an unknown key there is a typo and is
+// reported. Nothing is applied from a line that fails, and a line that would make a
+// crop unplayable (days < 1, stages < 2) is refused with the rest of them: remote
+// config must not be able to brick a running game.
+struct OverrideReport {
+    int                      applied = 0;   // fields actually assigned
+    std::vector<std::string> problems;      // one line each, naming the record
+};
+OverrideReport apply_overrides(Defs& into, const std::string& text);
+
 } // namespace farm

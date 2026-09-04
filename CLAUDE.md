@@ -79,6 +79,10 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
+                                              # resumes saves/farm/slot1.sav; signs in as a guest
+                                              # (project pk_demo_farm), takes prices from remote
+                                              # config + any live event, and reconciles the cloud
+                                              # save (F5 save+push, F6/F7 resolve a conflict)
 ./build/demo --project-inspect  <proj>        # validate/doctor + resource closure
 ./build/demo --project-package  <proj>        # deterministic package manifest (release-id seed)
 ./build/demo --project-publish  <proj> development "reason"   # atomic publish + audit
@@ -102,8 +106,9 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 ```
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
-depends on it; when Drogon is absent its targets, including the `baas_*`/`sdk_live`
-tests, silently vanish from `ctest`):
+depends on it; when Drogon is absent its targets, including the `baas_*`/`sdk_live`/
+`farm_live` tests, silently vanish from `ctest` — and CI installs only SDL2, so **none
+of them run there**):
 
 ```sh
 brew install drogon libsodium                  # enables the 'baas' target
@@ -155,7 +160,8 @@ Understand these deliberate patterns before editing the build:
   `ui_core`, `text_core`, `viz3d_core`, `colony_core`, plus the platform-spine
   cores `project_core`, `inspect_core` (one read+validate+hash, shared by launch,
   package, publish and the Studio), `resource_core`, `release_core`, `release_ops_core`,
-  the game cores `farm_core` (day loop, crops, NPC schedules, dialogue — no renderer),
+  the game cores `farm_core` (day loop, crops, NPC schedules, dialogue, and the pure
+  cloud-save verdict `decide_sync` — no renderer, no SDK),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
   `particles_core`, `tween_core`, `light_core`, `audio_core`,
