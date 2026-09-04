@@ -8,6 +8,7 @@
 #include <ctime>
 
 #include "engine/assets.hpp"
+#include "engine/project/inspect.hpp"
 #include "engine/project/project.hpp"
 #include "engine/release/release.hpp"
 #include "engine/resource/resource.hpp"
@@ -33,30 +34,16 @@ void record_audit(const std::string& action, const std::string& channel,
     assets::append_file(audit_log_path(), std::vector<uint8_t>(line.begin(), line.end()));
 }
 
-// Resolve a project to (project, content-hashed resources), or a first-problem string.
-// ponytail: a self-contained resolve local to the ops lib — the CLI (resolve_project) and
-// hub (build_hub_view) keep their own small copies; unify the three if a fourth appears.
-struct Res {
-    Project                       proj;
-    std::vector<PackagedResource> resources;
-    std::string                   problem;   // empty ⇒ shippable
-};
-Res resolve(const std::string& path, const std::vector<std::string>& known) {
-    Res r;
-    auto bytes = assets::load_file(path);
-    if (!bytes) { r.problem = "cannot read '" + path + "'"; return r; }
-    auto p = parse_project(std::string(bytes->begin(), bytes->end()));
-    if (!p) { r.problem = "'" + path + "' is not a valid gameproject1 manifest"; return r; }
-    r.proj = *p;
-    const auto errs = validate(*p, known);
-    if (!errs.empty()) { r.problem = errs.front(); return r; }
-    for (const auto& a : p->assets) {
-        if (auto ab = assets::load_file(a.path))
-            r.resources.push_back({a.type, a.path,
-                                   content_hash(std::vector<uint8_t>(ab->begin(), ab->end()))});
-        else { r.problem = "missing asset: " + a.path; return r; }
+// Every problem, joined into one message. publish() used to report only the FIRST
+// missing asset, so a project with three broken paths took three runs to diagnose.
+// The list is already ordered by how much each line explains (see inspect.hpp).
+std::string problem_summary(const Inspection& in) {
+    std::string msg;
+    for (const auto& p : in.problems) {
+        if (!msg.empty()) msg += "; ";
+        msg += p;
     }
-    return r;
+    return msg;
 }
 
 }  // namespace
@@ -70,11 +57,13 @@ std::optional<std::string> current_release(const std::string& channel) {
 OpResult publish(const std::string& project_path, const std::string& channel,
                  const std::string& reason, const std::vector<std::string>& known_entries) {
     if (!valid_channel_name(channel)) return {false, "invalid channel name '" + channel + "'"};
-    Res r = resolve(project_path, known_entries);
-    if (!r.problem.empty()) return {false, "not shippable: " + r.problem};
+    const Inspection in = inspect(project_path, known_entries);
+    if (!in.shippable()) return {false, "not shippable: " + problem_summary(in)};
 
-    const std::string pkg  = build_package(r.proj.name, r.proj.schema, r.proj.entry, r.resources);
-    const std::string hex  = hash_hex(package_hash(r.resources));
+    const auto resources = in.resources();
+    const std::string pkg  = build_package(in.project.name, in.project.schema,
+                                           in.project.entry, resources);
+    const std::string hex  = in.package;
     const std::string mpath = release_manifest_path(hex);
     const std::vector<uint8_t> pkg_bytes(pkg.begin(), pkg.end());
 
@@ -90,7 +79,7 @@ OpResult publish(const std::string& project_path, const std::string& channel,
     if (!write_atomic(channel_path(channel), serialize_channel(hex)))
         return {false, "cannot update channel '" + channel + "'"};
     record_audit("publish", channel, hex, prev, reason);
-    return {true, std::string(verified ? "verified " : "published ") + r.proj.name +
+    return {true, std::string(verified ? "verified " : "published ") + in.project.name +
                   " → " + channel + " " + hex};
 }
 

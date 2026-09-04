@@ -21,6 +21,7 @@
 #include "engine/assets.hpp"
 #include "engine/hub/hub.hpp"
 #include "engine/hub/hub_build.hpp"
+#include "engine/project/inspect.hpp"
 #include "engine/project/project.hpp"
 #include "engine/release/ops.hpp"
 #include "engine/commands/registry.hpp"
@@ -123,83 +124,41 @@ int launch_entry(const std::string& entry) {
 // The entry ids a project manifest may name — kept in sync with launch_entry.
 const std::vector<std::string> kKnownEntries = {"fps", "farm"};
 
-// Resolve a project's declared assets to packaged resources, each content-hashed
-// through the assets:: seam. Any asset that does not resolve is appended to
-// `missing`. This is the dependency-closure walk shared by inspect/launch/package/publish.
-void collect_resources(const engine::Project& proj,
-                       std::vector<engine::PackagedResource>& resources,
-                       std::vector<std::string>& missing) {
-    for (const auto& a : proj.assets) {
-        if (auto ab = assets::load_file(a.path))
-            resources.push_back({a.type, a.path,
-                                 engine::content_hash(std::vector<uint8_t>(ab->begin(), ab->end()))});
-        else
-            missing.push_back(a.path);
-    }
-}
-
-// A project that loaded, parsed, validated, and fully resolved its content closure.
-struct Resolved {
-    engine::Project                       proj;
-    std::vector<engine::PackagedResource> resources;
-};
-
-// Strict load: read → parse → validate → resolve closure. On ANY problem prints it
-// to stderr and returns nullopt. Callers that need a shippable project (launch,
-// package, publish) go through here; only the inspect report walks the parts by hand.
-std::optional<Resolved> resolve_project(const std::string& path) {
-    auto bytes = assets::load_file(path);
-    if (!bytes) { std::fprintf(stderr, "project: cannot read '%s'\n", path.c_str()); return std::nullopt; }
-    auto proj = engine::parse_project(std::string(bytes->begin(), bytes->end()));
-    if (!proj) {
-        std::fprintf(stderr, "project: '%s' is not a valid gameproject1 manifest\n", path.c_str());
+// Strict load: an Inspection that is actually shippable, or nullopt after printing
+// why. Callers that need a shippable project (launch, package) go through here; the
+// inspect report below wants the partial answer, so it reads the Inspection directly.
+std::optional<engine::Inspection> resolve_project(const std::string& path) {
+    engine::Inspection in = engine::inspect(path, kKnownEntries);
+    if (in.shippable()) return in;
+    // A manifest that cannot be read or parsed has one problem and it is fatal; a
+    // manifest that parsed has a list, and printing all of it is the difference
+    // between one debugging run and one per broken asset.
+    if (!in.parsed) {
+        std::fprintf(stderr, "project: %s\n", in.problems.front().c_str());
         return std::nullopt;
     }
-    const auto errs = engine::validate(*proj, kKnownEntries);
-    std::vector<engine::PackagedResource> resources;
-    std::vector<std::string> missing;
-    collect_resources(*proj, resources, missing);
-    if (!errs.empty() || !missing.empty()) {
-        std::fprintf(stderr, "project: '%s' is not shippable:\n", path.c_str());
-        for (const auto& e : errs)    std::fprintf(stderr, "  - %s\n", e.c_str());
-        for (const auto& m : missing) std::fprintf(stderr, "  - missing asset: %s\n", m.c_str());
-        return std::nullopt;
-    }
-    return Resolved{std::move(*proj), std::move(resources)};
+    std::fprintf(stderr, "project: '%s' is not shippable:\n", path.c_str());
+    for (const auto& e : in.problems) std::fprintf(stderr, "  - %s\n", e.c_str());
+    return std::nullopt;
 }
 
-// Load a game.project manifest, and either print an inspection report (headless, no
-// window) or launch its entry scene. Inspect walks the parts by hand so it can report
-// partial/missing content; launch uses the strict resolver.
-int launch_project(const std::string& path, bool inspect_only) {
-    if (inspect_only) {
-        auto bytes = assets::load_file(path);
-        if (!bytes) { std::fprintf(stderr, "project: cannot read '%s'\n", path.c_str()); return 1; }
-        auto proj = engine::parse_project(std::string(bytes->begin(), bytes->end()));
-        if (!proj) {
-            std::fprintf(stderr, "project: '%s' is not a valid gameproject1 manifest\n", path.c_str());
-            return 1;
-        }
-        const auto errs = engine::validate(*proj, kKnownEntries);
-        std::vector<engine::PackagedResource> resources;
-        std::vector<std::string> missing;
-        collect_resources(*proj, resources, missing);
-        std::printf("project: %s\n  name   %s\n  schema %d\n  entry  %s\n",
-                    path.c_str(), proj->name.c_str(), proj->schema, proj->entry.c_str());
-        for (const auto& r : resources)
-            std::printf("  asset  %-8s %s  [%s]\n",
-                        r.type.c_str(), r.path.c_str(), engine::hash_hex(r.hash).c_str());
-        for (const auto& m : missing)
-            std::printf("  asset  MISSING  %s\n", m.c_str());
-        if (errs.empty() && missing.empty()) { std::printf("  status OK\n"); return 0; }
-        std::printf("  status %zu problem(s):\n", errs.size() + missing.size());
-        for (const auto& e : errs)    std::printf("    - %s\n", e.c_str());
-        for (const auto& m : missing) std::printf("    - missing asset: %s\n", m.c_str());
-        return 1;
-    }
+// The inspection report. The flag is an ALIAS onto the registry command, not a second
+// formatter beside it (D16): --project-inspect, --cmd project.inspect and a Studio
+// button print the identical text because there is only one that produces it. The
+// report goes to stdout either way — "not shippable, here is why" is this verb's
+// ANSWER, not a malfunction, and a caller redirecting stderr must still get it.
+int inspect_project(const std::string& path) {
+    cmd::register_release_commands(kKnownEntries);
+    const engine::OpResult r = cmd::run("project.inspect", {path});
+    std::printf("%s\n", r.message.c_str());
+    return r.ok ? 0 : 1;
+}
+
+// Launch a game.project manifest's entry scene (strict: refuses a broken closure).
+int launch_project(const std::string& path) {
     auto r = resolve_project(path);
     if (!r) return 1;
-    return launch_entry(r->proj.entry);
+    return launch_entry(r->project.entry);
 }
 
 // Emit the deterministic package manifest (identity + content-hashed resources +
@@ -207,8 +166,8 @@ int launch_project(const std::string& path, bool inspect_only) {
 int package_project(const std::string& path) {
     auto r = resolve_project(path);
     if (!r) return 1;
-    std::printf("%s", engine::build_package(r->proj.name, r->proj.schema, r->proj.entry,
-                                            r->resources).c_str());
+    std::printf("%s", engine::build_package(r->project.name, r->project.schema,
+                                            r->project.entry, r->resources()).c_str());
     return 0;
 }
 
@@ -311,7 +270,7 @@ int verify_project(const std::string& path, const std::string& channel) {
     }
     auto r = resolve_project(path);
     if (!r) return 1;
-    const std::string local = engine::hash_hex(engine::package_hash(r->resources));
+    const std::string local = r->package;   // inspect() already computed it
     auto live = read_channel(channel);
     if (!live) {
         std::fprintf(stderr, "verify: channel '%s' is unset or malformed — nothing to compare\n",
@@ -374,13 +333,13 @@ int main(int argc, char** argv) {
     // instead of a hard-coded scene flag: this is the Horizon 0 golden path.
     if (mode == "--project") {
         if (argc < 3) { std::fprintf(stderr, "usage: demo --project <path>\n"); return 1; }
-        return launch_project(argv[2], /*inspect_only=*/false);
+        return launch_project(argv[2]);
     }
 
     // Headless: validate a manifest and print an inspection report, no window.
     if (mode == "--project-inspect") {
         if (argc < 3) { std::fprintf(stderr, "usage: demo --project-inspect <path>\n"); return 1; }
-        return launch_project(argv[2], /*inspect_only=*/true);
+        return inspect_project(argv[2]);
     }
 
     // Headless: emit the deterministic package manifest (release-id seed) to stdout.
