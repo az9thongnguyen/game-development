@@ -23,6 +23,8 @@
 #include "engine/hub/hub_build.hpp"
 #include "engine/project/project.hpp"
 #include "engine/release/ops.hpp"
+#include "engine/commands/registry.hpp"
+#include "engine/commands/release_commands.hpp"
 #include "engine/release/release.hpp"
 #include "engine/resource/resource.hpp"
 #include "engine/text/font.hpp"
@@ -243,51 +245,46 @@ int print_op(const engine::OpResult& r) {
     std::fprintf(r.ok ? stdout : stderr, "%s\n", r.message.c_str());
     return r.ok ? 0 : 1;
 }
+// The mutating verbs are ALIASES onto the command registry, not a second path to the
+// same operation. Two call sites that happen to agree today is how a GUI and a CLI
+// drift apart; going through cmd::run means --project-publish, --cmd project.publish
+// and a Studio button are provably the same code, and adding a command cannot add it
+// to only some of them.
+int run_command(const char* id, const std::vector<std::string>& args) {
+    cmd::register_release_commands(kKnownEntries);
+    return print_op(cmd::run(id, args));
+}
 int publish_project(const std::string& path, const std::string& channel, const std::string& reason) {
-    return print_op(engine::publish(path, channel, reason, kKnownEntries));
+    return run_command("project.publish", {path, channel, reason});
 }
 int promote_release(const std::string& from, const std::string& to, const std::string& reason) {
-    return print_op(engine::promote(from, to, reason));
+    return run_command("release.promote", {from, to, reason});
 }
 int rollback_channel(const std::string& channel, const std::string& hex, const std::string& reason) {
-    return print_op(engine::rollback(channel, hex, reason));
+    return run_command("release.rollback", {channel, hex, reason});
 }
 
-// The channels with defined promotion semantics: publish lands in development, promote
-// forward to preview (shareable) then production (live). Other names are still allowed
-// ad hoc by publish/promote/rollback; these are just the ones --release-status reports.
-const char* const kChannels[] = {"development", "preview", "production"};
-
-// Status: print the release each well-known channel points at, and whether that
-// release is present in the store. Reads fixed channel files — no directory scan
-// (the "collection database" smell the strategy warns against).
+// Status and log now come from release_ops_core as DATA; main.cpp only formats them.
+// They used to be implemented here, printing directly, which meant a window showing the
+// same information had to reimplement the reading — the duplication hub_lines exists to
+// prevent one level up.
 int release_status() {
-    for (const char* ch : kChannels) {
-        auto hex = read_channel(ch);
-        if (!hex) { std::printf("%-11s unset\n", ch); continue; }
-        const bool present = assets::load_file(engine::release_manifest_path(*hex)).has_value();
-        std::printf("%-11s %s  [%s]\n", ch, hex->c_str(), present ? "present" : "MISSING");
+    for (const auto& c : engine::status()) {
+        if (c.release.empty()) { std::printf("%-11s unset\n", c.name.c_str()); continue; }
+        std::printf("%-11s %s  [%s]\n", c.name.c_str(), c.release.c_str(),
+                    c.present ? "present" : "MISSING");
     }
     return 0;
 }
 
-// Log: print the append-only audit history (optionally filtered to one channel). Reads
-// the log file forward — never scans the store directory.
 int release_log(const std::string& channel_filter) {
-    auto bytes = assets::load_file(engine::audit_log_path());
-    if (!bytes) { std::printf("(no releases published yet)\n"); return 0; }
-    std::istringstream in(std::string(bytes->begin(), bytes->end()));
-    std::string line;
-    while (std::getline(in, line)) {
-        if (line.empty()) continue;
-        auto e = engine::parse_audit_line(line);
-        if (!e) continue;                                             // skip a malformed line, keep going
-        if (!channel_filter.empty() && e->channel != channel_filter) continue;
+    const auto records = engine::log(channel_filter);
+    if (records.empty()) { std::printf("(no releases published yet)\n"); return 0; }
+    for (const auto& e : records)
         std::printf("%-10lld %-8s %-11s %s <- %s%s%s\n",
-                    e->epoch, e->action.c_str(), e->channel.c_str(), e->release.c_str(),
-                    e->prev.empty() ? "(none)" : e->prev.c_str(),
-                    e->reason.empty() ? "" : "  # ", e->reason.c_str());
-    }
+                    e.epoch, e.action.c_str(), e.channel.c_str(), e.release.c_str(),
+                    e.prev.empty() ? "(none)" : e.prev.c_str(),
+                    e.reason.empty() ? "" : "  # ", e.reason.c_str());
     return 0;
 }
 
@@ -392,6 +389,29 @@ int main(int argc, char** argv) {
 
     // Headless: package a project and store it immutably by content hash, pointing a
     // channel (default "development") at it — the Horizon 1 local release store.
+    // Run any registered command by id. This is the seam that makes "a GUI action and
+    // a CLI verb are the same code" structural rather than a convention: the Studio's
+    // buttons and this flag both go through cmd::run.
+    //
+    // The older flags below are kept and are now one-line aliases onto the same
+    // handlers, so CI and every script keep working unchanged.
+    if (mode == "--cmd") {
+        cmd::register_release_commands(kKnownEntries);
+        if (argc < 3) {
+            std::printf("usage: --cmd <id> [args...]\n\nregistered commands:\n");
+            for (const auto& i : cmd::all())
+                std::printf("  %-18s %s%s%s\n", i.id.c_str(), i.title.c_str(),
+                            i.args_help.empty() ? "" : "   ", i.args_help.c_str());
+            return 1;
+        }
+        std::vector<std::string> args;
+        for (int i = 3; i < argc; ++i) args.emplace_back(argv[i]);
+        const engine::OpResult r = cmd::run(argv[2], args);
+        if (r.ok) { if (!r.message.empty()) std::printf("%s\n", r.message.c_str()); return 0; }
+        std::fprintf(stderr, "%s\n", r.message.c_str());
+        return 1;
+    }
+
     if (mode == "--project-publish") {
         if (argc < 3) { std::fprintf(stderr, "usage: demo --project-publish <path> [channel] [reason]\n"); return 1; }
         return publish_project(argv[2], argc > 3 ? argv[3] : "development", argc > 4 ? argv[4] : "");

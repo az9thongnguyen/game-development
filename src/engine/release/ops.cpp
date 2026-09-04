@@ -3,6 +3,8 @@
 // =============================================================================
 #include "engine/release/ops.hpp"
 
+#include <sstream>
+
 #include <ctime>
 
 #include "engine/assets.hpp"
@@ -117,6 +119,42 @@ OpResult rollback(const std::string& channel, const std::string& release_id, con
         return {false, "cannot update channel '" + channel + "'"};
     record_audit("rollback", channel, release_id, prev, reason);
     return {true, "rolled back " + channel + " → " + release_id};
+}
+
+
+const std::vector<std::string>& well_known_channels() {
+    static const std::vector<std::string> v{"development", "preview", "production"};
+    return v;
+}
+
+std::vector<ChannelStatus> status() {
+    std::vector<ChannelStatus> out;
+    for (const std::string& ch : well_known_channels()) {
+        ChannelStatus s;
+        s.name = ch;
+        if (auto hex = current_release(ch)) {
+            s.release = *hex;
+            s.present = assets::load_file(release_manifest_path(*hex)).has_value();
+        }
+        out.push_back(std::move(s));
+    }
+    return out;
+}
+
+std::vector<AuditRecord> log(const std::string& channel_filter) {
+    std::vector<AuditRecord> out;
+    auto bytes = assets::load_file(audit_log_path());
+    if (!bytes) return out;                    // nothing published yet is not an error
+    std::istringstream in(std::string(bytes->begin(), bytes->end()));
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        auto e = parse_audit_line(line);
+        if (!e) continue;                      // a corrupt line must not hide the rest
+        if (!channel_filter.empty() && e->channel != channel_filter) continue;
+        out.push_back(AuditRecord{e->epoch, e->action, e->channel, e->release, e->prev, e->reason});
+    }
+    return out;
 }
 
 } // namespace engine

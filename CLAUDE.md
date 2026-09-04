@@ -72,6 +72,7 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --project-inspect  <proj>        # validate/doctor + resource closure
 ./build/demo --project-package  <proj>        # deterministic package manifest (release-id seed)
 ./build/demo --project-publish  <proj> development "reason"   # atomic publish + audit
+                                              # (the reason is REQUIRED: a blank audit line is not evidence)
 ./build/demo --release-promote  development preview "reason"  # dev -> preview -> production
 ./build/demo --release-rollback production <release-id> "reason"
 ./build/demo --release-status | --release-log [channel]
@@ -79,6 +80,7 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --hub <proj>                     # aggregate status + next recommended action
 ./build/demo --runner <baas_url> <api_key>    # headless BaaS test-run worker
 ./build/demo --bench-ui [frames] [proj]       # Studio frame cost, ss=1 vs ss=2 (no window)
+./build/demo --cmd [id] [args...]              # run any registered command; no id lists them
 ```
 
 Tests (dependency-free, no SDL/window needed):
