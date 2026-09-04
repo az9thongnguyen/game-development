@@ -45,6 +45,10 @@ public:
     void add_pixel(int x, int y, Color c);    // ADDITIVE (saturating), c's alpha = weight; for glows/lights
 
     void fill_rect(int x, int y, int w, int h, Color c);
+    // Alpha-respecting fill. fill_rect writes `c` opaquely (it is the fast path and
+    // most callers pass an opaque colour); this one blends, which is what a modal
+    // scrim or a tinted badge background needs.
+    void fill_rect_blend(int x, int y, int w, int h, Color c);
     void fill_v_gradient(int x, int y, int w, int h, Color top, Color bottom);  // vertical lerp fill
     void draw_rect(int x, int y, int w, int h, Color c);   // 1px outline
     void draw_line(int x0, int y0, int x1, int y1, Color c);          // aliased (Bresenham)

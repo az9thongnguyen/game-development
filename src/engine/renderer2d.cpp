@@ -118,6 +118,14 @@ void Renderer2D::fill_rect(int x, int y, int w, int h, Color c) {
     fill_phys(x * ss_, y * ss_, w * ss_, h * ss_, c);
 }
 
+void Renderer2D::fill_rect_blend(int x, int y, int w, int h, Color c) {
+    if (a_of(c) == 0) return;
+    if (a_of(c) == 255) { fill_rect(x, y, w, h, c); return; }   // opaque: take the fast path
+    const int px = x * ss_, py = y * ss_, pw = w * ss_, ph = h * ss_;
+    for (int yy = py; yy < py + ph; ++yy)
+        for (int xx = px; xx < px + pw; ++xx) blend_cov(xx, yy, c, 255);
+}
+
 // Vertical gradient (top→bottom), one lerp per PHYSICAL row so it's smooth even at
 // small logical sizes. Used for scene backgrounds / raycaster sky & ground.
 void Renderer2D::fill_v_gradient(int x, int y, int w, int h, Color top, Color bottom) {

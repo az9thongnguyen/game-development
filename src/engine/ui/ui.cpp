@@ -65,9 +65,13 @@ bool Context::point_in(Rect r) const {
     return in_.mx >= r.x && in_.mx < r.x + r.w && in_.my >= r.y && in_.my < r.y + r.h;
 }
 
-void Context::begin(gfx::Renderer2D* r, const Input& in) {
+void Context::begin(gfx::Renderer2D* r, const Input& in, int screen_w, int screen_h) {
     r_        = r;
     in_       = in;
+    screen_w_ = screen_w > 0 ? screen_w : (r ? r->width()  : 0);
+    screen_h_ = screen_h > 0 ? screen_h : (r ? r->height() : 0);
+    inert_    = false;
+    overlays_.clear();
     hot_      = 0;          // recompute hovered widget each frame
     hovering_ = false;
     id_scope_ = 0;
@@ -77,6 +81,8 @@ void Context::begin(gfx::Renderer2D* r, const Input& in) {
 }
 
 void Context::end() {
+    draw_overlays();
+    inert_ = false;
     if (!in_.down) active_ = 0;   // safety: nothing can be active with the button up
 
     // Tab order is declaration order — the order the caller wrote the widgets in,
@@ -110,7 +116,7 @@ void Context::end() {
 // Shared hover/press/focus bookkeeping. Every focusable widget routes through this,
 // so "how does a control become hot / active / focused" has exactly one answer.
 bool Context::interact(Id id, Rect r, bool enabled) {
-    if (!enabled) return false;
+    if (!enabled || inert_) return false;
     tab_order_.push_back(id);
 
     const bool over = point_in(r);
@@ -176,8 +182,8 @@ bool Context::checkbox(Rect r, const char* label, bool& value) {
 
 bool Context::slider(Rect r, const char* label, float& value, float lo, float hi) {
     const Id   id   = id_of(label);
-    const bool over = point_in(r);
-    tab_order_.push_back(id);
+    const bool over = point_in(r) && !inert_;
+    if (!inert_) { tab_order_.push_back(id); }
     if (over) { hot_ = id; hovering_ = true; }
 
     // A slider drags rather than clicks, so it does not go through interact():
@@ -192,7 +198,7 @@ bool Context::slider(Rect r, const char* label, float& value, float lo, float hi
     bool changed = false;
     // Keyboard: arrows nudge by 1/50 of the range, so a slider is reachable without
     // a mouse like every other control.
-    if (focused_ == id && (in_.keys.left || in_.keys.right) && hi > lo) {
+    if (!inert_ && focused_ == id && (in_.keys.left || in_.keys.right) && hi > lo) {
         const float step = (hi - lo) / 50.0f;
         const float nv   = clampf(value + (in_.keys.right ? step : -step), lo, hi);
         if (nv != value) { value = nv; changed = true; }
@@ -224,6 +230,82 @@ bool Context::slider(Rect r, const char* label, float& value, float lo, float hi
 
 void Context::label(int x, int y, const char* text, gfx::Color color) {
     if (r_) { r_->set_font_size(th::sz_body); r_->draw_text(x, y, text, color); }
+}
+
+// ---- layout -----------------------------------------------------------------
+void Context::begin_layout(Rect area, Axis axis, LayoutOpts o) {
+    if (layout_depth_ >= kMaxLayoutDepth) { ++layout_depth_; return; }
+    Rect a = area;
+    a.x += o.pad; a.y += o.pad;
+    a.w -= o.pad * 2; a.h -= o.pad * 2;
+    if (a.w < 0) a.w = 0;
+    if (a.h < 0) a.h = 0;
+    layouts_[layout_depth_] = Layout{a, axis, o.gap, 0, 0};
+    ++layout_depth_;
+}
+
+void Context::end_layout() { if (layout_depth_ > 0) --layout_depth_; }
+
+int Context::remaining() const {
+    if (layout_depth_ <= 0 || layout_depth_ > kMaxLayoutDepth) return 0;
+    const Layout& l = layouts_[layout_depth_ - 1];
+    const int total = (l.axis == Axis::X) ? l.area.w : l.area.h;
+    const int left  = total - l.head - l.tail;
+    return left > 0 ? left : 0;
+}
+
+Rect Context::slot(int size) {
+    if (layout_depth_ <= 0 || layout_depth_ > kMaxLayoutDepth) return Rect{};
+    Layout& l = layouts_[layout_depth_ - 1];
+    const int avail = remaining();
+    if (size > avail) size = avail;          // never hand back a rect outside the area
+    if (size < 0) size = 0;
+
+    Rect r;
+    if (l.axis == Axis::X) r = Rect{l.area.x + l.head, l.area.y, size, l.area.h};
+    else                   r = Rect{l.area.x, l.area.y + l.head, l.area.w, size};
+    l.head += size + (size > 0 ? l.gap : 0);
+    return r;
+}
+
+Rect Context::slot_end(int size) {
+    if (layout_depth_ <= 0 || layout_depth_ > kMaxLayoutDepth) return Rect{};
+    Layout& l = layouts_[layout_depth_ - 1];
+    const int avail = remaining();
+    if (size > avail) size = avail;
+    if (size < 0) size = 0;
+
+    const int total = (l.axis == Axis::X) ? l.area.w : l.area.h;
+    const int at    = total - l.tail - size;
+    Rect r;
+    if (l.axis == Axis::X) r = Rect{l.area.x + at, l.area.y, size, l.area.h};
+    else                   r = Rect{l.area.x, l.area.y + at, l.area.w, size};
+    l.tail += size + (size > 0 ? l.gap : 0);
+    return r;
+}
+
+Rect Context::slot_rest() { return slot(remaining()); }
+
+Rect Context::cell(int n, int index) {
+    if (n <= 0 || index < 0 || index >= n) return Rect{};
+    if (layout_depth_ <= 0 || layout_depth_ > kMaxLayoutDepth) return Rect{};
+    const Layout& l = layouts_[layout_depth_ - 1];
+    // Divide what is LEFT, not the whole area, so cells can follow a fixed header.
+    const int avail = remaining();
+    const int inner = avail - l.gap * (n - 1);
+    const int size  = inner > 0 ? inner / n : 0;
+    const int off   = index * (size + l.gap);
+
+    Rect r;
+    if (l.axis == Axis::X) r = Rect{l.area.x + l.head + off, l.area.y, size, l.area.h};
+    else                   r = Rect{l.area.x, l.area.y + l.head + off, l.area.w, size};
+    return r;   // does NOT advance: the caller asks for each index of the same row
+}
+
+void Context::skip(int px) {
+    if (layout_depth_ <= 0 || layout_depth_ > kMaxLayoutDepth) return;
+    Layout& l = layouts_[layout_depth_ - 1];
+    l.head += (px > 0) ? px : l.gap;
 }
 
 // ---- layout helpers ---------------------------------------------------------
@@ -271,6 +353,128 @@ bool Context::slider(const char* label, float& value, float lo, float hi) {
 void Context::label(const char* text) {
     label(cx_, cy_, text, th::text);
     cy_ += th::sz_body + kGap;
+}
+
+// ---- status and overlays ----------------------------------------------------
+namespace {
+gfx::Color tone_colour(Tone t) {
+    switch (t) {
+        case Tone::Info:    return th::info;
+        case Tone::Success: return th::success;
+        case Tone::Warning: return th::warn;
+        case Tone::Danger:  return th::danger;
+        case Tone::Accent:  return th::accent;
+        case Tone::Neutral: break;
+    }
+    return th::text_dim;
+}
+} // namespace
+
+int Context::badge(int x, int y, const char* text, Tone tone, gfx::Color on) {
+    const gfx::Color fg = tone_colour(tone);
+    if (!r_) return 0;
+    r_->set_font_size(th::sz_caption);
+    const int w = r_->text_width(text) + th::space_md;
+    const int h = th::sz_caption + th::space_sm;
+    r_->fill_round_rect(x, y, w, h, th::radius_sm, th::mix(fg, on ? on : th::elevated, 22));
+    r_->draw_text(x + th::space_sm - 2, y + th::space_xs - 1, text, fg);
+    return w;
+}
+
+void Context::tooltip(Rect anchor, const char* text) {
+    if (inert_ || !text || !point_in(anchor)) return;
+    overlays_.push_back(Overlay{/*is_toast*/ false, anchor, text, Tone::Neutral});
+}
+
+void Context::toast(const char* msg, Tone tone) {
+    if (!msg) return;
+    overlays_.push_back(Overlay{/*is_toast*/ true, Rect{}, msg, tone});
+}
+
+void Context::begin_inert() { inert_ = true; }
+
+void Context::draw_overlays() {
+    if (!r_) { overlays_.clear(); return; }
+    int toast_slot = 0;
+    for (const Overlay& o : overlays_) {
+        if (o.is_toast) {
+            r_->set_font_size(th::sz_body);
+            const int tw = r_->text_width(o.text.c_str());
+            const int w  = tw + th::space_lg * 2;
+            const int h  = th::sz_body + th::space_md * 2;
+            const int x  = (screen_w_ - w) / 2;
+            const int y  = screen_h_ - th::space_xl - h - toast_slot * (h + th::space_sm);
+            const gfx::Color fg = tone_colour(o.tone);
+            r_->fill_round_rect(x, y, w, h, th::radius_sm, th::mix(fg, th::bg, 16));
+            r_->draw_round_rect(x, y, w, h, th::radius_sm, fg);
+            r_->draw_text(x + th::space_lg, y + th::space_md, o.text.c_str(), fg);
+            ++toast_slot;
+        } else {
+            r_->set_font_size(th::sz_caption);
+            const int tw = r_->text_width(o.text.c_str());
+            const int w  = tw + th::space_md;
+            const int h  = th::sz_caption + th::space_sm;
+            // Below the anchor by default; above it when that would leave the screen.
+            int x = o.anchor.x;
+            int y = o.anchor.y + o.anchor.h + th::space_xs;
+            if (x + w > screen_w_) x = screen_w_ - w - th::space_xs;
+            if (x < 0) x = 0;
+            if (y + h > screen_h_) y = o.anchor.y - h - th::space_xs;
+            r_->fill_round_rect(x, y, w, h, th::radius_sm, th::titlebar);
+            r_->draw_round_rect(x, y, w, h, th::radius_sm, th::border_strong);
+            r_->draw_text(x + th::space_sm - 2, y + th::space_xs - 1, o.text.c_str(), th::text);
+        }
+    }
+    overlays_.clear();
+}
+
+Confirm Context::confirm(const char* id, const char* title, const char* body,
+                         const char* yes_label, bool danger) {
+    // The card's own controls must be live even though everything behind is inert.
+    const bool was_inert = inert_;
+    inert_ = false;
+    push_id(id);
+
+    const int w = 420, h = 170;
+    const int x = (screen_w_ - w) / 2, y = (screen_h_ - h) / 2;
+
+    if (r_) {
+        // The scrim is what makes it read as modal: the screen behind stays visible
+        // (so you keep your place) but is obviously not the thing to touch.
+        r_->fill_rect_blend(0, 0, screen_w_, screen_h_, th::scrim);
+        r_->drop_shadow(x, y, w, h, th::radius_md,
+                        th::shadow_panel.dx, th::shadow_panel.dy, th::shadow_panel.spread,
+                        gfx::rgba(0, 0, 0, th::shadow_panel.a));
+        r_->fill_round_rect(x, y, w, h, th::radius_md, th::elevated);
+        r_->draw_round_rect(x, y, w, h, th::radius_md, th::border_strong);
+        r_->set_font_size(th::sz_title);
+        r_->draw_text(x + th::space_lg, y + th::space_lg, title, th::text);
+        r_->set_font_size(th::sz_body);
+        r_->draw_text(x + th::space_lg, y + th::space_lg + th::sz_title + th::space_md, body, th::text_dim);
+    }
+
+    // Trap the keyboard inside the card, and choose the safe default. When focus is
+    // anywhere else the modal has just opened (or something outside stole it), so it
+    // claims focus — Cancel for a destructive action, because the first Enter after a
+    // dialog appears is very often a reflex from whatever the user was doing before.
+    const Id yes_id = id_of(yes_label);
+    const Id no_id  = id_of("Cancel");
+    if (focused_ != yes_id && focused_ != no_id) focused_ = danger ? no_id : yes_id;
+
+    Confirm result = Confirm::Pending;
+    const int bh = 30, bw = 120;
+    const int by = y + h - th::space_lg - bh;
+    if (button(Rect{x + w - th::space_lg - bw, by, bw, bh}, yes_label, /*primary*/ !danger))
+        result = Confirm::Yes;
+    if (button(Rect{x + w - th::space_lg - bw * 2 - th::space_sm, by, bw, bh}, "Cancel"))
+        result = Confirm::No;
+
+    // Escape is the universal "no", whatever has focus.
+    if (in_.keys.cancel) result = Confirm::No;
+
+    pop_id();
+    inert_ = was_inert;
+    return result;
 }
 
 } // namespace ui

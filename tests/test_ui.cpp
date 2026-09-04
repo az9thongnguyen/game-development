@@ -277,6 +277,230 @@ static void test_button_states() {
     CHECK(c2);
 }
 
+// ---------------------------------------------------------------------------
+//  Layout: one pass, no measurement. Slots come off either end of the axis, and
+//  `cell` divides what is LEFT so a row of equal columns can follow a header.
+// ---------------------------------------------------------------------------
+static bool same(ui::Rect a, ui::Rect b) {
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+static void test_layout() {
+    ui::Context ui;
+    ui.begin(nullptr, idle(-1000, -1000));
+
+    // Column: slots stack downward, separated by the gap, and span the full width.
+    ui.begin_layout(ui::Rect{10, 20, 200, 100}, ui::Axis::Y, ui::LayoutOpts{/*gap*/ 4, /*pad*/ 0});
+    CHECK(ui.remaining() == 100);
+    CHECK(same(ui.slot(30), ui::Rect{10, 20, 200, 30}));
+    CHECK(ui.remaining() == 66);                       // 100 - 30 - 4
+    CHECK(same(ui.slot(30), ui::Rect{10, 54, 200, 30}));
+    // Taken from the far end instead: this is how a footer is placed without
+    // knowing how much comes before it.
+    CHECK(same(ui.slot_end(20), ui::Rect{10, 100, 200, 20}));
+    CHECK(ui.remaining() == 8);                        // 100 - 30-4 - 30-4 - 20-4
+    ui.end_layout();
+
+    // Row: the same, along X.
+    ui.begin_layout(ui::Rect{0, 0, 100, 40}, ui::Axis::X, ui::LayoutOpts{10, 0});
+    CHECK(same(ui.slot(20), ui::Rect{0, 0, 20, 40}));
+    CHECK(same(ui.slot(20), ui::Rect{30, 0, 20, 40}));
+    ui.end_layout();
+
+    // Padding shrinks the area on every side before anything is placed.
+    ui.begin_layout(ui::Rect{0, 0, 100, 100}, ui::Axis::Y, ui::LayoutOpts{0, 10});
+    CHECK(same(ui.slot(10), ui::Rect{10, 10, 80, 10}));
+    ui.end_layout();
+
+    // cell(n, i) divides what is LEFT — three columns after a fixed header row.
+    ui.begin_layout(ui::Rect{0, 0, 100, 320}, ui::Axis::Y, ui::LayoutOpts{10, 0});
+    ui.slot(100);                                       // header eats 100 + 10 gap
+    CHECK(ui.remaining() == 210);
+    // 210 = 3*size + 2*10  ->  size = 63
+    CHECK(same(ui.cell(3, 0), ui::Rect{0, 110, 100, 63}));
+    CHECK(same(ui.cell(3, 1), ui::Rect{0, 183, 100, 63}));
+    CHECK(same(ui.cell(3, 2), ui::Rect{0, 256, 100, 63}));
+    // cell does not advance the cursor — the caller asks for each index of one row.
+    CHECK(ui.remaining() == 210);
+    ui.end_layout();
+
+    // A slot larger than what is left is clamped to the area rather than escaping it.
+    ui.begin_layout(ui::Rect{0, 0, 50, 50}, ui::Axis::Y, ui::LayoutOpts{0, 0});
+    const ui::Rect big = ui.slot(999);
+    CHECK(big.h == 50);
+    CHECK(ui.remaining() == 0);
+    CHECK(same(ui.slot(10), ui::Rect{0, 50, 50, 0}));   // nothing left: zero-size
+    ui.end_layout();
+
+    // slot_rest takes everything untaken, from both ends.
+    ui.begin_layout(ui::Rect{0, 0, 100, 100}, ui::Axis::Y, ui::LayoutOpts{0, 0});
+    ui.slot(20);
+    ui.slot_end(30);
+    CHECK(same(ui.slot_rest(), ui::Rect{0, 20, 100, 50}));
+    ui.end_layout();
+
+    // Nesting: a row inside a column slot.
+    ui.begin_layout(ui::Rect{0, 0, 100, 100}, ui::Axis::Y, ui::LayoutOpts{0, 0});
+    const ui::Rect band = ui.slot(40);
+    ui.begin_layout(band, ui::Axis::X, ui::LayoutOpts{0, 0});
+    CHECK(same(ui.slot(25), ui::Rect{0, 0, 25, 40}));
+    CHECK(same(ui.slot(25), ui::Rect{25, 0, 25, 40}));
+    ui.end_layout();
+    CHECK(same(ui.slot(10), ui::Rect{0, 40, 100, 10}));   // outer cursor is untouched
+    ui.end_layout();
+
+    // Unbalanced / absent layout: return an empty rect instead of reading garbage.
+    CHECK(same(ui.slot(10), ui::Rect{}));
+    ui.end_layout();
+    ui.end_layout();
+    CHECK(ui.remaining() == 0);
+
+    ui.end();
+}
+
+// ---------------------------------------------------------------------------
+//  Inert mode and the modal confirmation. "Modal" means the screen behind stays
+//  visible and stops responding; without begin_inert() the scrim would be purely
+//  decorative and clicks would still land on whatever is underneath it.
+// ---------------------------------------------------------------------------
+static void test_modal() {
+    ui::Context ui;
+    const ui::Rect behind{0, 0, 100, 30};
+
+    // Baseline: the button behind works normally.
+    bool hit = false;
+    ui.begin(nullptr, press(10, 10), 800, 600);   hit = ui.button(behind, "behind"); ui.end();
+    ui.begin(nullptr, release(10, 10), 800, 600); hit = ui.button(behind, "behind"); ui.end();
+    CHECK(hit);
+
+    // With begin_inert(), the same clicks do nothing to it.
+    auto modal_frame = [&](const ui::Input& in, bool& behind_hit, ui::Confirm& res) {
+        ui.begin(nullptr, in, 800, 600);
+        ui.begin_inert();
+        behind_hit = ui.button(behind, "behind");
+        res = ui.confirm("del", "Delete?", "This cannot be undone.", "Delete", true);
+        ui.end();
+    };
+    ui::Confirm res = ui::Confirm::Pending;
+    modal_frame(press(10, 10), hit, res);
+    modal_frame(release(10, 10), hit, res);
+    CHECK(!hit);
+    CHECK(res == ui::Confirm::Pending);
+
+    // ...while the modal's own buttons stay live. At 800x600 the card is 420x170 at
+    // (190,215); the confirm button is the rightmost, 120x30, 16px from the edges.
+    const int bx = 190 + 420 - 16 - 120 + 60;    // centre of the confirm button
+    const int by = 215 + 170 - 16 - 30 + 15;
+    modal_frame(press(bx, by), hit, res);
+    modal_frame(release(bx, by), hit, res);
+    CHECK(res == ui::Confirm::Yes);
+    CHECK(!hit);
+
+    // Escape answers "no". A destructive action must not be reachable by a stray
+    // Enter, so there is deliberately no keyboard shortcut for yes.
+    ui::Keys esc; esc.cancel = true;
+    modal_frame(keys(esc), hit, res);
+    CHECK(res == ui::Confirm::No);
+
+    // A freshly opened DESTRUCTIVE confirm focuses Cancel, not Delete: the first
+    // Enter after a dialog appears is very often a reflex from whatever the user was
+    // doing before it appeared. So Enter on a fresh destructive modal answers No.
+    {
+        ui::Context fresh;
+        ui::Confirm r2 = ui::Confirm::Pending;
+        bool h2 = false;
+        fresh.begin(nullptr, idle(-1000, -1000), 800, 600);
+        fresh.begin_inert();
+        h2 = fresh.button(behind, "behind");
+        r2 = fresh.confirm("del", "Delete?", "This cannot be undone.", "Delete", true);
+        fresh.end();
+        CHECK(r2 == ui::Confirm::Pending);
+
+        fresh.begin(nullptr, k_activate(), 800, 600);
+        fresh.begin_inert();
+        h2 = fresh.button(behind, "behind");
+        r2 = fresh.confirm("del", "Delete?", "This cannot be undone.", "Delete", true);
+        fresh.end();
+        CHECK(r2 == ui::Confirm::No);
+        CHECK(!h2);
+    }
+
+    // A NON-destructive confirm defaults the other way: Enter accepts, which is what
+    // makes "Save?" a one-keystroke dialog.
+    {
+        ui::Context fresh;
+        ui::Confirm r2 = ui::Confirm::Pending;
+        fresh.begin(nullptr, idle(-1000, -1000), 800, 600);
+        r2 = fresh.confirm("save", "Save?", "Write the changes.", "Save", false);
+        fresh.end();
+        fresh.begin(nullptr, k_activate(), 800, 600);
+        r2 = fresh.confirm("save", "Save?", "Write the changes.", "Save", false);
+        fresh.end();
+        CHECK(r2 == ui::Confirm::Yes);
+    }
+
+    // Focus is trapped inside the card: a control declared behind the modal cannot
+    // take the keyboard, so Tab cannot walk out of the dialog.
+    {
+        ui::Context fresh;
+        ui::Confirm r2 = ui::Confirm::Pending;
+        for (int i = 0; i < 3; ++i) {
+            fresh.begin(nullptr, k_tab(), 800, 600);
+            fresh.begin_inert();
+            fresh.button(behind, "behind");
+            r2 = fresh.confirm("del", "Delete?", "body", "Delete", true);
+            fresh.end();
+        }
+        // After three Tabs, Enter still answers the dialog rather than firing the
+        // button behind it.
+        bool behind_hit = false;
+        fresh.begin(nullptr, k_activate(), 800, 600);
+        fresh.begin_inert();
+        behind_hit = fresh.button(behind, "behind");
+        r2 = fresh.confirm("del", "Delete?", "body", "Delete", true);
+        fresh.end();
+        CHECK(!behind_hit);
+        CHECK(r2 != ui::Confirm::Pending);
+    }
+
+    // inert_ is cleared by end(): the next frame is interactive again.
+    ui.begin(nullptr, press(10, 10), 800, 600);   ui.button(behind, "behind"); ui.end();
+    ui.begin(nullptr, release(10, 10), 800, 600); hit = ui.button(behind, "behind"); ui.end();
+    CHECK(hit);
+}
+
+// ---------------------------------------------------------------------------
+//  Overlays are declared during the frame and drawn at end(). Headless there is
+//  nothing to draw, so what is checked here is that they neither crash nor leak
+//  between frames, and that a tooltip only appears when its anchor is hovered.
+// ---------------------------------------------------------------------------
+static void test_overlays() {
+    ui::Context ui;
+    const ui::Rect anchor{0, 0, 50, 20};
+
+    ui.begin(nullptr, idle(10, 10), 800, 600);
+    ui.tooltip(anchor, "hovered");         // mouse is inside -> queued
+    ui.toast("done", ui::Tone::Success);
+    ui.end();
+
+    ui.begin(nullptr, idle(500, 500), 800, 600);
+    ui.tooltip(anchor, "not hovered");     // mouse is outside -> ignored
+    ui.end();
+
+    // An inert frame queues no tooltip: nothing behind a modal should respond,
+    // including by explaining itself.
+    ui.begin(nullptr, idle(10, 10), 800, 600);
+    ui.begin_inert();
+    ui.tooltip(anchor, "suppressed");
+    ui.end();
+
+    // Null text is ignored rather than dereferenced.
+    ui.begin(nullptr, idle(10, 10), 800, 600);
+    ui.tooltip(anchor, nullptr);
+    ui.toast(nullptr);
+    ui.end();
+}
+
 int main() {
     test_button_click();
     test_checkbox();
@@ -285,6 +509,9 @@ int main() {
     test_id_stack();
     test_focus();
     test_slider_keyboard();
+    test_layout();
+    test_modal();
+    test_overlays();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;

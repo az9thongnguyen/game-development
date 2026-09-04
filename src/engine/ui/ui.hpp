@@ -56,9 +56,26 @@ struct Input {
 
 using Id = std::uint32_t;
 
+// What a piece of status MEANS. Widgets map this to theme colours, so a caller
+// never picks a colour and the palette can change in one place.
+enum class Tone { Neutral, Info, Success, Warning, Danger, Accent };
+
+// The answer to a confirmation. Pending means the user has not decided yet, so the
+// caller keeps asking each frame.
+enum class Confirm { Pending, Yes, No };
+
+// Layout axis and per-layout options. At namespace scope rather than nested in
+// Context so `LayoutOpts o = {}` can be a default argument (a nested type's default
+// member initializers are not usable until the enclosing class is complete).
+enum class Axis { X, Y };
+struct LayoutOpts { int gap = 8; int pad = 0; };
+
 class Context {
 public:
-    void begin(gfx::Renderer2D* r, const Input& in);   // r may be null (headless)
+    // `r` may be null (headless). screen_w/h default to the renderer's size and must
+    // be given explicitly when there is no renderer — full-screen overlays need to
+    // know how big the screen is.
+    void begin(gfx::Renderer2D* r, const Input& in, int screen_w = 0, int screen_h = 0);
     void end();
 
     // ---- identity -----------------------------------------------------------
@@ -77,12 +94,60 @@ public:
     bool slider(Rect r, const char* label, float& value, float lo, float hi);  // true if changed
     void label(int x, int y, const char* text, gfx::Color color = gfx::colors::white);
 
+    // ---- layout ------------------------------------------------------------
+    // A one-pass, single-axis cursor. Immediate mode cannot measure children before
+    // placing them, so there is no general flex here: slots are taken from the start
+    // of the area, or from the far end (which is how a footer or a right-aligned
+    // button group is placed without knowing what comes after it), and `cell` divides
+    // the space that is left into n equal parts because n is known at the call.
+    //
+    // That is deliberately less than a real flexbox. It is also everything the Studio
+    // needs, and it fits in one pass with no measurement phase and no allocation.
+    void begin_layout(Rect area, Axis axis, LayoutOpts o = {});
+    void end_layout();
+    Rect slot(int size);              // fixed size along the axis, taken from the start
+    Rect slot_end(int size);          // ...taken from the far end instead
+    Rect slot_rest();                 // everything still untaken
+    Rect cell(int n, int index);      // one of n equal divisions of what is left
+    void skip(int px = 0);            // skip px along the axis (0 = the layout's own gap)
+    [[nodiscard]] int remaining() const;   // space left along the axis
+
     // ---- layout helpers (advance a vertical cursor inside a panel) ----------
     void panel(Rect bg, const char* title = nullptr);
     bool button(const char* label, bool primary = false, bool enabled = true);
     bool checkbox(const char* label, bool& value);
     bool slider(const char* label, float& value, float lo, float hi);
     void label(const char* text);
+
+    // ---- status and overlays ------------------------------------------------
+    // A pill: tinted background, coloured text. Status is shown as colour AND a word
+    // — colour alone excludes anyone who cannot separate the hues and forces a
+    // legend; a word alone makes the eye read every row. Returns its width so a
+    // caller can right-align it.
+    int badge(int x, int y, const char* text, Tone tone, gfx::Color on = 0);
+
+    // Attach a tooltip to a rect. It is DEFERRED to end(): immediate mode paints as
+    // it goes, so a tooltip declared halfway through a frame would be painted over
+    // by everything declared after it. Deferring only the overlays is the smallest
+    // fix that works — ordinary widgets keep drawing immediately and there is no
+    // command list to keep in step with the renderer.
+    void tooltip(Rect anchor, const char* text);
+
+    // A transient message, drawn last, centred near the bottom of the screen. The
+    // caller owns the timer; call this while it should be visible.
+    void toast(const char* msg, Tone tone = Tone::Success);
+
+    // Everything declared after this is inert (drawn, but it cannot be hovered,
+    // clicked or focused) until end(). Call it before the normal UI when a modal is
+    // up, so the screen behind stays visible and stops responding — which is what
+    // "modal" means.
+    void begin_inert();
+
+    // A modal confirmation over the whole screen. Draws the scrim and the card
+    // itself, and its own controls are live even while everything else is inert, so
+    // the usual shape is: begin_inert(); ...normal UI...; confirm(...).
+    Confirm confirm(const char* id, const char* title, const char* body,
+                    const char* yes_label, bool danger = false);
 
     // True if the mouse is over any widget/panel this frame (so the game can ignore
     // a click that the UI consumed). Query it AFTER the widgets, BEFORE or after end().
@@ -100,6 +165,7 @@ private:
     // hover/press/focus bookkeeping. Returns true if the widget was activated.
     bool interact(Id id, Rect r, bool enabled);
     void focus_ring(Rect r, int radius) const;
+    void draw_overlays();
 
     gfx::Renderer2D* r_ = nullptr;
     Input            in_{};
@@ -113,6 +179,23 @@ private:
     std::vector<Id> tab_order_;           // focusable ids, in declaration order
 
     int cx_ = 0, cy_ = 0, cw_ = 0;  // layout cursor (panel-relative)
+
+    // Layout stack. Fixed depth, no allocation: a Context is long-lived but this is
+    // touched every frame, and eight levels of nesting is already more than any
+    // screen here has. `head`/`tail` are offsets from the two ends of the axis.
+    struct Layout { Rect area; Axis axis; int gap; int head; int tail; };
+    static constexpr int kMaxLayoutDepth = 8;
+    Layout layouts_[kMaxLayoutDepth]{};
+    int    layout_depth_ = 0;
+
+    int  screen_w_ = 0, screen_h_ = 0;
+    bool inert_ = false;               // set by begin_inert(), cleared at end()
+
+    // Overlays, replayed in declaration order at end(). Deliberately data, not
+    // closures: the set is small and fixed, and data is easier to reason about than
+    // captured state that outlives the frame it came from.
+    struct Overlay { bool is_toast; Rect anchor; std::string text; Tone tone; };
+    std::vector<Overlay> overlays_;
 };
 
 } // namespace ui
