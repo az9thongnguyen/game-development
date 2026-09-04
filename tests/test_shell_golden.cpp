@@ -505,10 +505,15 @@ int main() {
         // that counts its own ticks can prove things a real game only implies.
         struct CountingScene : engine::Scene {
             int updates = 0, renders = 0, saw_space = 0, saw_mouse = 0;
+            int last_x = -2, last_y = -2, saw_press = 0, saw_down = 0;
             void update(double, const platform::InputState& in) override {
                 ++updates;
                 if (in.pressed(platform::Key::Space)) ++saw_space;
                 if (in.mouse_x >= 0) ++saw_mouse;
+                last_x = in.mouse_x;
+                last_y = in.mouse_y;
+                if (in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)]) ++saw_press;
+                if (in.mouse_down[static_cast<int>(platform::MouseButton::Left)])    ++saw_down;
             }
             void render(const engine::Context& c) override {
                 ++renders;
@@ -611,9 +616,78 @@ int main() {
             CHECK(at(shown.x + shown.w / 2, area.y + 4) == th::bg);
         }
 
+        // ---- the pointer, in the GAME's coordinates -------------------------
+        // Chapter 115 gave the game no pointer at all, because the transform could not
+        // be checked: the shell had never been clicked. It has now, so the arithmetic
+        // is done — and pinned here, because a viewport that reports the wrong
+        // position is worse than one that reports none.
+        {
+            const ui::Rect shown = vp.shown();      // 160x90 at 4x, from the draw above
+            CHECK(shown.w == 640 && shown.h == 360);
+
+            const auto point = [&](int sx, int sy, bool down) {
+                platform::InputState in{};
+                in.mouse_x = sx;
+                in.mouse_y = sy;
+                in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = down;
+                return in;
+            };
+
+            // Centre of the picture is the centre of the game.
+            vp.update(kDt, point(shown.x + shown.w / 2, shown.y + shown.h / 2, false), true);
+            CHECK(probe->last_x == vp.width() / 2 && probe->last_y == vp.height() / 2);
+
+            // The top-left pixel of the picture is the game's origin, not the panel's.
+            vp.update(kDt, point(shown.x, shown.y, false), true);
+            CHECK(probe->last_x == 0 && probe->last_y == 0);
+
+            // The bottom-right pixel is INSIDE, and is the last pixel of the game.
+            vp.update(kDt, point(shown.x + shown.w - 1, shown.y + shown.h - 1, false), true);
+            CHECK(probe->last_x == vp.width() - 1 && probe->last_y == vp.height() - 1);
+
+            // One pixel past the edge is not the game's business.
+            vp.update(kDt, point(shown.x + shown.w, shown.y, false), true);
+            CHECK(probe->last_x == -1 && probe->last_y == -1);
+            vp.update(kDt, point(shown.x - 1, shown.y, false), true);
+            CHECK(probe->last_x == -1);
+
+            // Clicks on the Studio's own chrome are the Studio's.
+            const int press_before = probe->saw_press;
+            vp.update(kDt, point(shown.x - 20, shown.y - 20, true), true);
+            CHECK(probe->saw_press == press_before);
+            CHECK(probe->last_x == -1);
+
+            // A press that starts INSIDE is delivered...
+            const int down_before = probe->saw_down;
+            vp.update(kDt, point(shown.x + 40, shown.y + 40, true), true);
+            CHECK(probe->saw_down == down_before + 1);
+            CHECK(probe->last_x == 10 && probe->last_y == 10);   // 40/4
+
+            // ...and keeps the pointer while held, even dragged off the picture.
+            // Without that the game never hears the release and is left holding a
+            // button forever.
+            vp.update(kDt, point(shown.x + shown.w + 50, shown.y + 40, true), true);
+            CHECK(probe->saw_down == down_before + 2);
+            CHECK(probe->last_x != -1);
+
+            // Released outside: the grab ends, and the pointer is gone again.
+            vp.update(kDt, point(shown.x + shown.w + 50, shown.y + 40, false), true);
+            vp.update(kDt, point(shown.x + shown.w + 50, shown.y + 40, false), true);
+            CHECK(probe->last_x == -1);
+
+            // Unfocused, and chorded, still mean no pointer at all.
+            vp.update(kDt, point(shown.x + shown.w / 2, shown.y + shown.h / 2, false), false);
+            CHECK(probe->last_x == -1);
+            platform::InputState chorded = point(shown.x + 4, shown.y + 4, false);
+            chorded.mods.super = true;
+            vp.update(kDt, chorded, true);
+            CHECK(probe->last_x == -1);
+        }
+
         // ---- stop clears everything, including the clock --------------------
         vp.stop();
         CHECK(!vp.running());
+        CHECK(vp.shown().w == 0);      // ...including where the picture was
         CHECK(vp.steps() == 0);
         CHECK(vp.clock() == 0.0);
         CHECK(vp.width() == 0);

@@ -69,8 +69,10 @@
     // ifs. The named modes stay for the dev scenes that have no manifest.
     var params  = new URLSearchParams(location.search);
     var project = params.get('project');
+    var shellOf = params.get('shell');
     var mode    = params.get('mode') || 'gui';
     if (project) argsByMode[mode = '_project'] = ['--project', project];
+    if (shellOf) argsByMode[mode = '_shell']   = ['--shell', shellOf];
     var Module = {
       arguments: argsByMode[mode] || argsByMode.gui,
       // The preloaded asset tree is MEMFS: it lives in this tab and dies with it. That

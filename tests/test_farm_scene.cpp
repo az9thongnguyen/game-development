@@ -281,6 +281,66 @@ int main() {
     CHECK(brightness(buf) < lit);
 
 
+    // ---- the pointer picks the tile you work on -----------------------------
+    // The farm is the first consumer of a mouse position in this project. The rule is
+    // the keyboard's: an ADJACENT tile, and a click acts on it — so a pointer that is
+    // off by a tile is visible as hoeing the wrong square.
+    {
+        clear_file("saves/farm/slot1.sav");
+        clear_file("saves/farm/slot1.sync");
+        farm::FarmScene sc{farm::FarmScene::default_config(),
+                           std::make_unique<gbaas::OfflineTransport>()};
+        CHECK(sc.ready());
+        // render() is what tells the camera how big the screen is; the pointer is
+        // mapped through the camera, so it needs one frame first.
+        draw(sc, idle);
+        const int px = sc.world().px, py = sc.world().py;
+
+        const auto at_tile = [&](int tx, int ty, bool click) {
+            platform::InputState in{};
+            // The inverse of what the scene does: world pixel -> screen pixel.
+            // Written out rather than reusing a helper on purpose — a test that shares
+            // the arithmetic it is checking proves only that it is self-consistent.
+            in.mouse_x = tx * 16 + 8 - static_cast<int>(sc.camera_origin_x());
+            in.mouse_y = ty * 16 + 8 - static_cast<int>(sc.camera_origin_y());
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)]    = click;
+            in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = click;
+            return in;
+        };
+
+        // Hovering the tile to the right turns the player toward it.
+        sc.update(1.0 / 60.0, at_tile(px + 1, py, false));
+        draw(sc, idle);
+        CHECK(sc.facing_x() == 1 && sc.facing_y() == 0);
+        sc.update(1.0 / 60.0, at_tile(px, py + 1, false));
+        CHECK(sc.facing_x() == 0 && sc.facing_y() == 1);
+
+        // A tile two away is out of reach: the facing does not move to it.
+        sc.update(1.0 / 60.0, at_tile(px + 2, py, false));
+        CHECK(sc.facing_x() == 0 && sc.facing_y() == 1);
+
+        // Clicking an adjacent tile works it — the same action Z performs.
+        const std::size_t before = sc.world().soil.size();
+        sc.update(1.0 / 60.0, at_tile(px, py + 1, true));
+        CHECK(sc.world().soil.size() == before + 1);
+        const long long key = farm::soil_key(px, py + 1);
+        CHECK(sc.world().soil.count(key) == 1 && sc.world().soil.at(key).tilled);
+
+        // No pointer means no clicking. NOTE what this does and does not prove: with
+        // the whole farm fitting on screen the camera centres it, so screen (-1,-1)
+        // maps far outside the player's four neighbours and the adjacency rule would
+        // reject it even without the `mouse_x >= 0` guard. The guard is kept because
+        // -1 means "no pointer" in the platform contract and reading it as a position
+        // is how the Play viewport got its (0,0) bug in chapter 115 — but this
+        // assertion is a contract check, not a proof that the guard is load-bearing.
+        const std::size_t after = sc.world().soil.size();
+        platform::InputState nomouse{};
+        nomouse.mouse_x = nomouse.mouse_y = -1;
+        nomouse.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+        sc.update(1.0 / 60.0, nomouse);
+        CHECK(sc.world().soil.size() == after);
+    }
+
     // =========================================================================
     //  The cloud, without a cloud. Everything below runs through a scripted
     //  transport: the same callback chain the game runs against a server, with

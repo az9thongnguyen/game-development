@@ -72,6 +72,13 @@ public:
     [[nodiscard]] bool  online()   const { return link_ == Link::Online; }
     [[nodiscard]] bool  conflict() const { return conflict_; }
     [[nodiscard]] const std::string& event_name() const { return event_name_; }
+    // For tests: which way the player is facing, and where the camera put the world.
+    // The camera origin is exposed so a test can convert a TILE to a screen point
+    // without re-deriving the camera — the inverse arithmetic stays in the test.
+    [[nodiscard]] int   facing_x() const { return face_x_; }
+    [[nodiscard]] int   facing_y() const { return face_y_; }
+    [[nodiscard]] float camera_origin_x() const { return cam_.origin().x; }
+    [[nodiscard]] float camera_origin_y() const { return cam_.origin().y; }
 
 private:
     // What the connection is doing. Offline is the resting state, not an error: the
