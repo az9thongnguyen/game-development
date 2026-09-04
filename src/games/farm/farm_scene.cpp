@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <random>
 #include <sstream>
 #include <utility>
@@ -253,12 +254,29 @@ LocalSave FarmScene::local_stamp() const {
 // moving it is a rename.
 std::string FarmScene::device_id() {
     if (const std::string have = read_text("saves/device.id"); !have.empty()) return have;
+
+    // Mixed from three sources rather than taken straight from std::random_device,
+    // which the standard explicitly allows to be a deterministic PRNG — and this value
+    // decides WHICH PLAYER you are, so a repeated one means strangers sharing a farm.
+    // (The identical ids first seen in the browser turned out not to be this: the build
+    // was shipping the developer's own saves/device.id inside the preloaded bundle. It
+    // is excluded now. The mixing stays as cheap insurance for a value that must not
+    // repeat.)
     std::random_device rd;
-    std::string        id;
+    std::uint64_t      h = 0xcbf29ce484222325ull;
+    const auto mix = [&h](std::uint64_t v) { h = (h ^ v) * 0x100000001b3ull; };
+    for (int i = 0; i < 4; ++i) mix(rd());
+    mix(static_cast<std::uint64_t>(
+        std::chrono::system_clock::now().time_since_epoch().count()));
+    mix(static_cast<std::uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count()));
+    mix(static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(&h)));
+
     static const char* kHex = "0123456789abcdef";
-    for (int i = 0; i < 4; ++i) {
-        const std::uint32_t v = rd();
-        for (int b = 28; b >= 0; b -= 4) id += kHex[(v >> b) & 0xF];
+    std::string        id;
+    for (int word = 0; word < 2; ++word) {
+        for (int b = 60; b >= 0; b -= 4) id += kHex[(h >> b) & 0xF];
+        mix(0x9E3779B97F4A7C15ull);   // a second 64 bits from the same state
     }
     assets::write_file("saves/device.id", std::vector<std::uint8_t>(id.begin(), id.end()));
     return id;

@@ -6,9 +6,48 @@
 #include <filesystem>
 #include <fstream>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 namespace assets {
 namespace {
 std::string g_base = ".";
+
+// On the web, the preloaded asset tree is MEMFS — it lives in the tab and dies with
+// it. `saves/` is mounted on IDBFS by the page before main() runs (see web/shell.html),
+// and IDBFS only reaches the browser's database when something asks it to. So every
+// write under saves/ asks.
+//
+// This is the one place that can know: assets:: is already the single door for file
+// I/O, so a flush here covers the game's save, the sync bookmark, the device id and
+// anything added later, with no caller remembering to do it.
+void persist(const std::string& path) {
+#ifdef __EMSCRIPTEN__
+    if (path.rfind("saves/", 0) != 0) return;   // only the mounted subtree is durable
+    // Serialised and coalesced, not fired per write. A single save is already several
+    // writes — the file, the autosave that is cleared with it, the sync bookmark — and
+    // overlapping FS.syncfs calls do not queue: they interleave, and the copy that
+    // reaches the browser's database is whichever snapshot the last one happened to
+    // take. Measured, not assumed: with one call per write, `slot1.sav` came back
+    // ZERO BYTES on the next load, and the game only looked like it remembered because
+    // the cloud copy was quietly filling in for it.
+    EM_ASM({
+        if (Module.__fsSyncing) { Module.__fsSyncAgain = 1; return; }
+        Module.__fsSyncing = 1;
+        var again = function () {
+            FS.syncfs(false, function (err) {
+                if (err) console.error('syncfs failed: ' + err);
+                if (Module.__fsSyncAgain) { Module.__fsSyncAgain = 0; again(); }
+                else                      { Module.__fsSyncing = 0; }
+            });
+        };
+        again();
+    });
+#else
+    (void)path;
+#endif
+}
 }
 
 void set_base_path(const std::string& base) {
@@ -54,7 +93,10 @@ bool write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
         f.write(reinterpret_cast<const char*>(bytes.data()),
                 static_cast<std::streamsize>(bytes.size()));
     }
-    return static_cast<bool>(f);  // false if the stream errored mid-write
+    if (!f) return false;   // stream errored mid-write
+    f.close();
+    persist(path);
+    return true;
 }
 
 bool append_file(const std::string& path, const std::vector<uint8_t>& bytes) {
@@ -68,7 +110,10 @@ bool append_file(const std::string& path, const std::vector<uint8_t>& bytes) {
         f.write(reinterpret_cast<const char*>(bytes.data()),
                 static_cast<std::streamsize>(bytes.size()));
     }
-    return static_cast<bool>(f);
+    if (!f) return false;
+    f.close();
+    persist(path);
+    return true;
 }
 
 bool rename(const std::string& from, const std::string& to) {
@@ -77,7 +122,9 @@ bool rename(const std::string& from, const std::string& to) {
     std::error_code ec;
     if (b.has_parent_path()) std::filesystem::create_directories(b.parent_path(), ec);
     std::filesystem::rename(a, b, ec);   // atomic on the same filesystem
-    return !ec;
+    if (ec) return false;
+    persist(to);
+    return true;
 }
 
 std::int64_t mtime(const std::string& path) {

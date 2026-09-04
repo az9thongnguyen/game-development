@@ -340,6 +340,13 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D61 | Save trong lúc sync đầu **không upload** | Verdict sắp về đọc chính file đó; upload ở đây = gửi hai lần và quyết định từ ảnh chụp cũ hơn |
 | D62 | Guest cần **`device_id`** để quay lại được | Không có nó, save đẩy lên vào một tài khoản không lần nào sau đọc được |
 | D63 | Không seed dữ liệu mà **không ai đọc** (leaderboard farm) | Một dòng seed vô dụng là thứ người sau tưởng là tính năng |
+| D64 | "Build xanh" **không phải** là "chạy được" | 17 chương báo "web build xanh"; nó chỉ link được, và trang chưa từng chạy |
+| D65 | Không có renderer tăng tốc thì **fallback phần mềm**, không chết | Ta tự vẽ mọi pixel; renderer chỉ dán một quad |
+| D66 | `resizable` được **dịch ở platform seam**, không phải ở game | Game xin "vừa màn hình"; nghĩa của nó khác nhau theo nền tảng |
+| D67 | Bundle web **không được chứa** thư mục gitignore (state cục bộ) | `saves/device.id` bị phát đi = hai người lạ chung một tài khoản |
+| D68 | Chỉ `saves/` là **bền** trên web (IDBFS), phần còn lại là nội dung | Nội dung đi kèm `demo.data`; thứ thuộc về người chơi thì không |
+| D69 | Flush IDBFS **tuần tự + gộp**, không phải mỗi lần ghi | syncfs chồng nhau đan vào nhau → file về 0 byte |
+| D70 | Chứng minh persistence phải **cắt mạng**, không chỉ tải lại | Cloud save âm thầm đóng thế cho filesystem |
 
 ---
 
@@ -521,20 +528,68 @@ Remote config chỉ lấy một lần lúc khởi động. Analytics bắn-rồi
 
 ---
 
+## S9 — Cửa sổ, mở ra thật (chương 118) — XONG
+
+Commit: `c835b1e` (platform) · `f4711f4` (bundle + CI) · `e9a4cea` (persistence + trang).
+
+**Điều quan trọng nhất:** suốt 17 chương, "web build xanh" **chỉ có nghĩa là link được**.
+Lần đầu mở trang trong trình duyệt: **không chạy**.
+
+**Năm lỗi thật, không cái nào compile bắt được:**
+
+1. `SDL_CreateRenderer` thất bại khi không có WebGL → **chết hẳn**. Nay có fallback
+   phần mềm (mọi pixel vốn đã do ta vẽ vào framebuffer CPU; renderer chỉ dán một quad).
+2. `resizable` là khái niệm desktop → trên web SDL lấy cỡ CSS → Studio ra canvas **3×3**.
+3. **Bundle publish kèm `saves/`, `releases/`, `channels/`** — ba thư mục đã gitignore
+   vì chúng là state cục bộ. Nghĩa là `saves/device.id` được phát cho mọi trình duyệt:
+   **hai người lạ dùng chung một tài khoản**. Kèm cả `releases/audit.log`.
+4. **Web không có trí nhớ** (MEMFS chết theo tab). Save chỉ *trông như* còn vì bản mây
+   gánh thay.
+5. **`FS.syncfs` chồng nhau mất dữ liệu** → `slot1.sav` quay lại **0 byte**.
+
+**Cách chứng minh:** chặn mọi `/v1/` rồi tải lại. Farm vẫn tiếp tục đúng ngày đã lưu,
+chip ghi "offline" → thế giới đó **lấy từ đĩa**. Không có phép thử này thì cloud save
+vẫn đang đóng thế cho filesystem mà không ai biết.
+
+**Một giả thuyết sai, ghi lại vì nó đáng:** ban đầu tôi kết luận `std::random_device`
+trên Emscripten là tất định (chuẩn C++ **cho phép** vậy) và đã viết bước trộn entropy.
+Nguyên nhân thật nằm trên đĩa: `cat assets/saves/device.id` in ra đúng chuỗi đó. Bước
+trộn giữ lại — 6 dòng, và giá trị này **không được phép lặp**.
+
+**Đồ nghề:** không có tool duyệt web nào chạy được (extension chưa nối, devtools MCP
+không attach được). Thứ chạy được lại nhỏ hơn cả hai: Chrome `--remote-debugging-port`
++ ~60 dòng Node dùng `WebSocket` **có sẵn** (Node 22) nói CDP thẳng. `Network.setCacheDisabled`
+quan trọng hơn vẻ ngoài: hai vòng "sửa mà không thấy gì đổi" là do trình duyệt phục vụ
+`demo.js` cũ trong cache.
+
+**Đã chạy được trong trình duyệt:** cờ vua · farm (kèm BaaS thật) · Studio shell.
+
+**Số liệu:** 72/72 test · web bundle 47 → 36 entry (0 file state cục bộ) · CI có job web
+mới (link + grep manifest).
+
+**Chưa xác minh:** **chỉ render phần mềm** (`--disable-gpu` suốt) — WebGL và bước
+downsample tuyến tính của supersample chưa hề chạy. **Chưa click chuột** — chỉ gửi phím.
+Một trình duyệt duy nhất (Chrome 152 headless, macOS). Job web trong CI **chưa từng
+chạy**. Danh sách `--exclude-file` phải bảo trì tay. **Native ↔ web cloud save vẫn chưa
+chứng minh được** — hai máy là hai guest theo thiết kế, muốn chung phải có tài khoản thật
+và chưa có UI cho việc đó.
+
+---
+
 ## Việc kế tiếp
 
-**S9 — Web + chuẩn bị open source**, chương 118 (theo PLAN): `web/shell.html`, trang
-Collection, điều khiển cảm ứng, README/license audit. Đây cũng là chỗ **kiểm chứng
-cloud save native ↔ web thật** — hôm nay chỉ chứng minh được "máy này ↔ máy khác" bằng
-hai `FarmScene` trên cùng một tiến trình.
+**Chọn một trong hai:**
 
-Hoặc, nếu muốn Studio chín thêm: **hấp thụ Map Lab** (`--maplab` → workspace thứ ba,
-bỏ `fpsmap1`) — việc nhỏ hơn, dùng lại đúng `WorkspaceHost`.
+- **Chuột + touch trong trình duyệt** (nốt nửa còn lại của chương 118): dispatch
+  `Input.dispatchMouseEvent`, bấm thật vào Studio, rồi touch controls cho farm. Đây là ô
+  ❌ to nhất còn lại: "chưa ai bấm".
+- **Hấp thụ Map Lab** (`--maplab` → workspace thứ ba, bỏ `fpsmap1`) — dùng lại đúng
+  `WorkspaceHost`.
 
-**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S9):
+**Ba quyết định vẫn cần anh chốt:**
 
-1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã đi vào
-   `assets/projects/farm.gameproject`, `entries()` và `launch_entry`.
+1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã đi vào manifest,
+   `entries()` và `launch_entry`.
 2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) cho Farm — hay tự vẽ trong Studio?
 3. **Xoá 10 flag CLI cũ.** Chưa xoá gì cả.
 

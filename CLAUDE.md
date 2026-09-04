@@ -135,7 +135,18 @@ emcmake cmake -B build-web && cmake --build build-web --target demo
 cd build-web && python3 -m http.server 8765   # open http://localhost:8765/demo.html
 ```
 
-Pick the web scene by editing `Module.arguments` in `web/shell.html`.
+Pick the scene with `?mode=` (`gui`, `farm`, `project`, `shell`, `hubui`, `colony`, …)
+or point straight at a manifest with `?project=projects/farm.gameproject`. Serving it
+from the BaaS instead (`./build/baas/baas --static build-web`) puts the page and the API
+on one origin, which is what the SDK's relative base URL expects — the games that talk
+to the backend only work that way.
+
+The web build is **not** verified by linking. It had never been opened until chapter
+118, and it did not run when it was. `web/shell.html` is a LINK-time input (`LINK_DEPENDS`),
+`saves/`/`releases/`/`channels/` are `--exclude-file`d out of the preload (they are this
+machine's state, and shipping `saves/device.id` gave every browser the same guest
+account), and `saves/` is mounted on IDBFS by the page so the web build has any memory
+at all.
 
 ## Layout & the library split
 
