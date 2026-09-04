@@ -17,8 +17,8 @@
 | Slice | Tên | Trạng thái | Branch | Chapter |
 |---|---|---|---|---|
 | Phase 0 | Housekeeping repo | ✅ xong | *(main)* | — |
-| Phase A | Sửa PLAN/SPEC theo code | 🔄 đang làm | `docs/new-plan-corrections` | — |
-| S1 | UTF-8 + độ nét + Studio dùng design system | ⬜ chưa | `feat/s1-text-utf8` | 108 |
+| Phase A | Sửa PLAN/SPEC theo code | ✅ xong | `docs/new-plan-corrections` | — |
+| S1 | UTF-8 + độ nét + Studio dùng design system | ✅ xong | `feat/s1-text-utf8` | 108 |
 | S2 | `ui` v2 (seam → clip → overlay → id → focus → layout → widget) | ⬜ chưa | `feat/s2-ui-v2` | 109 |
 | S3 | `tilemap_core` v2 + `camera2d` | ⬜ chưa | | 110 |
 | S4 | Studio shell + `commands_core` + undo | ⬜ chưa | | 111–112 |
@@ -47,7 +47,7 @@
   `main` chứa đủ và mới hơn. Còn lại đúng `main`.
 - ✅ **Đã chạy:** `ctest` 61/61 xanh trước khi động vào code.
 
-### Phase A — Sửa PLAN/SPEC 🔄
+### Phase A — Sửa PLAN/SPEC ✅ 2026-09-04
 
 Bản gốc viết trước khi đọc `src/`. Đã đối chiếu toàn bộ và sửa tại chỗ; xem
 `SPEC.md §0` cho danh sách đầy đủ. Bốn sửa quan trọng nhất:
@@ -60,6 +60,33 @@ Bản gốc viết trước khi đọc `src/`. Đã đối chiếu toàn bộ v�
 3. **S1 nhỏ hơn, S2 lớn hơn** ước lượng gốc.
 4. **Postgres + TOCTOU `FOR UPDATE` phải đi cùng slice** — lỗ hổng chỉ mở lại khi
    pool > 1.
+
+### S1 — UTF-8, độ nét, Studio dùng design system ✅ 2026-09-04 · chương 108
+
+Merge `feat/s1-text-utf8`. Bốn commit:
+
+| Commit | Việc |
+|---|---|
+| `085c76a` | `--shell`/`--hub-ui` thiếu `supersample = kAA` — hai scene windowed duy nhất. `--shell` lên 1280×720; chiều cao panel lấy từ framebuffer thay vì hằng số phải khớp tay với `main.cpp`. |
+| `386e41c` | `engine/text/utf8.hpp` + `Font` khoá theo codepoint. Byte hỏng → U+FFFD **và chỉ nuốt 1 byte**; overlong/surrogate bị từ chối. Codepoint không có outline → ô rỗng thay vì `'?'`. Sửa lệch làm tròn `text_width` ÷ `ss_`. |
+| `7c1d3aa` | `engine::next_action` (quyết định dạng value) + `hubui::draw_hub_panel` dùng chung cho `--hub-ui` và tab Hub. Xoá 33 literal màu. `test_shell_golden` chạy cả shell không cần cửa sổ. |
+| `c11f529` | `--bench-ui` — số đo trước khi S2 làm UI phình. |
+
+**✅ Đã chạy và thấy kết quả:**
+- `ctest` **62/62 xanh** (thêm `shell_golden`).
+- Render shell ra ngoài màn hình ở đúng 1280×720×ss2 rồi **soi ảnh**: `→`, `…`,
+  `—`, `–`, `×` đều hiện đúng. Không còn `???`.
+- Web build (Emscripten) vẫn xanh — `demo.js` + `demo.wasm` sinh ra bình thường.
+- `--bench-ui` (Debug): ss=1 median **1.24 ms**, ss=2 median **4.63 ms** / p95 5.04 ms.
+  Ngân sách 8 ms còn khoảng một nửa — **đây là mốc S2 không được vượt.**
+
+**⚠️ Chưa chạy / chưa xác minh:**
+- **Chưa mở cửa sổ thật.** Môi trường này không có quyền screen-capture, nên mọi
+  khẳng định thị giác dựa trên bản render ngoài màn hình (cùng scene, cùng renderer,
+  cùng kích thước và supersample — nhưng **không** qua đường `present()` của SDL).
+- Số đo là **Debug**, không phải Release.
+- Chưa thử chữ CJK thật (không bundle font CJK); không có shaping/kerning/bidi —
+  đây là bộ vẽ theo codepoint, không phải text shaper.
 
 ---
 
@@ -79,4 +106,19 @@ Bản gốc viết trước khi đọc `src/`. Đã đối chiếu toàn bộ v�
 
 ## Việc kế tiếp
 
-Merge Phase A → bắt đầu **S1** trên `feat/s1-text-utf8` theo `PLAN.md §5 S1`.
+**S2 — `ui` v2**, branch `feat/s2-ui-v2`, chương 109. Thứ tự bắt buộc (mỗi bước một
+commit + test), vì bước sau không làm được nếu thiếu bước trước:
+
+1. Platform seam: `Key` enum thêm Ctrl/Shift/Alt/Home/End/F1–F12; `InputState` thêm
+   `wheel`, `text` (UTF-8 nhận trong frame), `mods`, key repeat.
+2. `set_cursor` + `clipboard_get/set` (web: no-op fallback).
+3. `Renderer2D::push_clip/pop_clip`.
+4. Hoãn **riêng overlay** (D4) — không làm draw list đầy đủ.
+5. Id stack (đóng ceiling `ui.hpp:50-53`).
+6. Focus + bàn phím (Tab/Shift-Tab/Enter/Space/Esc).
+7. Layout engine.
+8. Widget rút gọn (D6).
+9. Cửa sổ resizable.
+10. Chương 109.
+
+Chạy `--bench-ui` lại ở cuối S2 và so với mốc 4.63 ms.
