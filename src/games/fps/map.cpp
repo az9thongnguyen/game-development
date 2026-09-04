@@ -3,7 +3,10 @@
 // =============================================================================
 #include "games/fps/map.hpp"
 
+#include <cstdlib>
 #include <sstream>
+
+#include "engine/tilemap/map2.hpp"
 
 namespace fps {
 
@@ -66,6 +69,29 @@ std::optional<Map> from_text(const std::string& s) {
         if ((in >> cx >> cy >> dir) && cx >= 0 && cy >= 0 && cx < m.w && cy < m.h) {
             m.spawn_cx = cx; m.spawn_cy = cy; m.spawn_dir = dir;
         }
+    }
+    return m;
+}
+
+std::optional<Map> from_shared_text(const std::string& s) {
+    auto tm = tilemap::load(s);
+    if (!tm) return std::nullopt;
+
+    Map m;
+    m.w = tm->w;
+    m.h = tm->h;
+    m.cells.assign(static_cast<size_t>(m.w) * m.h, 0);
+    for (int y = 0; y < m.h; ++y)
+        for (int x = 0; x < m.w; ++x) {
+            const std::int32_t id = tm->at("wall", x, y);
+            m.cells[static_cast<size_t>(y) * m.w + x] =
+                static_cast<uint8_t>(id < 0 ? 0 : (id > 255 ? 255 : id));
+        }
+
+    if (const tilemap::Entity* sp = tm->entity("spawn_player")) {
+        m.spawn_cx  = sp->x;
+        m.spawn_cy  = sp->y;
+        m.spawn_dir = std::strtof(tilemap::prop(sp->props, "dir", "0").c_str(), nullptr);
     }
     return m;
 }
