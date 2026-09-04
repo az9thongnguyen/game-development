@@ -24,8 +24,9 @@
 | S4a | `commands_core` + undo/autosave (nền) | ✅ xong | `feat/s4-commands` | 111 |
 | S4b | Map workspace + command palette (consumer) | ✅ xong | `feat/s4b-map-workspace` | 112 |
 | S5 | Farm — vertical slice | ✅ xong | `feat/s5-farm` | 113 |
-| S6 | Asset browser · Validation · Release workspace · Play viewport | ⬜ chưa | | 114 |
-| S7 | Studio asset tooling | ⬜ chưa | | 115–116 |
+| S6 | Asset browser · Validation panel · audit log trong cửa sổ | ✅ xong | `feat/s6-project-workspace` | 114 |
+| S6b | Play viewport (cần `App` giữ sub-scene) | ⬜ chưa | | 115 |
+| S7 | Sandbox → workspace thứ hai + `Workspace` interface (D23) | ⬜ chưa | | 116 |
 | S8 | Farm v1 + BaaS + HUD | ⬜ chưa | | 117 |
 | S9 | Web: shell, Collection, touch, dashboard | ⬜ chưa | | 118 |
 | S10 | Creature RPG — MVP | ⬜ chưa | | 119–120 |
@@ -309,47 +310,80 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D31 | Runner giữ việc **tăng version**, migration chỉ mô tả đổi dữ liệu | Migration quên bump = vòng lặp vô hạn |
 | D32 | `set_viewport`/`set_bounds` **clamp lại** | Bounds là quan hệ giữa thế giới và **view**; đổi view thì vị trí cũ có thể không còn hợp lệ |
 | D33 | Fixture của test phải **phá vỡ sự trùng hợp tiện lợi** | 4 và 5-1 tình cờ bằng nhau, và chính sự trùng hợp đó đang làm việc thay cho code |
+| D34 | Một `inspect()` duy nhất, trả **dữ liệu** chứ không phải dòng đã in | Bốn bản sao đã trôi xa nhau *trước khi* ai đó nhận ra: publish dừng ở lỗi đầu tiên, ba bản kia liệt kê hết |
+| D35 | Asset **thiếu vẫn nằm đúng chỗ** trong danh sách, có badge | Browser âm thầm bỏ cái nó không tìm thấy = đúng cái browser không dùng được để tìm ra chỗ hỏng |
+| D36 | Project **không shippable ⇒ không có package hash** | Release id suy ra được từ nội dung thiếu là release id publish được |
+| D37 | `known_entries` phải được **tiêm vào**, không tự dựng trong scene | Studio nói "unknown entry farm" trong khi CLI nói OK — hai câu trả lời, một sự thật |
+| D38 | Log đọc **mới nhất trước**, file vẫn append-only cũ-trước | Câu hỏi mà lịch sử release trả lời là "vừa xảy ra chuyện gì"; để nó ở dòng cuối = log không được đọc |
+
+---
+
+## S6 — Studio Project workspace + audit log (chương 114) — XONG
+
+Commit: `007d067` (inspect core) · `f8f5d2f` (Project section) · `d900ab2` (audit log).
+
+**Cái gì đã chạy, không chỉ đã viết:**
+
+- `engine::inspect()` thay **bốn** bản sao của "đọc manifest → validate → hash asset"
+  (CLI launch, CLI inspect, publish, hub) + bản thứ năm trong Studio (`map_asset_of`).
+  Bốn bản đó **đã trôi xa nhau**: publish dừng ở asset thiếu **đầu tiên**. Đã xác minh
+  bằng CLI, không chỉ unit test — manifest có ba đường dẫn hỏng nay cho **cùng ba
+  dòng** từ cả publish lẫn inspect.
+- `project.inspect` vào registry; `--project-inspect` thành **alias**, output
+  byte-identical với trước khi refactor.
+- Studio có section **Project**: asset browser (type · path · content hash · size ·
+  present/MISSING) + verdict + package hash + Copy/Re-inspect. Sáu section, `Cmd+1..6`.
+- Hub (cả `--hub-ui` lẫn Studio) vẽ **audit log**, mới nhất trước, UTC, lý do là cột
+  rộng nhất.
+
+**Bug thật tìm được (đều do xây consumer, lần thứ năm và sáu):**
+
+1. **Publish báo một lỗi mỗi lần chạy.** Bốn bản sao đã bất đồng từ lâu; không ai chọn
+   điều đó, nó chỉ là chuyện xảy ra với bốn bản sao của một ý tưởng.
+2. **Studio và CLI bất đồng về chính project farm.** Scene giữ `known_entries={"fps"}`
+   còn `main.cpp` biết `{"fps","farm"}` → `--shell projects/farm.gameproject` báo
+   *"unknown entry scene: farm"* trên project mà `--project-inspect` gọi là OK.
+
+**Đã mutation-test:** dừng ở lỗi đầu tiên · bỏ asset thiếu khỏi danh sách · hash
+project thiếu nội dung · đảo thứ tự problem · đảo chiều log · xoá hẳn khối log.
+
+**Số liệu:** 70/70 test · ASan+UBSan sạch (70/70) · web build xanh · Release ss=2
+**1.10 ms** median / 1.34 ms p95 (budget 8 ms) · golden path + second-game smoke chạy
+lại xanh · không rò `.tmp`.
+
+**Chưa xác minh (nói thẳng):** chưa ai **bấm** vào bất kỳ thứ gì — chỉ render ngoài
+màn hình. Asset browser chưa từng chứa danh sách dài (5 asset, chưa cuộn thật). Không
+có gì theo dõi filesystem: sửa asset ở tool khác thì panel cũ cho tới khi bấm `R`.
+Log chưa có filter/paging. **Play viewport chưa làm** — nó cần `App` giữ được
+sub-scene, mà `app.hpp` chỉ có một `unique_ptr<Scene>` set trong constructor, không có
+setter. Đó là thay đổi kiến trúc, không phải một panel, và xứng đáng một slice riêng.
 
 ---
 
 ## Việc kế tiếp
 
-**S6 — Studio: Asset browser, Validation panel, Release workspace, Play viewport**,
-chương 114.
+**S6b — Play viewport**, chương 115. `App` cần giữ được một sub-scene: hôm nay
+`app.hpp` có đúng một `unique_ptr<Scene>` set trong constructor, không setter, không
+stack. Chạy thử game **ngay trong Studio** là thứ biến Studio từ "công cụ sửa file"
+thành "công cụ làm game", và Farm là lý do nó đáng làm bây giờ.
 
-Farm giờ là *lý do* để Studio trưởng thành: có một game thứ hai để duyệt asset, để
-validate, và để **Play viewport** chạy thử ngay trong Studio thay vì phải mở cửa sổ
-riêng. S6 cũng là chỗ hấp thụ Sandbox → workspace thứ hai, và **khi đó** interface
+Sau đó **S7 — hấp thụ Sandbox → workspace thứ hai**, và **khi đó** interface
 `Workspace` mới đáng tạo (D23).
 
-**Ba quyết định vẫn cần anh chốt:**
+**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S6b):
+
 1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm và đã đi vào
-   `assets/projects/farm.gameproject` + `launch_entry`. Đổi tên sau là một lần sửa
-   manifest + entry id, không đắt, nhưng càng để lâu càng nhiều chỗ nhắc tới.
-2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) để Farm có art — hay chờ S7 tự vẽ
-   trong Studio? Hôm nay game vẽ bằng màu phẳng và hình tròn, và nó **trông đúng như
-   thế**.
-3. **Xoá 10 flag CLI cũ** ở S6 (`--hub-ui --shell --editor --sandbox --maplab` …) —
-   cần anh đồng ý (`PLAN.md §8` mục 3).
+   `assets/projects/farm.gameproject` + `launch_entry`. Đổi sau là một lần sửa manifest
+   + entry id, không đắt, nhưng càng để lâu càng nhiều chỗ nhắc tới.
+2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) để Farm có art — hay chờ tự vẽ trong
+   Studio? Hôm nay game vẽ bằng màu phẳng và hình tròn, và nó **trông đúng như thế**.
+3. **Xoá 10 flag CLI cũ** (`--hub-ui --shell --editor --sandbox --maplab` …) —
+   cần anh đồng ý (`PLAN.md §8` mục 3). **Chưa xoá gì cả.**
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
+- **Play viewport** → cần sửa `App`; là S6b.
 - Hấp thụ **Sandbox** và **Map Lab** vào Studio → khi có workspace thứ hai thì
-  interface `Workspace` mới đáng tạo (D23).
-- Xoá 10 flag CLI cũ → cần anh đồng ý (`PLAN.md §8` mục 3).
-
-Đây là *consumer* của S4a, và cho tới khi nó tồn tại thì registry + undo + autosave
-vẫn đang là "motion without connection". Việc:
-
-1. `Workspace` interface: `name/update/render_canvas/render_inspector/commands`.
-2. Studio: top bar · nav rail · canvas · inspector · panel dưới · status bar;
-   splitter kéo được, layout lưu `assets/studio.layout`.
-3. Hấp thụ **Sandbox** → workspace *Scene*, **Map Lab** → workspace *Map*; mỗi cái
-   có inspector, **undo qua `CommandStack`**, zoom/pan, grid + snap, selection outline.
-4. Autosave có timer thật + prompt recovery khi mở.
-5. Command palette (`Ctrl+K`) liệt kê `cmd::all()`.
-6. Chỉ xoá flag cũ **sau khi** hỏi anh (PLAN §8 mục 3).
-
-**Lưu ý thứ tự**: theo blend (`PLAN.md §4`, Rule 5 của brief), có thể chèn **S5 Farm**
-trước S4b nếu cần đổi gió — S5 chỉ phụ thuộc S3, vốn đã xong. Bốn slice vừa rồi đều
-là plumbing, nên theo đúng Rule 5 thì **S5 mới là lựa chọn đúng tiếp theo**.
+  interface `Workspace` mới đáng tạo (D23). `--maplab` vẫn ghi `fpsmap1`.
+- Filter/paging cho audit log → `engine::log(channel)` đã hỗ trợ, panel chưa hỏi.
+- Cache hash theo mtime/size trong `inspect()` → 5 file thì không đáng; 100 texture thì đáng.

@@ -23,7 +23,10 @@ void HubScene::set_clipboard(std::function<std::string()> get,
     clip_set_ = std::move(set);
 }
 
-void HubScene::rebuild() { view_ = engine::build_hub_view(path_, known_entries_); }
+void HubScene::rebuild() {
+    view_    = engine::build_hub_view(path_, known_entries_);
+    history_ = engine::log();
+}
 
 void HubScene::run(Op op) {
     auto did = [&](const engine::OpResult& r) {
@@ -84,7 +87,7 @@ void HubScene::render(const engine::Context& ctx) {
 
     const ui::Rect area{th::space_xl, th::space_xl,
                         g.width() - th::space_xl * 2, g.height() - th::space_xl * 2};
-    const Op clicked = draw_hub_panel(ui_, g, view_ ? &*view_ : nullptr, path_, area);
+    const Op clicked = draw_hub_panel(ui_, g, view_ ? &*view_ : nullptr, path_, area, history_);
     if (clicked != Op::None) requested_ = clicked;
 
     if (confirming_ != Op::None) {

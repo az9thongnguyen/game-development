@@ -63,7 +63,10 @@ Everything is one `demo` executable; the first arg picks the mode. Windowed scen
 ./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio (1280x720, resizable)
                                                   # --shell opens the Map workspace: paint/rect/fill a
                                                   # map2, Cmd+Z undo, Cmd+S save, Cmd+K command palette,
-                                                  # Cmd+1..5 sections. Autosaves; offers recovery on open.
+                                                  # Cmd+1..6 sections. Autosaves; offers recovery on open.
+                                                  # Project section = asset browser + validation verdict
+                                                  # (the same engine::inspect --project-inspect prints);
+                                                  # Hub section also shows the audit log, newest first.
 ```
 
 **Headless platform-spine verbs** (no window; these are what CI smoke-tests, so keep
@@ -147,7 +150,8 @@ Understand these deliberate patterns before editing the build:
 - **Core logic is split into SDL-free static libs** (`chess_core`, `fps_core`,
   `render3d_core`, `iso_core`, `ecs_core`, `jobs_core`, `mem_core`, `physics_core`,
   `ui_core`, `text_core`, `viz3d_core`, `colony_core`, plus the platform-spine
-  cores `project_core`, `resource_core`, `release_core`, `release_ops_core`,
+  cores `project_core`, `inspect_core` (one read+validate+hash, shared by launch,
+  package, publish and the Studio), `resource_core`, `release_core`, `release_ops_core`,
   the game cores `farm_core` (day loop, crops, NPC schedules, dialogue — no renderer),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
@@ -185,8 +189,13 @@ is the thing most likely to be broken by a careless edit:
    entry name to a scene, so a new game needs no new CLI flag. **The farm game is the
    proof**: `projects/farm.gameproject` added a game with a manifest and a scene, and
    inspect/package/publish/hub all worked on it unchanged.
-2. **Resource closure** (`resource_core`) — hand-written FNV-1a `content_hash` over each
-   declared asset. `--project` **hard-refuses** to launch with a missing dependency.
+2. **Resource closure** (`inspect_core`) — `engine::inspect()` is the ONE
+   read+validate+hash: launch, package, publish, the hub and the Studio's Project
+   section all go through it, and it returns **data**, never printed lines. It reports
+   **every** problem (validation errors before missing content), keeps a missing asset
+   in place in the list, and computes a package hash **only** when the project is
+   shippable — a release id must never be derivable from partial content. `--project`
+   hard-refuses to launch with a missing dependency.
 3. **Package** (`resource_core::build_package`) — resources sorted by path + a combined
    `packagehash`: order-independent, content-sensitive. This hash *is* the release id.
 4. **Release store** (`release_core`, `release_ops_core`) — `releases/<hash>/` is

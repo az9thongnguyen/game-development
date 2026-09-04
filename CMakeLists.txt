@@ -126,10 +126,11 @@ add_executable(demo
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
+  src/games/studio_shell/project_panel.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core map_edit_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core map_edit_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -258,6 +259,7 @@ add_executable(test_shell_golden tests/test_shell_golden.cpp
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
+  src/games/studio_shell/project_panel.cpp
   src/games/hub/hub_panel.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp
@@ -265,7 +267,7 @@ add_executable(test_shell_golden tests/test_shell_golden.cpp
 target_include_directories(test_shell_golden PRIVATE src)
 target_compile_definitions(test_shell_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_shell_golden PRIVATE
-  hub_build_core hub_core release_ops_core release_core project_core resource_core
+  hub_build_core hub_core release_ops_core release_core project_core inspect_core resource_core
   commands_core map_edit_core document_core ui_core text_core engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
 
@@ -305,6 +307,7 @@ add_executable(test_commands tests/test_commands.cpp
   src/engine/commands/registry.cpp
   src/engine/commands/release_commands.cpp
   src/engine/release/ops.cpp
+  src/engine/project/inspect.cpp
   src/engine/release/release.cpp
   src/engine/project/project.cpp
   src/engine/resource/resource.cpp
@@ -527,6 +530,25 @@ add_library(project_core STATIC
 target_include_directories(project_core PUBLIC src)
 target_link_libraries(project_core PRIVATE engine_flags)
 
+# One project resolve, as data (inspect.hpp): read + validate + hash every declared
+# asset. Four copies of this existed — CLI launch, CLI inspect, publish, hub — and they
+# had drifted. Impure (reads through assets::), so its symbols come from the final link.
+add_library(inspect_core STATIC
+  src/engine/project/inspect.cpp
+)
+target_include_directories(inspect_core PUBLIC src)
+target_link_libraries(inspect_core PRIVATE engine_flags)
+
+add_executable(test_inspect tests/test_inspect.cpp
+  src/engine/project/inspect.cpp
+  src/engine/project/project.cpp
+  src/engine/resource/resource.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_inspect PRIVATE src)
+target_link_libraries(test_inspect PRIVATE engine_flags)
+add_test(NAME inspect COMMAND test_inspect)
+
 add_executable(test_project tests/test_project.cpp
   src/engine/project/project.cpp
 )
@@ -576,6 +598,7 @@ target_link_libraries(release_ops_core PRIVATE engine_flags)
 
 add_executable(test_release_ops tests/test_release_ops.cpp
   src/engine/release/ops.cpp
+  src/engine/project/inspect.cpp
   src/engine/release/release.cpp
   src/engine/project/project.cpp
   src/engine/resource/resource.cpp

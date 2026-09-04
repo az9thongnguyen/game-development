@@ -191,10 +191,37 @@ static void test_release_commands() {
     CHECK(!nope.message.empty());
 }
 
+// project.inspect is a READ command, and --project-inspect is an alias onto it rather
+// than a second formatter (D16). Tested here because the day it becomes two code paths
+// again, it will be by someone printing "just this one extra thing" in main.cpp.
+void test_inspect_command() {
+    cmd::clear();
+    cmd::register_release_commands({"fps"});
+    CHECK(cmd::exists("project.inspect"));
+
+    // A read of something that is not there is a failed OpResult with a reason, not
+    // a crash and not a cheerful empty report.
+    const engine::OpResult gone = cmd::run("project.inspect", {"no/such.gameproject"});
+    CHECK(!gone.ok);
+    CHECK(gone.message.find("cannot read") != std::string::npos);
+
+    // A blank argument is refused like every other command's.
+    CHECK(!cmd::run("project.inspect", {""}).ok);
+    CHECK(!cmd::run("project.inspect", {}).ok);
+
+    // ...and the real project reports OK, with one line per declared asset.
+    assets::set_base_path(ASSET_ROOT "/assets");
+    const engine::OpResult ok = cmd::run("project.inspect", {"projects/creator.gameproject"});
+    CHECK(ok.ok);
+    CHECK(ok.message.find("status OK") != std::string::npos);
+    CHECK(ok.message.find("maps/level_00.map") != std::string::npos);
+}
+
 int main() {
     test_registry();
     test_filter_and_unregister();
     test_release_commands();
+    test_inspect_command();
     if (g_failures == 0) std::printf("commands: all tests passed\n");
     else                 std::printf("commands: %d FAILURE(S)\n", g_failures);
     return g_failures;

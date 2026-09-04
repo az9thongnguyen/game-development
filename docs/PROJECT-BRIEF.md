@@ -21,7 +21,7 @@ truth wins and this brief is stale — fix it.
 | `requirements.md` (Vietnamese) | The original **learning** vision and the hard constraints | You are tempted to add a dependency or a shortcut |
 | `CLAUDE.md` | **Operating instructions** for an agent: commands, invariants, build patterns | Before any build/test/edit |
 | `docs/strategy/` (6 docs) | The **product** direction: market, gap analysis, target architecture, roadmap, metrics, competitors | Before choosing what to build next |
-| `docs/book/` (114 chapters) | The **explanation** of every subsystem, one chapter per feature | Before modifying a subsystem you did not write |
+| `docs/book/` (115 chapters) | The **explanation** of every subsystem, one chapter per feature | Before modifying a subsystem you did not write |
 | `docs/guides/` | Operator runbooks (`author-to-url.md`, `backup-restore-drill.md`) | Before touching release or backup flows |
 | `docs/superpowers/{specs,plans}` | Per-milestone design specs and execution plans | To see how a feature was originally scoped |
 | **This file** | The **synthesis**: current state, feature inventory, status ledger, decision rules | At the start of a session, or when picking work |
@@ -93,11 +93,11 @@ regression**, not a shortcut, and an agent must refuse to break them silently.
 |---|---|
 | Commits on `main` | 282 |
 | C/C++ source | ~28,900 lines (`src/` 14,182 · `baas/` 5,203 · rest `sdk/`, `server/`, `tests/`) |
-| Test suites | **69, all passing** (~9 s), fully headless — no window or display needed |
+| Test suites | **70, all passing** (~10 s), fully headless — no window or display needed |
 | SDL-free static libraries | 32, each with a matching `test_*` target |
 | CLI modes in one `demo` binary | 29 flags + a default mode |
 | BaaS HTTP routes | 44, plus `/v1/ws`, `/metrics`, `/healthz`, `/dashboard` |
-| Guidebook chapters | 114 (`docs/book/00`–`113`) |
+| Guidebook chapters | 115 (`docs/book/00`–`114`) |
 | Strategy documents | 6 (`docs/strategy/01`–`06`) |
 | CI | GitHub Actions, ubuntu + macOS, clean checkout + golden-path smoke |
 
@@ -107,16 +107,17 @@ regression**, not a shortcut, and an agent must refuse to break them silently.
 src/platform/    the fixed platform seam (platform.hpp) + backend_sdl.cpp
 src/engine/      hand-written core: math, renderer2d, renderer3d, geometry, camera,
                  assets, image, text, ui, ecs/, jobs/, memory/, physics/, anim/, fx/,
-                 audio/  +  the platform spine: project/, resource/, release/, hub/
+                 audio/  +  the platform spine: project/ (manifest + inspect),
+                 resource/, release/, hub/, commands/, document/, tilemap/
 src/games/       one directory per scene/tool (chess, fps, viz3d, iso, editor, colony,
                  studio, sandbox, maplab, hub, studio_shell, fx, light, audio, anim, runner)
 src/main.cpp     mode dispatch + the launch_entry seam
-tests/           61 dependency-free suites
+tests/           70 dependency-free suites
 baas/            Drogon Game-BaaS backend (separate process, links no engine code)
 sdk/cpp/         gbaas C++ SDK — native libcurl / web emscripten_fetch, one API
 server/          hand-written HTTP server (POSIX sockets), serves the WASM build
 web/shell.html   the Emscripten shell; ?mode= selects the scene without recompiling
-docs/            book/ (114 chapters), strategy/ (6), guides/ (2), superpowers/{specs,plans}
+docs/            book/ (115 chapters), strategy/ (6), guides/ (2), superpowers/{specs,plans}
 assets/          the asset root: fonts, maps, sprites, textures, projects/, releases/, channels/
 ```
 
@@ -353,13 +354,16 @@ An agent must not upgrade any of these from "written" to "works" without running
 | **PostgreSQL production adapter** | ❌ **not implemented/run.** Production is still single-node SQLite. |
 | **CI green run** | ⚠️ **unknown from this machine.** `ci.yml` self-documents "written but not run in the authoring environment"; `gh` is unauthenticated here. |
 | Purchase affordability check | ⚠️ **known ceiling:** documented TOCTOU — the affordability check and the debit are not under one lock. Recorded deliberately, not accidentally. |
-| Scene visual output | ⚠️ mostly manual visual accept. Two structural golden tests now exist (`test_ui_golden`, `test_shell_golden`); the rest is eyeball. |
+| Scene visual output | ⚠️ mostly manual visual accept. Two structural golden tests now exist (`test_ui_golden`, `test_shell_golden` — the latter now covers six sections, the Project panel's healthy/holed/unreadable states and the audit-log ordering); the rest is eyeball. |
 | Studio shell renders correctly | ✅ verified 2026-09-04 by offscreen render at the real 1280×720×2, inspected as an image. **The window itself was not opened** — screen capture is unavailable here, so SDL's `present()` path is untested. |
 | Command registry + undo/autosave, **and a Studio that uses them** | ✅ verified 2026-09-04 (chapters 111–112): 68 tests. `--cmd` runs real operations, the old flags are aliases onto it, and `Cmd+K` in the Studio lists the same registry. The Map workspace pushes every edit onto `CommandStack`, autosaves on a timer and offers recovery on open — the "no consumer" gap from chapter 111 is closed. ⚠️ still only **one** workspace, so there is deliberately no `Workspace` interface yet. |
 | Shared 2D map format (`map2`) + fpsmap1 migration | ✅ verified 2026-09-04 (chapters 110, 112): `--fps` reads the real authored level through the new path, `test_fps` asserts it is identical grid-for-grid to the legacy parser, and the Studio's Map workspace now **renders and edits** a map2. `test_map_workspace` ends by reading a file the editor wrote with the raycaster's own loader. Building that consumer found a real hole: `to_text`/`load` could not round-trip a tiles layer with no tileset — the shape an editor produces before there is art. ⚠️ Map Lab (`--maplab`) still writes fpsmap1 and has not been absorbed; entities and triggers have no editing UI. |
 | UI layer: keyboard, focus, clipping, modals, text editing | ✅ verified 2026-09-04 (chapter 109): 62 tests including a full text editor and two mutation checks; confirmation screen rendered offscreen with its negative control. ❌ **the window itself has still never been opened**, and resizing has never been performed. |
 | A second game reaching the platform through a manifest | ✅ verified 2026-09-04 (chapter 113): `projects/farm.gameproject` added a game with a manifest and a scene and **nothing else changed** — `--project`, `--project-inspect`, `--project-package` and `--hub` all work on it unmodified. The farm consumes `map2` layers + entities, `Camera2D`, `save_core` and the Studio's Map workspace. Its first use of `Camera2D` found a real bug: `set_viewport` did not re-clamp, so a world smaller than the window was not centred on the first frame (and a resize would push the view off the world). ❌ **never played in a window** — only driven by synthesized input, so step timing and day length are unmeasured *feel* questions. ❌ **no art**: flat colours and circles. |
-| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (warm-up excluded): **Release ss=2 1.2–1.4 ms** with the Map workspace as the opening screen, against an 8 ms budget — unchanged across UI v2 (1.4–2.6 ms) and this slice. ⚠️ absolute values move ~2× run to run on this laptop; only the **ratios** are dependable (ss=2 ≈ 4× ss=1 → fill-bound, so draw fewer pixels rather than optimise widget code; Debug ≈ 4–5× Release). |
+| One project resolve, shared by every verb | ✅ verified 2026-09-04 (chapter 114): `engine::inspect()` replaced **four** hand-written copies of read+validate+hash (CLI launch, CLI inspect, publish, hub) and a fifth partial one in the Studio. They had already drifted: publish returned at the **first** missing asset while the other three listed all, so `--project-publish` reported one broken path per run. Verified at the CLI, not only in a unit test — a probe manifest with three broken paths now yields the same three lines from publish and inspect. Four mutation checks (first-problem-only, dropped missing assets, hashing an incomplete project, reordered problems) each break `test_inspect`. |
+| Studio Project section (asset browser + validation) | ✅ verified 2026-09-04 (chapter 114): draws the same `engine::inspect` answer `--project-inspect` prints — type, path, content hash, size, present/missing per declared asset, plus the verdict and the package hash this source would publish as. Building it found a real divergence: the scene held its own `known_entries = {"fps"}` while `main.cpp` knew `{"fps","farm"}`, so `--shell projects/farm.gameproject` called the farm project broken while the CLI called it shippable. The list is injected now, with a negative control proving the list is what makes the difference. ❌ **never clicked** — offscreen renders only. ❌ never held a long list (5 assets, no scrolling exercised at scale); nothing watches the filesystem, so `R`/Re-inspect is manual. |
+| Operational evidence: the audit log, in a window | ✅ verified 2026-09-04 (chapter 114): `engine::log()` has returned the append-only history as data since the release store existed and **no window had ever drawn it**. Both hub surfaces now do, through the one shared panel. Newest-first, UTC, with the operator's reason as the widest column — pinned by a row-difference test that inverts if the loop is reversed and fires if the block is deleted. Rendering it immediately exposed a real `publish` entry with a **blank reason**, written before D17 existed. ⚠️ no filter and no paging: `engine::log(channel)` supports the first, the panel does not ask for it. |
+| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (warm-up excluded): **Release ss=2 1.1–1.3 ms** with the Map workspace as the opening screen, against an 8 ms budget — unchanged across UI v2 (1.4–2.6 ms), the Map workspace, and the Project + history panels. ⚠️ absolute values move ~2× run to run on this laptop; only the **ratios** are dependable (ss=2 ≈ 4× ss=1 → fill-bound, so draw fewer pixels rather than optimise widget code; Debug ≈ 4–5× Release). |
 
 ---
 

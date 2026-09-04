@@ -23,7 +23,16 @@
 #include "engine/scene.hpp"
 #include "engine/text/font.hpp"
 #include "engine/ui/theme.hpp"
+#include "engine/project/inspect.hpp"
+#include "engine/release/ops.hpp"
+#include "games/hub/hub_panel.hpp"
+#include "games/studio_shell/project_panel.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
+
+// The entry ids this build can launch — the same list main.cpp owns. The scene used
+// to hold its own {"fps"} literal, which is exactly the drift these tests exist to
+// catch: the Studio called the farm project broken while the CLI called it fine.
+static const std::vector<std::string> kKnownEntries = {"fps", "farm"};
 
 #ifndef ASSET_ROOT
 #define ASSET_ROOT "."
@@ -85,14 +94,14 @@ int main() {
     // nav rail and anti-aliased text just like the real one.
     CHECK(engine::build_hub_view(kProject, {"fps"}).has_value());
 
-    studioshell::StudioShellScene scene(kProject);
+    studioshell::StudioShellScene scene(kProject, kKnownEntries);
 
     std::vector<std::uint32_t> buf(static_cast<std::size_t>(PW) * PH, 0);
     platform::Framebuffer fb{buf.data(), PW, PH, PW};
     platform::InputState  input{};                 // no mouse over anything, no keys
 
-    const char* names[] = {"map", "hub", "guide", "learn", "about"};
-    constexpr int kSections = 5;
+    const char* names[] = {"map", "project", "hub", "guide", "learn", "about"};
+    constexpr int kSections = 6;
 
     // A fingerprint of the CONTENT area only (right of the rail). The previous version
     // of this loop pressed Tab, which the shell does not bind to navigation — so it
@@ -101,7 +110,7 @@ int main() {
     std::vector<std::uint64_t> prints;
 
     for (int section = 0; section < kSections; ++section) {
-        // Section 0 is the default; the rail is on Cmd/Ctrl+1..5.
+        // Section 0 is the default; the rail is on Cmd/Ctrl+1..6.
         if (section > 0) {
             platform::InputState nav{};
             nav.mods.super = nav.mods.ctrl = true;
@@ -151,16 +160,163 @@ int main() {
         dump_ppm(buf, PW, PH, (std::string("shell_") + names[section] + ".ppm").c_str());
     }
 
-    // Five sections, five different screens.
+    // Six sections, six different screens.
     for (std::size_t i = 1; i < prints.size(); ++i) CHECK(prints[i] != prints[i - 1]);
     CHECK(prints[0] != prints[prints.size() - 1]);
+
+    // ---------------------------------------------------------------------
+    //  The Hub's history: status says WHERE a release is, the log says how it got
+    //  there. Newest first, because "what just happened" is the question it answers.
+    // ---------------------------------------------------------------------
+    {
+        const auto view = engine::build_hub_view(kProject, kKnownEntries);
+        CHECK(view.has_value());
+
+        const auto render_hub = [&](const std::vector<engine::AuditRecord>& hist) {
+            std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+            platform::Framebuffer f{b.data(), PW, PH, PW};
+            gfx::Renderer2D r(f, SS);
+            r.set_font(font.get(), th::sz_body);
+            r.clear(th::bg);
+            ui::Context u;
+            u.begin(&r, ui::Input{}, LW, LH);
+            hubui::draw_hub_panel(u, r, &*view, kProject,
+                                  ui::Rect{224, 24, LW - 248, LH - 48}, hist);
+            u.end();
+            return b;
+        };
+
+        engine::AuditRecord older;
+        older.epoch = 1000000000; older.action = "publish"; older.channel = "development";
+        older.release = "aaaaaaaaaaaaaaaa"; older.reason = "the older one";
+        engine::AuditRecord newer;
+        newer.epoch = 1700000000; newer.action = "promote"; newer.channel = "production";
+        newer.release = "bbbbbbbbbbbbbbbb"; newer.reason = "the newer one";
+
+        const auto empty = render_hub({});
+        const auto both  = render_hub({older, newer});   // stored oldest-first
+        const auto just_new = render_hub({newer});
+        const auto just_old = render_hub({older});
+
+        // Drawn at all, and each record adds to it. A ratio against the empty state
+        // would be measuring the card outline more than the rows; monotonic growth
+        // across none → one → two records is the property that actually holds.
+        const auto ink_below = [&](const std::vector<std::uint32_t>& b, int y0) {
+            int n = 0;
+            for (int y = y0 * SS; y < PH; ++y)
+                for (int x = 224 * SS; x < PW; ++x) {
+                    const std::uint32_t p = b[static_cast<std::size_t>(y) * PW + x];
+                    if (p != th::bg && p != th::elevated && p != th::border) ++n;
+                }
+            return n;
+        };
+        CHECK(ink_below(empty, 340) < ink_below(just_new, 340));
+        CHECK(ink_below(just_new, 340) < ink_below(both, 340));
+
+        // ...and NEWEST FIRST, pinned so the direction can actually fail. The first
+        // pixel row where {older,newer} differs from {newer} alone must be DEEPER than
+        // where it differs from {older} alone: both lists open with the newer record,
+        // so their top row is identical and the difference only appears one row down.
+        // Reverse the order and this inverts.
+        const auto first_diff_row = [&](const std::vector<std::uint32_t>& a,
+                                        const std::vector<std::uint32_t>& b, int y0) {
+            for (int y = y0 * SS; y < PH; ++y)
+                for (int x = 224 * SS; x < PW; ++x)
+                    if (a[static_cast<std::size_t>(y) * PW + x] !=
+                        b[static_cast<std::size_t>(y) * PW + x]) return y;
+            return PH;
+        };
+        const int d_vs_new = first_diff_row(both, just_new, 340);
+        const int d_vs_old = first_diff_row(both, just_old, 340);
+        CHECK(d_vs_new > d_vs_old);
+        CHECK(d_vs_old < PH);          // they DO differ somewhere, or the test proves nothing
+    }
+
+    // ---------------------------------------------------------------------
+    //  The Project section: the Studio's verdict is the CLI's verdict.
+    // ---------------------------------------------------------------------
+    {
+        // THE regression. The scene used to build its own {"fps"} known-entries list
+        // while main.cpp knew {"fps","farm"}, so --shell projects/farm.gameproject
+        // showed "unknown entry scene: farm" on a project --project-inspect called OK.
+        // Two answers, one truth, and no way for the operator to tell which lied.
+        studioshell::StudioShellScene farm("projects/farm.gameproject", kKnownEntries);
+        CHECK(farm.inspection().shippable());
+        CHECK(farm.inspection().project.entry == "farm");
+        CHECK(farm.inspection().assets.size() == 5);
+        // ...and the negative control: the list is what makes the difference, so an
+        // ignorant list must still reject it. Otherwise the check above would pass
+        // just as happily if known_entries were ignored entirely.
+        CHECK(!engine::inspect("projects/farm.gameproject", {"fps"}).shippable());
+
+        // The panel is a pure function of an Inspection, so the states worth drawing
+        // are built here rather than by breaking files on disk.
+        const auto render_panel = [&](const engine::Inspection& in) {
+            std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+            platform::Framebuffer f{b.data(), PW, PH, PW};
+            gfx::Renderer2D r(f, SS);
+            r.set_font(font.get(), th::sz_body);
+            r.clear(th::bg);
+            ui::Context u;
+            u.begin(&r, ui::Input{}, LW, LH);
+            int sel = 0;
+            projectui::draw_project_panel(u, r, in, ui::Rect{224, 24, LW - 248, LH - 48}, sel);
+            u.end();
+            return b;
+        };
+        // How many pixels of a colour the content area carries. A verdict drawn as a
+        // tinted strip is a COUNT, not one probe pixel: probing a coordinate is how a
+        // test starts passing because the layout moved rather than because it is right.
+        const auto count_near = [&](const std::vector<std::uint32_t>& b, gfx::Color c) {
+            int n = 0;
+            for (int y = 0; y < PH; ++y)
+                for (int x = 224 * SS; x < PW; ++x) {
+                    const std::uint32_t p = b[static_cast<std::size_t>(y) * PW + x];
+                    const int dr = int((p >> 16) & 0xFF) - int((c >> 16) & 0xFF);
+                    const int dg = int((p >> 8) & 0xFF) - int((c >> 8) & 0xFF);
+                    const int db = int(p & 0xFF) - int(c & 0xFF);
+                    if (dr * dr + dg * dg + db * db < 400) ++n;
+                }
+            return n;
+        };
+
+        const engine::Inspection good = engine::inspect("projects/farm.gameproject", kKnownEntries);
+        const auto good_px = render_panel(good);
+        CHECK(count_near(good_px, th::success) > 200);   // the "no problems" strip + ok badges
+        dump_ppm(good_px, PW, PH, "shell_project_ok.ppm");
+
+        // A project with a hole: same manifest, one asset marked absent. The panel must
+        // keep it IN PLACE (row 2 of 5) and say so, not quietly show four assets.
+        engine::Inspection holed = good;
+        CHECK(holed.assets.size() > 2);
+        holed.assets[1].present = false;
+        holed.assets[1].hash = 0;
+        holed.assets[1].bytes = 0;
+        holed.problems.push_back("missing asset: " + holed.assets[1].path);
+        holed.package.clear();
+        CHECK(!holed.shippable());
+        const auto bad_px = render_panel(holed);
+        CHECK(count_near(bad_px, th::danger) > 200);     // the problem strip + the MISSING badge
+        CHECK(count_near(bad_px, th::success) < count_near(good_px, th::success));
+        dump_ppm(bad_px, PW, PH, "shell_project_missing.ppm");
+
+        // An unreadable project draws the reason, not an empty browser that looks like
+        // a project with no content.
+        const engine::Inspection none = engine::inspect("projects/nope.gameproject", kKnownEntries);
+        CHECK(!none.parsed);
+        const auto none_px = render_panel(none);
+        CHECK(count_near(none_px, th::danger) > 40);
+        // ...and it is a DIFFERENT screen from the healthy one, which is what says the
+        // error state is drawn at all rather than silently skipped.
+        CHECK(none_px != good_px);
+    }
 
     // ---------------------------------------------------------------------
     //  The Map workspace: the project's declared map is actually on screen, and the
     //  command palette lists what this process can do.
     // ---------------------------------------------------------------------
     {
-        studioshell::StudioShellScene sc(kProject);        // opens on Map
+        studioshell::StudioShellScene sc(kProject, kKnownEntries);        // opens on Map
         CHECK(sc.map_workspace().loaded());
         CHECK(sc.map_workspace().path() == "maps/level_00.map");
         CHECK(!sc.map_workspace().dirty());                // opening is not editing
@@ -229,7 +385,7 @@ int main() {
             gfx::Renderer2D r(f, sz.ss);
             const engine::Context c{r, input, 1.0 / 60.0, 0.0, 0.0, font.get()};
 
-            studioshell::StudioShellScene sc(kProject);      // fresh: starts on Hub
+            studioshell::StudioShellScene sc(kProject, kKnownEntries);      // fresh: starts on Map
             sc.update(1.0 / 60.0, input);
             sc.render(c);
 
@@ -271,13 +427,13 @@ int main() {
         std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
         platform::Framebuffer f{b.data(), PW, PH, PW};
 
-        studioshell::StudioShellScene sc(kProject);
+        studioshell::StudioShellScene sc(kProject, kKnownEntries);
 
         // The shell opens on the Map workspace now, so switch to the Hub first.
         {
             platform::InputState nav{};
             nav.mods.super = nav.mods.ctrl = true;
-            nav.key_pressed[static_cast<int>(platform::Key::Num2)] = true;   // section 1 = Hub
+            nav.key_pressed[static_cast<int>(platform::Key::Num3)] = true;   // section 2 = Hub
             sc.update(1.0 / 60.0, nav);
         }
 
@@ -333,10 +489,10 @@ int main() {
         // the accept button disabled. Without this, the check above would pass just
         // as happily if the reason requirement were not enforced at all.
         {
-            studioshell::StudioShellScene sc2(kProject);
+            studioshell::StudioShellScene sc2(kProject, kKnownEntries);
             platform::InputState nav2{};
             nav2.mods.super = nav2.mods.ctrl = true;
-            nav2.key_pressed[static_cast<int>(platform::Key::Num2)] = true;
+            nav2.key_pressed[static_cast<int>(platform::Key::Num3)] = true;   // section 2 = Hub
             sc2.update(1.0 / 60.0, nav2);
             platform::InputState sp{};
             sp.key_pressed[static_cast<int>(platform::Key::Space)] = true;
