@@ -100,7 +100,13 @@ std::string to_text(const Map& m) {
 
     for (const auto& l : m.layers) {
         s += "layer " + l.name + " ";
-        s += (l.kind == LayerKind::Mask) ? "mask" : ("tiles " + l.tileset);
+        // A tiles layer always writes a tileset FIELD, using "-" when it has none.
+        // Omitting it made the field optional in what to_text produced and required
+        // in what load() accepted, so a layer with no tileset serialized to text this
+        // very parser then rejected: the next token, "row", was read as the name.
+        s += (l.kind == LayerKind::Mask)
+                 ? std::string("mask")
+                 : ("tiles " + (l.tileset.empty() ? std::string("-") : l.tileset));
         s += "\n";
         for (int y = 0; y < m.h; ++y) {
             s += "row";
@@ -158,6 +164,7 @@ std::optional<Map> parse_map2(std::istringstream& in) {
             } else if (kind == "tiles") {
                 l.kind = LayerKind::Tiles;
                 if (!(in >> l.tileset)) return std::nullopt;
+                if (l.tileset == "-") l.tileset.clear();   // the "no tileset" spelling
             } else {
                 return std::nullopt;
             }

@@ -21,7 +21,7 @@ truth wins and this brief is stale — fix it.
 | `requirements.md` (Vietnamese) | The original **learning** vision and the hard constraints | You are tempted to add a dependency or a shortcut |
 | `CLAUDE.md` | **Operating instructions** for an agent: commands, invariants, build patterns | Before any build/test/edit |
 | `docs/strategy/` (6 docs) | The **product** direction: market, gap analysis, target architecture, roadmap, metrics, competitors | Before choosing what to build next |
-| `docs/book/` (108 chapters) | The **explanation** of every subsystem, one chapter per feature | Before modifying a subsystem you did not write |
+| `docs/book/` (113 chapters) | The **explanation** of every subsystem, one chapter per feature | Before modifying a subsystem you did not write |
 | `docs/guides/` | Operator runbooks (`author-to-url.md`, `backup-restore-drill.md`) | Before touching release or backup flows |
 | `docs/superpowers/{specs,plans}` | Per-milestone design specs and execution plans | To see how a feature was originally scoped |
 | **This file** | The **synthesis**: current state, feature inventory, status ledger, decision rules | At the start of a session, or when picking work |
@@ -93,11 +93,11 @@ regression**, not a shortcut, and an agent must refuse to break them silently.
 |---|---|
 | Commits on `main` | 282 |
 | C/C++ source | ~28,900 lines (`src/` 14,182 · `baas/` 5,203 · rest `sdk/`, `server/`, `tests/`) |
-| Test suites | **61, all passing** (~77 s), fully headless — no window or display needed |
-| SDL-free static libraries | 26, each with a matching `test_*` target |
+| Test suites | **68, all passing** (~26 s), fully headless — no window or display needed |
+| SDL-free static libraries | 31, each with a matching `test_*` target |
 | CLI modes in one `demo` binary | 29 flags + a default mode |
 | BaaS HTTP routes | 44, plus `/v1/ws`, `/metrics`, `/healthz`, `/dashboard` |
-| Guidebook chapters | 108 (`docs/book/00`–`107`) |
+| Guidebook chapters | 113 (`docs/book/00`–`112`) |
 | Strategy documents | 6 (`docs/strategy/01`–`06`) |
 | CI | GitHub Actions, ubuntu + macOS, clean checkout + golden-path smoke |
 
@@ -116,7 +116,7 @@ baas/            Drogon Game-BaaS backend (separate process, links no engine cod
 sdk/cpp/         gbaas C++ SDK — native libcurl / web emscripten_fetch, one API
 server/          hand-written HTTP server (POSIX sockets), serves the WASM build
 web/shell.html   the Emscripten shell; ?mode= selects the scene without recompiling
-docs/            book/ (108 chapters), strategy/ (6), guides/ (2), superpowers/{specs,plans}
+docs/            book/ (113 chapters), strategy/ (6), guides/ (2), superpowers/{specs,plans}
 assets/          the asset root: fonts, maps, sprites, textures, projects/, releases/, channels/
 ```
 
@@ -355,10 +355,10 @@ An agent must not upgrade any of these from "written" to "works" without running
 | Purchase affordability check | ⚠️ **known ceiling:** documented TOCTOU — the affordability check and the debit are not under one lock. Recorded deliberately, not accidentally. |
 | Scene visual output | ⚠️ mostly manual visual accept. Two structural golden tests now exist (`test_ui_golden`, `test_shell_golden`); the rest is eyeball. |
 | Studio shell renders correctly | ✅ verified 2026-09-04 by offscreen render at the real 1280×720×2, inspected as an image. **The window itself was not opened** — screen capture is unavailable here, so SDL's `present()` path is untested. |
-| Command registry + undo/autosave cores | ✅ verified 2026-09-04 (chapter 111): 65 tests; `--cmd` runs real operations and the old flags are aliases onto it. ❌ **no Studio consumer yet** — no palette, no workspace pushing commands, no autosave timer. |
-| Shared 2D map format (`map2`) + fpsmap1 migration | ✅ verified 2026-09-04 (chapter 110): 63 tests, and `--fps` reads the real authored level through the new path with `test_fps` asserting it is identical grid-for-grid to the legacy parser. ⚠️ **no map2 file has been authored by a human** — Map Lab still writes fpsmap1 — and nothing renders a map2 map yet. |
+| Command registry + undo/autosave, **and a Studio that uses them** | ✅ verified 2026-09-04 (chapters 111–112): 68 tests. `--cmd` runs real operations, the old flags are aliases onto it, and `Cmd+K` in the Studio lists the same registry. The Map workspace pushes every edit onto `CommandStack`, autosaves on a timer and offers recovery on open — the "no consumer" gap from chapter 111 is closed. ⚠️ still only **one** workspace, so there is deliberately no `Workspace` interface yet. |
+| Shared 2D map format (`map2`) + fpsmap1 migration | ✅ verified 2026-09-04 (chapters 110, 112): `--fps` reads the real authored level through the new path, `test_fps` asserts it is identical grid-for-grid to the legacy parser, and the Studio's Map workspace now **renders and edits** a map2. `test_map_workspace` ends by reading a file the editor wrote with the raycaster's own loader. Building that consumer found a real hole: `to_text`/`load` could not round-trip a tiles layer with no tileset — the shape an editor produces before there is art. ⚠️ Map Lab (`--maplab`) still writes fpsmap1 and has not been absorbed; entities and triggers have no editing UI. |
 | UI layer: keyboard, focus, clipping, modals, text editing | ✅ verified 2026-09-04 (chapter 109): 62 tests including a full text editor and two mutation checks; confirmation screen rendered offscreen with its negative control. ❌ **the window itself has still never been opened**, and resizing has never been performed. |
-| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (warm-up excluded): **Release ss=2 1.4–2.6 ms** after the whole UI v2 landed, against an 8 ms budget — unchanged from before it. ⚠️ absolute values move ~2× run to run on this laptop; only the **ratios** are dependable (ss=2 ≈ 4× ss=1 → fill-bound, so draw fewer pixels rather than optimise widget code; Debug ≈ 4–5× Release). |
+| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (warm-up excluded): **Release ss=2 1.2–1.4 ms** with the Map workspace as the opening screen, against an 8 ms budget — unchanged across UI v2 (1.4–2.6 ms) and this slice. ⚠️ absolute values move ~2× run to run on this laptop; only the **ratios** are dependable (ss=2 ≈ 4× ss=1 → fill-bound, so draw fewer pixels rather than optimise widget code; Debug ≈ 4–5× Release). |
 
 ---
 

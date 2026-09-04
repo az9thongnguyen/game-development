@@ -21,7 +21,8 @@
 | S1 | UTF-8 + độ nét + Studio dùng design system | ✅ xong | `feat/s1-text-utf8` | 108 |
 | S2 | `ui` v2 (seam → clip → overlay → id → focus → layout → widget) | ✅ xong | `feat/s2-ui-v2` | 109 |
 | S3 | `tilemap_core` v2 + `camera2d` | ✅ xong | `feat/s3-tilemap` | 110 |
-| S4 | Studio shell + `commands_core` + undo | ⬜ chưa | | 111–112 |
+| S4a | `commands_core` + undo/autosave (nền) | ✅ xong | `feat/s4-commands` | 111 |
+| S4b | Map workspace + command palette (consumer) | ✅ xong | `feat/s4b-map-workspace` | 112 |
 | S5 | Farm — vertical slice | ⬜ chưa | | 113 |
 | S6 | Asset browser · Validation · Release workspace · Play viewport | ⬜ chưa | | 114 |
 | S7 | Studio asset tooling | ⬜ chưa | | 115–116 |
@@ -188,6 +189,50 @@ Registry có 5 lệnh và chưa có palette; `CommandStack` chưa có workspace 
 autosave chưa có timer nào chạy. Đây đúng là "motion without connection" — chấp nhận
 được **chỉ vì** consumer là S4b ngay kế tiếp, không phải một hy vọng.
 
+### S4b — Map workspace + command palette ✅ 2026-09-04 · chương 112
+
+Merge `feat/s4b-map-workspace`. Đây là **consumer** của S3 + S4a — đóng đúng cái nợ
+mà chương 111 đã ghi thẳng ra.
+
+- **`map_edit_core`**: mọi thao tác sửa ô trả về một `doc::Command`. Một **nét vẽ =
+  MỘT bước undo**, nhưng **không dùng `merge_key`**: stack gộp bằng "revert đầu +
+  apply cuối", đúng cho cú kéo mà trạng thái cuối bao trùm, **sai** cho cú kéo tích
+  luỹ — revert đầu chỉ khôi phục ô đầu tiên. `Stroke` tích luỹ rồi đẩy vào stack
+  một lần, mang theo giá trị cũ của **từng ô**.
+- **Studio mở thẳng vào workspace Map**: paint/rect/flood, layer + mask collision,
+  chuột phải xoá, wheel zoom, kéo chuột giữa để pan, `Cmd+Z`, `Cmd+S`, autosave theo
+  đồng hồ, hỏi recovery khi mở.
+- **Nav rail rời khỏi phím mũi tên** sang `Cmd+1..5` — canvas cần mũi tên, và "một
+  phím mang hai nghĩa thì chẳng mang nghĩa nào".
+- **`Cmd+K`** liệt kê `cmd::all()` (khớp **subsequence**, giữ thứ tự đăng ký). Workspace
+  đăng ký `map.*` **gắn với chính nó** và **gỡ đăng ký trong destructor** — handler
+  bắt `this` mà sống lâu hơn `this` là một cú gọi vào bộ nhớ đã giải phóng.
+
+**✅ Đã chạy:**
+- `ctest` **68/68 xanh**; **ASan + UBSan sạch** toàn bộ suite.
+- **Mutation test**: revert ghi trạng thái sau, tắt lọc no-op, bỏ kiểm giá trị của
+  flood — mỗi cái đều làm test đỏ.
+- Render màn Map + palette ra ngoài màn hình ở 1280×720×ss2 và **soi ảnh**.
+- `--bench-ui` Release ss=2 **1.2–1.4 ms** — không đổi so với sau S2.
+- Golden path của CI chạy lại đầy đủ; web build xanh.
+
+**Hai bug thật do xây consumer mà lộ ra** (4 suite xanh trước đó không thể thấy):
+1. **`map2` không round-trip được layer `tiles` không có tileset** — đúng hình dạng
+   mà một editor sinh ra trước khi có art. `to_text` ghi thiếu trường, `load` đọc token
+   `row` kế tiếp làm tên tileset. Nay tileset rỗng viết là `-`, và có test dựng map
+   trong bộ nhớ rồi round-trip (chiều mà một tool thật sự đi).
+2. **`test_shell_golden` bấm `Tab` để chuyển section** — phím shell chưa bao giờ gán
+   cho việc đó. Nó render section 0 **năm lần**, ghi ra năm file PPM giống hệt nhau,
+   và vẫn xanh mọi assertion. Nay dùng đúng chord và **fingerprint vùng nội dung**.
+
+**⚠️ Chưa xác minh:**
+- **Vẫn chưa mở cửa sổ thật**; chuột là `InputState` tổng hợp, nên *cảm giác* kéo chưa
+  được kiểm.
+- **Chưa hấp thụ Map Lab** (`--maplab` vẫn ghi `fpsmap1`) và **chưa hấp thụ Sandbox**
+  — nên vẫn chỉ có **một** workspace, và **cố ý chưa có interface `Workspace`**.
+- Chưa render tileset (tile id vẽ bằng bảng 10 màu cố định); chưa sửa entity/trigger;
+  zoom chưa neo theo con trỏ; `set_cursor` vẫn chưa có consumer.
+
 ---
 
 ## Quyết định kiến trúc đã chốt (đừng đảo lại mà không có lý do mới)
@@ -213,12 +258,37 @@ autosave chưa có timer nào chạy. Đây đúng là "motion without connectio
 | D17 | Mọi tham số lệnh mutating phải **không rỗng** | Dòng audit không lý do trông giống bằng chứng mà chẳng trả lời gì |
 | D18 | `dirty` là **vị trí trong lịch sử**, không phải cờ | Cảnh báo về thay đổi đã undo hết = dạy người dùng bỏ qua cảnh báo |
 | D19 | Recovery **đề nghị**, không tự áp dụng | Tự áp dụng = mất đúng bản người dùng cố ý lưu |
+| D20 | Nét vẽ tích luỹ **ngoài** stack rồi đẩy vào một lần | `merge_key` giữ "revert đầu + apply cuối" — sai cho gesture tích luỹ |
+| D21 | Command ghi **giá trị tuyệt đối**, không phải delta | apply thành idempotent, nên `push_apply` gọi được trên gesture đã xảy ra |
+| D22 | Từ chối recovery phải **an toàn** (Cancel giữ nguyên autosave) | Hành động huỷ diệt không được nấp sau nút người ta bấm theo phản xạ |
+| D23 | Chưa tạo interface `Workspace` khi mới có một implementation | Một cái khuôn với một người ở; đợi cái thứ hai thì khuôn sẽ đúng hơn |
+| D24 | Scene đăng ký lệnh gắn với `this` **phải** gỡ trong destructor | Handler sống lâu hơn object = cú gọi vào bộ nhớ đã giải phóng |
+| D25 | Palette **không** thu tham số | Ba giá trị cần validate thuộc về dialog của Hub, không phải một ô một dòng |
+| D26 | Test round-trip phải seed **từ struct**, không chỉ từ file | Seed từ file chỉ kiểm parser; tool thì đi chiều ngược lại |
 
 ---
 
 ## Việc kế tiếp
 
-**S4b — Studio workspace model + hấp thụ Sandbox và Map Lab**, chương 112.
+**S5 — Farm vertical slice**, chương 113.
+
+Năm slice vừa rồi đều là hạ tầng, và S4b vừa đóng nợ "motion without connection".
+Theo Rule 5 (blend) của brief thì **S5 mới là lựa chọn đúng tiếp theo**: nó chỉ phụ
+thuộc S3 (xong) và giờ có thêm một editor thật để tạo map cho nó.
+
+**Hai quyết định cần anh chốt trước khi S5 tới phần nhìn được** (`PLAN.md §8`):
+1. **Tên hai game** (đang dùng placeholder *Farm* / *Creatures*).
+2. **Bộ asset pixel-art license mở** (CC0/CC-BY) để dùng tạm — hay chờ tới S7 tự vẽ
+   trong Studio?
+
+Phần `farm_core` thuần (đồng hồ, năng lượng, cuốc/tưới/thu hoạch, mô phỏng
+deterministic + test) **không phụ thuộc cả hai**, nên làm được ngay.
+
+### Đã hoãn có chủ ý (đừng coi là quên)
+
+- Hấp thụ **Sandbox** và **Map Lab** vào Studio → khi có workspace thứ hai thì
+  interface `Workspace` mới đáng tạo (D23).
+- Xoá 10 flag CLI cũ → cần anh đồng ý (`PLAN.md §8` mục 3).
 
 Đây là *consumer* của S4a, và cho tới khi nó tồn tại thì registry + undo + autosave
 vẫn đang là "motion without connection". Việc:

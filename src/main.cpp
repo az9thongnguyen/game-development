@@ -544,6 +544,11 @@ int main(int argc, char** argv) {
         cfg.supersample = kAA;   // scenes without it, so their text was upscaled, not rasterized
         cfg.resizable = true;    // a workspace should fit the screen it is on
         cfg.quit_on_escape = false;   // Escape now closes a dialog; quitting on it loses work
+        // The release ops go into the registry BEFORE the scene, so the Studio's
+        // command palette lists everything this process can do — not only what the
+        // workspace itself registers. Same registry `--cmd` reads; what differs is
+        // what a given process has registered, which is the honest difference.
+        cmd::register_release_commands(kKnownEntries);
         auto scene = std::make_unique<studioshell::StudioShellScene>(proj);
         scene->set_clipboard(&platform::clipboard_get, &platform::clipboard_set);
         return run_window(cfg, std::move(scene));

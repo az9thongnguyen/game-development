@@ -166,6 +166,14 @@ bool Context::button(Rect r, const char* label, bool primary, bool enabled) {
     return clicked;
 }
 
+bool Context::hit(const char* id_str, Rect r, bool* hovered) {
+    const Id   id      = id_of(id_str);
+    const bool clicked = interact(id, r, /*enabled*/ true);
+    if (hovered) *hovered = (hot_ == id);
+    if (r_ && focused_ == id) focus_ring(r, th::radius_sm);
+    return clicked;
+}
+
 bool Context::checkbox(Rect r, const char* label, bool& value) {
     const Id   id      = id_of(label);
     const bool toggled = interact(id, r, /*enabled*/ true);

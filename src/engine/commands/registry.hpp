@@ -14,6 +14,7 @@
 // =============================================================================
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -45,6 +46,17 @@ void register_command(Info info, Handler handler);
 const std::vector<Info>& all();
 
 bool exists(std::string_view id);
+
+// Indices into all() whose id or title matches `query`, in registration order. The
+// match is a case-insensitive SUBSEQUENCE of the "id  title" pair, so "rp" finds
+// "release.promote" — a palette is only faster than a menu if a few letters get you
+// there. An empty query matches everything.
+std::vector<std::size_t> filter(std::string_view query);
+
+// Remove one registration. A long-lived process registers once and never needs this;
+// a window that registers commands bound to ITSELF needs it, because a handler that
+// outlives the object it captured is a dangling call waiting to happen.
+bool unregister(std::string_view id);
 
 // Run a command. An unknown id is a failed OpResult, not a crash and not silence:
 // a mistyped id on a command line must say so.

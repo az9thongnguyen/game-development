@@ -22,6 +22,8 @@
 #include "engine/scene.hpp"
 #include "engine/ui/ui.hpp"
 #include "games/hub/hub_panel.hpp"
+#include "games/studio_shell/map_workspace.hpp"
+#include "games/studio_shell/palette.hpp"
 
 namespace studioshell {
 
@@ -38,24 +40,43 @@ public:
     void set_clipboard(std::function<std::string()> get,
                        std::function<void(const std::string&)> set);
 
+    // The map the workspace opened, for tests and for the status bar.
+    [[nodiscard]] const MapWorkspace& map_workspace() const { return map_; }
+    [[nodiscard]] MapWorkspace&       map_workspace() { return map_; }
+
 private:
-    enum Section { Hub = 0, Guide, Learn, About, SectionCount };
+    // Map first: this is an authoring tool, and the thing you came to do should be
+    // the thing that is already open.
+    enum Section { Map = 0, Hub, Guide, Learn, About, SectionCount };
+    // One modal at a time, by construction. Two booleans would eventually both be
+    // true and draw two cards on top of each other.
+    enum class Modal { None, HubOp, Recovery };
+
+    // The first `asset map` the manifest declares, or empty. Static so it can run in
+    // the member-init list, before the object exists.
+    static std::string map_asset_of(const std::string& project_path);
 
     void rebuild_hub();
     void run(hubui::Op op);
+    void flash(const engine::OpResult& r, double seconds = 5.0);
+    void draw_map_section(gfx::Renderer2D& g, ui::Rect area);
 
     std::string                    project_path_;
     std::vector<std::string>       known_entries_;
-    int                            section_ = Hub;
+    int                            section_ = Map;   // an authoring tool opens on the work
     std::optional<engine::HubView> hub_;
     std::string                    flash_;
     bool                           flash_ok_ = true;
     double                         flash_t_ = 0;
     ui::Context                    ui_;
     hubui::Op                      requested_  = hubui::Op::None;   // asked this frame
-    hubui::Op                      confirming_ = hubui::Op::None;   // dialog on screen
+    hubui::Op                      confirming_ = hubui::Op::None;   // pending hub op
+    Modal                          modal_ = Modal::None;
     std::string                    reason_;
     int                            nav_click_ = -1;
+    MapWorkspace                   map_;
+    CommandPalette                 palette_;
+    std::string                    palette_click_;   // id clicked during the last draw
     std::function<std::string()>            clip_get_;
     std::function<void(const std::string&)> clip_set_;
 };

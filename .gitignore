@@ -59,3 +59,6 @@ baas/config.json
 
 # document test scratch base (temp asset root)
 test_document_tmp/
+
+# Offscreen render dumps from the golden tests (PPM is already ignored above).
+shell_*.png
