@@ -438,6 +438,7 @@ int main(int argc, char** argv) {
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;   // was missing: this and --shell were the ONLY windowed
         return run_window(cfg, std::make_unique<hubui::HubScene>(proj));
     }
 
@@ -446,11 +447,12 @@ int main(int argc, char** argv) {
         const std::string proj = (argc > 2) ? argv[2] : "projects/creator.gameproject";
         platform::Config cfg;
         cfg.title     = "hand-engine — studio";
-        cfg.fb_width  = 900;
-        cfg.fb_height = 560;
+        cfg.fb_width  = 1280;    // the Studio is a workspace, not a retro scene: it needs room
+        cfg.fb_height = 720;
         cfg.scale     = 1;
         cfg.smooth    = true;
         cfg.highdpi   = true;
+        cfg.supersample = kAA;   // scenes without it, so their text was upscaled, not rasterized
         return run_window(cfg, std::make_unique<studioshell::StudioShellScene>(proj));
     }
 

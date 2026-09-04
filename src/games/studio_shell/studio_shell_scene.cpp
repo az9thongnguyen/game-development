@@ -92,6 +92,7 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
 
 void StudioShellScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
+    const int h_ = g.height();   // from the framebuffer, not a constant that must match main.cpp
     g.clear(gfx::rgb(12, 14, 20));
 
     // ---- left nav rail ----

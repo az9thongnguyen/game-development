@@ -37,7 +37,6 @@ private:
     std::optional<engine::HubView> hub_;
     std::string                    flash_;
     double                         flash_t_ = 0;
-    int                            h_ = 560;   // panel height; width taken from the framebuffer
 };
 
 } // namespace studioshell
