@@ -263,6 +263,29 @@ int main() {
     dump_ppm(buf, "farm_planted.ppm");
     const double lit = brightness(buf);
 
+    // ---- the art, and the tile that has none --------------------------------
+    // The theme maps grass, path, trees, walls and stones onto Kenney's sheet; the
+    // pond has no line, because Tiny Town has no water tile. So the frame must
+    // contain the flat water colour and NONE of the other flat colours — which is
+    // the per-id fallback stated as pixels rather than as an intention.
+    {
+        CHECK(scene.tile_count() == 132);          // 192x176 of 16px tiles
+        render(idle);
+        int grass = 0, path = 0, tree = 0, water = 0;
+        for (std::uint32_t p : buf) {
+            if (p == 0xFF4E7A3Cu) ++grass;         // the flat colours from before art
+            if (p == 0xFF9A7B4Fu) ++path;
+            if (p == 0xFF23482Au) ++tree;
+            if (p == 0xFF2E6E8Eu) ++water;
+        }
+        CHECK(grass == 0);
+        CHECK(path  == 0);
+        CHECK(tree  == 0);
+        CHECK(water > 0);                          // ...and the pond is still painted
+        dump_ppm(buf, "farm_art.ppm");
+    }
+
+
     // ---- night falls ----
     // Run the clock to the small hours and the world darkens. The tint is what makes
     // the clock a resource rather than a number in the corner.

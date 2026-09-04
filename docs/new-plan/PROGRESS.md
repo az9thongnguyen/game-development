@@ -357,6 +357,14 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D78 | Flag lạ là **lỗi kèm danh sách**, không rơi xuống demo mặc định | Người hay gõ flag vừa xoá nhất chính là người dùng nó hôm qua |
 | D79 | Chỉ xoá cái mà **cửa khác tới được cùng căn phòng** | Xoá `--maplab` là xoá khả năng sửa entity; xoá lab là bỏ consumer runtime của 7 core |
 | D80 | Ledger có ngày tháng thì **thêm tên mới trong ngoặc**, không viết lại | Một phán quyết ghi ngày 2026-09-04 phải đọc như điều đúng vào ngày đó |
+| D81 | Art vào bằng **một cửa**, và về **một định dạng** (`.hrt`) | Hai nguồn giữ hai định dạng = asset cache/closure/package hash phải biết cả hai, mãi mãi |
+| D82 | PNG **chỉ decode**, và **chỉ offline** | Không gì ghi PNG; compressor là bài toán lớn hơn nhiều mà chưa ai cần |
+| D83 | Định dạng lạ thì **từ chối kèm tên**, đừng đoán | "interlaced không hỗ trợ" hơn hẳn một ảnh sai một cách tinh vi |
+| D84 | Test decompressor phải dùng **stream của compressor thật**, đủ cả ba loại khối | Decoder chỉ thấy một loại chạy được tới khi gặp file người khác |
+| D85 | Map giữ **id ngữ nghĩa**; theme mới là chỗ nối tới art | Lưu chỉ số sheet = phải đánh số lại cả level mỗi lần đổi art |
+| D86 | Id **không có dòng theme thì không có art**, rơi về màu phẳng | Cho phép pack phủ một phần map thay vì tất-cả-hoặc-không |
+| D87 | **Guard thừa là chỗ mutation nấp** — một điều kiện, nhiều lý do | Hai guard che nhau: xoá cái nào test cũng xanh |
+| D88 | Art nhập vào phải có dòng trong `ATTRIBUTION.md` **cùng lúc** | Pack rơi vào `assets/` không ai thấy = nghĩa vụ license không ai thấy |
 
 ---
 
@@ -668,6 +676,54 @@ chối; đó là việc thật, không phải đổi tên.
 
 ---
 
+## S12 — Định dạng ngoại lai đầu tiên (chương 121) — XONG
+
+Đây là **quyết định số 2** của anh, làm xong: *"hỗ trợ cả 2, để đẹp thì CC0/CC-BY, sau
+clone vẽ lại trong studio"*. Câu đó quyết định **kiến trúc**, không chỉ nguồn art: hai
+nguồn phải về **cùng một định dạng**, nếu không mọi thứ downstream (asset cache,
+resource closure, package hash) phải biết hai loại file mãi mãi.
+
+```
+PNG (pack bất kỳ)  ──asset.import (offline)──▶  .hrt  ──▶  engine
+Texture Lab        ─────────────────────────▶  .hrt  ──▶  engine
+```
+
+- **Tự viết DEFLATE** (`inflate_core`, RFC 1951+1950) vì SDL2 là dependency runtime duy
+  nhất. **Chỉ giải nén** — không gì ở đây ghi PNG.
+- **`png_core`**: depth 8, colour type 0/2/3/6, tRNS, cả 5 filter, không interlace.
+  Mọi thứ khác **từ chối kèm tên lý do**.
+- **`--cmd asset.import`** là cánh cửa, và là **offline**: engine không decode PNG lúc
+  chạy.
+- **`assets/ATTRIBUTION.md`** + commit luôn file PNG gốc cạnh `.hrt`, để import **chạy
+  lại kiểm được**, không phải tin suông.
+- **Farm có art**: Kenney Tiny Town (CC0). Map giữ **id ngữ nghĩa**; `farm/theme.def`
+  nối id ↔ chỉ số tile. **Id không có dòng thì không có art** → rơi về màu phẳng cũ.
+  Tiny Town **không có tile nước** nên cái ao vẫn phẳng trong khi quanh nó đã có art —
+  đó chính là "hỗ trợ cả hai" **theo từng ô**.
+- Bốn call site `register_release_commands` gộp thành một `cmd::register_all`.
+
+**Test:** stream do **zlib thật** tạo, ở nhiều level để **cả ba loại khối** xuất hiện +
+4 kiểu hỏng phải bị từ chối. 3 fixture PNG **tự dựng** (biết pixel do xây dựng, cố ý
+khó: mỗi hàng một filter, tRNS ngắn hơn palette, greyscale) + 2 file **người khác làm**.
+
+**Hai mutation sống sót lúc đầu — và là lỗi thiết kế, không phải lỗi test:**
+`draw_tile` có ba guard, hai trong số đó **che lẫn nhau** (xoá cái nào cũng xanh), cái
+thứ ba lặp lại bất biến `parse_theme` đã giữ. Nay còn **một điều kiện, hai lý do**.
+Guard thừa không miễn phí: đó là chỗ mutation nấp được.
+
+**Chỉ số tile được ĐỌC từ sheet, không đoán** — lần đầu lệch một ô sang trái, render ra
+trông y như đất, rất thuyết phục.
+
+**Số liệu:** 74/74 test · web build xanh · golden path xanh (release id của farm đổi vì
+manifest thêm 2 asset) · xác minh trong trình duyệt (bấm chuột cày đúng ô đã có art).
+
+**Chưa xác minh:** file PNG gốc **vẫn nằm trong bundle web** (5 KB, cố ý) · **không có
+autotile** nên cỏ giáp đất là cạnh cứng · một sheet cho một map · `map2` đã có trường
+tileset riêng nhưng **chưa dùng** · **cái ao vẫn là hình chữ nhật xanh phẳng** — thứ
+đáng vẽ đầu tiên trong Texture Lab · **chưa đo** chi phí frame.
+
+---
+
 ## Ba quyết định — ĐÃ CHỐT (2026-09-04)
 
 1. **Tên game: Farm / Creatures** — chốt. Không còn là tên tạm; đã nằm trong
@@ -678,13 +734,16 @@ chối; đó là việc thật, không phải đổi tên.
    xuất. Kèm theo là chỗ ghi **attribution/license** (CC-BY bắt buộc ghi công).
    *(Lưu ý vận hành: tôi **không tải** asset từ mạng về mà không hỏi trước — sẽ dựng cơ
    chế + một bộ placeholder tự sinh bằng code của mình, rồi anh thả pack thật vào.)*
-3. **Xoá flag CLI cũ** — xong ở chương 120 (slice này).
+3. **Xoá flag CLI cũ** — xong ở chương 120.
+
+Quyết định 2 đã làm xong ở **chương 121**. Kenney Tiny Town (CC0) đã tải về, import và
+commit; đường đọc art dùng chung cho cả pack ngoài lẫn `.hrt` vẽ trong Studio.
 
 ## Việc kế tiếp
 
-**S12 — Farm có art**: đường đọc tileset dùng chung cho cả hai nguồn (pack mở +
-`.hrt` vẽ trong Studio), `assets/ATTRIBUTION.md`, và `map2` khai báo tileset. Đây là
-quyết định số 2 ở trên.
+**S13 — vẽ trong Studio cái mà pack không có**: tile nước cho cái ao, bằng Texture Lab
+(`--lab texture`), xuất `.hrt`, thêm một dòng vào `theme.def`. Đây là **nửa sau** của
+quyết định 2 — chứng minh "clone vẽ lại trong Studio" đi đúng cùng một đường.
 
 Sau đó (chưa xếp thứ tự):
 

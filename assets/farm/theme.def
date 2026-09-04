@@ -1,0 +1,18 @@
+# The farm's art: which tile of which sheet each semantic map id wears.
+#
+# The sheet is Kenney's Tiny Town (CC0) imported to .hrt — see assets/ATTRIBUTION.md.
+# Indices run left-to-right, top-to-bottom over a 12 x 11 grid of 16px tiles, so
+# index = row * 12 + column. They were read off the sheet, not guessed: the first
+# pass had the stones one tile to the left, which looked like dirt in the field.
+#
+# An id with no line here keeps the flat colour the game drew before there was art.
+# That is why `ground 3` (the pond) is absent — Tiny Town has no water tile. Draw one
+# in the Texture Lab, add a line, and it appears. No rebuild.
+sheet textures/town.hrt 16
+
+tile ground 1 0     # plain grass
+tile ground 2 40    # bare dirt, the worn path
+
+tile decor 1 28     # a small green tree
+tile decor 2 72     # timber wall
+tile decor 3 43     # white stones in the grass

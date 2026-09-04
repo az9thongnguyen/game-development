@@ -851,7 +851,10 @@ int main() {
         studioshell::StudioShellScene farm("projects/farm.gameproject", kKnownEntries);
         CHECK(farm.inspection().shippable());
         CHECK(farm.inspection().project.entry == "farm");
-        CHECK(farm.inspection().assets.size() == 5);
+        // Every asset the manifest declares — the count moves when the game gains
+        // content (it gained a theme and a tileset in chapter 121), and it should:
+        // the point of the check is that the Studio sees the same list the CLI does.
+        CHECK(farm.inspection().assets.size() == 7);
         // ...and the negative control: the list is what makes the difference, so an
         // ignorant list must still reject it. Otherwise the check above would pass
         // just as happily if known_entries were ignored entirely.

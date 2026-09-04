@@ -101,6 +101,7 @@ cmake --build build
 ./build/demo --release-rollback production <release-id> "reason"  # headless: aim a channel back at a prior release (audited)
 ./build/demo --release-log [channel]                        # headless: append-only audit history (publish/promote/rollback, w/ predecessor + reason)
 ./build/demo --project-verify projects/creator.gameproject development  # headless: preview parity (P2) — exit 0 match / 2 drift / 1 error
+./build/demo --cmd asset.import <src.png> <dst.hrt>   # bring foreign art in (offline; .hrt is what ships)
 ./build/demo --help     # every mode this build answers to, and where the retired flags went
 ./build/demo            # M0 engine demo
 ./build/demo --gui      # chess (GUI)     — also: hvh|hvai  easy|medium|hard

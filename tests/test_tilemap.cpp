@@ -13,7 +13,10 @@
 #include <string>
 
 #include "engine/tilemap/autotile.hpp"
+#include "engine/assets.hpp"
+#include "engine/image.hpp"
 #include "engine/tilemap/camera2d.hpp"
+#include "engine/tilemap/tileset.hpp"
 #include "engine/tilemap/map2.hpp"
 
 #ifndef ASSET_ROOT
@@ -378,8 +381,81 @@ static void test_autotile() {
     for (bool b : hit) CHECK(b);
 }
 
+
+// -----------------------------------------------------------------------------
+//  Cutting a sheet into tiles. The interesting cases are the edges: an index past
+//  the end must be ASKABLE (a null sprite, not a crash), and a sheet that is not an
+//  exact multiple of the tile size must drop the partial cells rather than pad them
+//  with whatever follows in memory.
+// -----------------------------------------------------------------------------
+static void test_tileset() {
+    // A 3x2 grid of 4px tiles, each filled with its own index so a mis-cut is
+    // visible as a wrong colour rather than as a plausible picture.
+    gfx::Image sheet;
+    sheet.w = 12;
+    sheet.h = 8;
+    sheet.pixels.resize(96);
+    for (int y = 0; y < 8; ++y)
+        for (int x = 0; x < 12; ++x)
+            sheet.pixels[static_cast<std::size_t>(y) * 12 + static_cast<std::size_t>(x)] =
+                static_cast<gfx::Color>(0xFF000000u + static_cast<unsigned>((y / 4) * 3 + (x / 4)));
+
+    const tilemap::Tileset ts = tilemap::Tileset::cut(sheet, 4);
+    CHECK(ts.count() == 6);
+    CHECK(ts.tile() == 4);
+    CHECK(ts.columns() == 3);
+
+    for (std::size_t i = 0; i < 6; ++i) {
+        const gfx::Sprite sp = ts.sprite(i);
+        CHECK(sp.w == 4 && sp.h == 4 && sp.pixels != nullptr);
+        // EVERY pixel of the cell, not just the first: a cut that reads the wrong
+        // row would still start correctly.
+        bool all = true;
+        for (int k = 0; k < 16; ++k)
+            all = all && sp.pixels[k] == static_cast<gfx::Color>(0xFF000000u + static_cast<unsigned>(i));
+        CHECK(all);
+    }
+
+    // Out of range is a question, not a crash.
+    CHECK(ts.sprite(6).w == 0 && ts.sprite(6).pixels == nullptr);
+    CHECK(ts.sprite(9999).w == 0);
+
+    // 13x9 holds the same 3x2 whole tiles; the leftover column and row are dropped.
+    gfx::Image ragged = sheet;
+    ragged.w = 13;
+    ragged.h = 9;
+    ragged.pixels.resize(13 * 9);
+    CHECK(tilemap::Tileset::cut(ragged, 4).count() == 6);
+
+    // Degenerate inputs yield an empty set rather than an exception or a huge loop.
+    CHECK(tilemap::Tileset::cut(sheet, 0).count() == 0);
+    CHECK(tilemap::Tileset::cut(sheet, 99).count() == 0);
+    CHECK(tilemap::Tileset::cut(gfx::Image{}, 4).count() == 0);
+
+    // The real sheet this project ships: 192x176 of 16px tiles is 12 x 11 = 132.
+    assets::set_base_path(ASSET_ROOT "/assets");
+    if (const auto real = gfx::load_image("textures/town.hrt")) {
+        const tilemap::Tileset town = tilemap::Tileset::cut(*real, 16);
+        CHECK(town.count() == 132);
+        CHECK(town.columns() == 12);
+        // Tile 0 is solid ground: opaque everywhere. Tile 28 is a tree on a
+        // transparent background. If the cut were off by a row those would swap.
+        int clear0 = 0, clear28 = 0;
+        for (int i = 0; i < 256; ++i) {
+            if ((town.sprite(0).pixels[i]  >> 24) == 0) ++clear0;
+            if ((town.sprite(28).pixels[i] >> 24) == 0) ++clear28;
+        }
+        CHECK(clear0 == 0);
+        CHECK(clear28 > 0);
+    } else {
+        std::printf("FAIL: textures/town.hrt did not load\n");
+        ++g_failures;
+    }
+}
+
 int main() {
     test_format();
+    test_tileset();
     test_format_rejects();
     test_migration();
     test_migrate_real_level();

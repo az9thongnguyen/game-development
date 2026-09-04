@@ -15,6 +15,7 @@
 #include "engine/document/save.hpp"
 #include "games/farm/defs.hpp"
 #include "games/farm/cloud.hpp"
+#include "games/farm/theme.hpp"
 #include "games/farm/dialogue.hpp"
 #include "games/farm/world.hpp"
 
@@ -598,8 +599,52 @@ static void test_the_crop_owns_the_price() {
     CHECK(g >= 8 && g <= 12);
 }
 
+
+// -----------------------------------------------------------------------------
+//  The theme: which picture a semantic tile id wears. The load-bearing claim is
+//  that an id with NO line has no art — that is what lets a pack cover part of a
+//  map instead of all of it.
+// -----------------------------------------------------------------------------
+static void test_theme() {
+    const auto t = parse_theme(
+        "# a comment\n"
+        "sheet textures/town.hrt 16\n"
+        "\n"
+        "tile ground 1 0     # grass\n"
+        "tile ground 2 40\n"
+        "tile decor 1 28\n");
+    CHECK(t.has_value());
+    if (!t) return;
+    CHECK(t->sheet == "textures/town.hrt");
+    CHECK(t->tile == 16);
+    CHECK(t->index_of("ground", 1) == 0);      // index 0 is a TILE, not "absent"
+    CHECK(t->index_of("ground", 2) == 40);
+    CHECK(t->index_of("decor", 1) == 28);
+
+    // Unmapped: a different id, a different layer, an id nobody listed.
+    CHECK(t->index_of("ground", 3) == -1);
+    CHECK(t->index_of("decor", 2) == -1);
+    CHECK(t->index_of("nosuch", 1) == -1);
+
+    // The tile size defaults rather than failing, because 16 is what every pack in
+    // sight uses and a missing number is not a missing decision.
+    const auto d = parse_theme("sheet a.hrt\ntile ground 1 0\n");
+    CHECK(d && d->tile == 16);
+
+    // Refusals. A theme is small and hand-written; a typo here is a typo, not a
+    // future field, so unlike a defs FILE an unknown record is an error.
+    CHECK(!parse_theme(""));                          // no sheet
+    CHECK(!parse_theme("tile ground 1 0\n"));         // ...even with tiles
+    CHECK(!parse_theme("sheet a.hrt\nwibble 1 2\n"));
+    CHECK(!parse_theme("sheet a.hrt\ntile ground\n"));
+    CHECK(!parse_theme("sheet a.hrt\ntile ground 0 5\n"));    // id 0 is "empty"
+    CHECK(!parse_theme("sheet a.hrt\ntile ground 1 -2\n"));
+    CHECK(!parse_theme("sheet a.hrt 0\n"));
+}
+
 int main() {
     test_defs();
+    test_theme();
     test_the_crop_owns_the_price();
     test_overrides();
     test_sync_decision();

@@ -35,6 +35,11 @@ regression, not a shortcut:
   swap in `emscripten_set_main_loop` with zero changes to engine/game code.
 - **All file I/O goes through `assets::` (`src/engine/assets.*`)**, never scattered
   `fopen`. The web build uses a virtual filesystem.
+- **`.hrt` is the only raster format the engine READS at runtime** (`HRT1|w|h|RGBA8`).
+  PNG is decoded by hand (`inflate_core` + `png_core`, no third party) but only by the
+  offline `--cmd asset.import`, so art from an open-licence pack and art drawn in the
+  Texture Lab arrive downstream as the same kind of file. Anything imported must gain a
+  line in **`assets/ATTRIBUTION.md`** in the same change.
 - **Web-portability is baked in from the start.** The same engine/game code compiles
   native and WASM; only the platform `run()` loop is `#ifdef`'d.
 
@@ -84,6 +89,7 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 them working). Paths are relative to the asset root — see `assets::` below:
 
 ```sh
+./build/demo --cmd asset.import <src.png> <dst.hrt>   # bring foreign art in (offline)
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
@@ -179,8 +185,9 @@ Understand these deliberate patterns before editing the build:
   `ui_core`, `text_core`, `viz3d_core`, `colony_core`, plus the platform-spine
   cores `project_core`, `inspect_core` (one read+validate+hash, shared by launch,
   package, publish and the Studio), `resource_core`, `release_core`, `release_ops_core`,
-  the game cores `farm_core` (day loop, crops, NPC schedules, dialogue, and the pure
-  cloud-save verdict `decide_sync` — no renderer, no SDK),
+  the game cores `farm_core` (day loop, crops, NPC schedules, dialogue, the pure
+  cloud-save verdict `decide_sync`, and the art `theme` — no renderer, no SDK),
+  `inflate_core` (hand-written DEFLATE) and `png_core` (decode only, offline),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
   `particles_core`, `tween_core`, `light_core`, `audio_core`,
