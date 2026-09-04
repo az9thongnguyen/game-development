@@ -343,7 +343,7 @@ An agent must not upgrade any of these from "written" to "works" without running
 
 | Claim | Status |
 |---|---|
-| 61 test suites pass | ✅ **verified** 2026-09-04, ~77 s |
+| 62 test suites pass | ✅ **verified** 2026-09-04 (61 before chapter 108 added `shell_golden`) |
 | Native build | ✅ verified |
 | Web (Emscripten) build + served by the hand-written webserver | ✅ verified: build links, all assets return 200 |
 | Golden path publish → promote → audit | ✅ verified interactively (three channels + audit log) |
@@ -353,7 +353,9 @@ An agent must not upgrade any of these from "written" to "works" without running
 | **PostgreSQL production adapter** | ❌ **not implemented/run.** Production is still single-node SQLite. |
 | **CI green run** | ⚠️ **unknown from this machine.** `ci.yml` self-documents "written but not run in the authoring environment"; `gh` is unauthenticated here. |
 | Purchase affordability check | ⚠️ **known ceiling:** documented TOCTOU — the affordability check and the debit are not under one lock. Recorded deliberately, not accidentally. |
-| Scene visual output | ⚠️ mostly manual visual accept; only `test_ui_golden` is a golden-image test |
+| Scene visual output | ⚠️ mostly manual visual accept. Two structural golden tests now exist (`test_ui_golden`, `test_shell_golden`); the rest is eyeball. |
+| Studio shell renders correctly | ✅ verified 2026-09-04 by offscreen render at the real 1280×720×2, inspected as an image. **The window itself was not opened** — screen capture is unavailable here, so SDL's `present()` path is untested. |
+| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (5 runs, warm-up excluded): **Release ss=2 median 2.4–4.4 ms** vs an 8 ms budget; Debug ss=2 11–18 ms. ⚠️ absolute values move ~2× run to run on this laptop — only the **ratios** (ss=2 ≈ 4× ss=1, Debug ≈ 4–5× Release) are dependable. |
 
 ---
 
@@ -414,6 +416,10 @@ Beyond the roadmap's own list, these are structural and worth an agent's attenti
    the immutable artifact/release registry the architecture calls for.
 4. **The Studio shell is a frame, not an authoring product** — nav rail + panels. No undo,
    no recovery, no asset browser, no validation surface. The Labs are still separate scenes.
+   *(Partly addressed 2026-09-04, chapter 108: it now draws through `ui::Context` and the
+   design system, the Hub is one shared panel driven by mouse or keyboard, and it is
+   covered by `test_shell_golden`. What remains is the authoring half — undo, documents,
+   asset browser, validation — which is S4/S6 of `docs/new-plan/`.)*
 5. **Breadth vs product**: 29 CLI modes, but only **one** (`fps`) is reachable as a project
    entry through `launch_entry`.
 6. **Operating evidence is absent.** Horizon 2 says "operate a real small game", but there

@@ -78,6 +78,7 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --project-verify   <proj> development   # preview parity: exit 0 match / 2 drift / 1 err
 ./build/demo --hub <proj>                     # aggregate status + next recommended action
 ./build/demo --runner <baas_url> <api_key>    # headless BaaS test-run worker
+./build/demo --bench-ui [frames] [proj]       # Studio frame cost, ss=1 vs ss=2 (no window)
 ```
 
 Tests (dependency-free, no SDL/window needed):

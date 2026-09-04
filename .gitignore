@@ -53,3 +53,6 @@ baas/config.json
 
 # Local code-graph index (machine-local, 10 MB SQLite)
 .codegraph/
+
+# Golden-render dumps from test_shell_golden / test_ui_golden (build artifacts)
+*.ppm
