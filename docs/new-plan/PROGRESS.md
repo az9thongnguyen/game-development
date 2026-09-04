@@ -159,6 +159,35 @@ Merge `feat/s3-tilemap`.
 - `iso::TileMap` **chưa** migrate (không có text format để migrate, và consumer đang chạy).
 - **Chưa có gì render map2** — culling + y-sort đi cùng game đầu tiên cần chúng.
 
+### S4a — `commands_core` + undo/autosave ✅ 2026-09-04 · chương 111
+
+Merge `feat/s4-commands`. **Tách S4 làm đôi**: đây là phần nền (registry + undo +
+autosave). Phần hấp thụ Sandbox/Map Lab vào Studio là **S4b**, chương 112 — tách ra
+để không merge một slice nửa vời.
+
+- **`commands_core`**: registry `{id, title, hotkey, args_help}` + handler trả
+  `engine::OpResult`. `--cmd <id> [args]`; không id thì liệt kê. **Flag cũ giờ là
+  alias thật** (`--project-publish` gọi `cmd::run("project.publish")`), nên "CLI verb
+  và nút bấm là cùng một code" do compiler bảo đảm, không phải do tài liệu khẳng định.
+- **Nối alias lộ ra lỗ hổng thật**: CLI mặc định lý do = chuỗi rỗng → audit log có
+  dòng **không lý do**. Đã chặn: mọi tham số của lệnh mutating phải có và **không rỗng**.
+- **`status()` / `log()`** nâng từ `main.cpp` vào `release_ops_core`, trả **dữ liệu**.
+  `main.cpp` giữ định dạng cột riêng — không phải trùng lặp: nguồn dữ liệu một chỗ,
+  trình bày là việc của caller (đúng như `ops.hpp` viết từ đầu).
+- **`document_core`** (tên `document` vì `studio_core` đã là Texture Lab):
+  `CommandStack` (apply khi push · sửa mới xoá nhánh redo · gộp gesture giữ **revert
+  đầu** + **apply cuối** · **dirty là vị trí, không phải cờ**) và autosave/recovery
+  (**đề nghị**, không tự áp dụng · autosave trùng nội dung = rác, không hỏi · autosave
+  rỗng = coi như không có).
+
+**✅ Đã chạy:** `ctest` **65/65**; `--cmd` liệt kê + chạy thật; flag cũ hành xử y hệt;
+publish thiếu lý do bị từ chối (exit 1); web build xanh.
+
+**⚠️ Chưa xác minh — nói thẳng:** **chưa có gì trong Studio dùng những thứ này.**
+Registry có 5 lệnh và chưa có palette; `CommandStack` chưa có workspace nào push vào;
+autosave chưa có timer nào chạy. Đây đúng là "motion without connection" — chấp nhận
+được **chỉ vì** consumer là S4b ngay kế tiếp, không phải một hy vọng.
+
 ---
 
 ## Quyết định kiến trúc đã chốt (đừng đảo lại mà không có lý do mới)
@@ -180,26 +209,29 @@ Merge `feat/s3-tilemap`.
 | D13 | Định dạng mới **từ chối** file version cao hơn | Đọc nửa vời = âm thầm mất trường rồi ghi mất mát xuống đĩa |
 | D14 | Bảng dữ liệu suy ra được thì **sinh bằng code**, đừng chép tay | `autotile_count()==47` là kết quả nên sai quy tắc là test kêu ngay |
 | D15 | Core mới phải có **consumer thật** ngay trong slice | `tilemap_core` không ai load = đúng bẫy "motion without connection" |
+| D16 | Flag CLI cũ là **alias** lên registry, không phải đường thứ hai | Hai call site "đang khớp" là cách GUI và CLI trôi xa nhau |
+| D17 | Mọi tham số lệnh mutating phải **không rỗng** | Dòng audit không lý do trông giống bằng chứng mà chẳng trả lời gì |
+| D18 | `dirty` là **vị trí trong lịch sử**, không phải cờ | Cảnh báo về thay đổi đã undo hết = dạy người dùng bỏ qua cảnh báo |
+| D19 | Recovery **đề nghị**, không tự áp dụng | Tự áp dụng = mất đúng bản người dùng cố ý lưu |
 
 ---
 
 ## Việc kế tiếp
 
-**S4 — Studio unified shell + `commands_core` + undo**, branch `feat/s4-studio-commands`,
-chương 111–112.
+**S4b — Studio workspace model + hấp thụ Sandbox và Map Lab**, chương 112.
 
-Đây là bước biến Studio từ *cái khung* thành *công cụ authoring* (gap #4 của
-`PROJECT-BRIEF §10`). Việc:
+Đây là *consumer* của S4a, và cho tới khi nó tồn tại thì registry + undo + autosave
+vẫn đang là "motion without connection". Việc:
 
-1. `commands_core`: registry `{id, title, hotkey, run(args) -> engine::OpResult}`;
-   `main.cpp` thêm `--cmd <id> [args]` gọi **cùng hàm**; các flag headless cũ trở thành
-   alias một dòng → CI không đổi. Đây là hiện thực hoá Rule 8 ở mức code.
-2. `release_ops` bổ sung `status()` / `log()` — hiện chúng chỉ là hàm local trong
-   `main.cpp:260-288`, nên Release workspace sẽ phải nhân bản logic nếu không nâng lên.
-3. `studio_core`: `EditorDocument` + `CommandStack` (apply/revert/merge_key), dirty flag,
-   autosave `.autosave` + prompt recovery.
-4. Workspace model + hấp thụ Sandbox (→ workspace *Scene*) và Map Lab (→ *Map*),
-   kèm undo, zoom/pan, grid + snap, selection outline.
+1. `Workspace` interface: `name/update/render_canvas/render_inspector/commands`.
+2. Studio: top bar · nav rail · canvas · inspector · panel dưới · status bar;
+   splitter kéo được, layout lưu `assets/studio.layout`.
+3. Hấp thụ **Sandbox** → workspace *Scene*, **Map Lab** → workspace *Map*; mỗi cái
+   có inspector, **undo qua `CommandStack`**, zoom/pan, grid + snap, selection outline.
+4. Autosave có timer thật + prompt recovery khi mở.
+5. Command palette (`Ctrl+K`) liệt kê `cmd::all()`.
+6. Chỉ xoá flag cũ **sau khi** hỏi anh (PLAN §8 mục 3).
 
 **Lưu ý thứ tự**: theo blend (`PLAN.md §4`, Rule 5 của brief), có thể chèn **S5 Farm**
-trước S4 nếu cần đổi gió — S5 chỉ phụ thuộc S3, vốn đã xong.
+trước S4b nếu cần đổi gió — S5 chỉ phụ thuộc S3, vốn đã xong. Bốn slice vừa rồi đều
+là plumbing, nên theo đúng Rule 5 thì **S5 mới là lựa chọn đúng tiếp theo**.
