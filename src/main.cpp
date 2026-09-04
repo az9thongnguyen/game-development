@@ -6,6 +6,9 @@
 //    demo --gui [hvh|hvai] [easy|medium|hard]  -> chess (large, crisp window)
 //    demo --tui [hvh|hvai] [easy|medium|hard]  -> chess in the terminal
 // =============================================================================
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <ctime>
 #include <memory>
 #include <optional>
@@ -22,6 +25,7 @@
 #include "engine/release/ops.hpp"
 #include "engine/release/release.hpp"
 #include "engine/resource/resource.hpp"
+#include "engine/text/font.hpp"
 #include "platform/platform.hpp"
 
 #include "demo/demo_scene.hpp"
@@ -426,6 +430,49 @@ int main(int argc, char** argv) {
     if (mode == "--hub") {
         if (argc < 3) { std::fprintf(stderr, "usage: demo --hub <path>\n"); return 1; }
         return hub_dashboard(argv[2]);
+    }
+
+    // Headless: how long does one Studio frame take to rasterize?
+    //
+    // The Studio draws into a CPU framebuffer, so every pixel costs real work and
+    // supersampling costs four times as much. Before the UI layer grows, measure it —
+    // a budget you never measured is a budget you are not keeping. No window is
+    // involved: a Scene needs only an engine::Context, so this runs in CI too.
+    if (mode == "--bench-ui") {
+        const int frames = (argc > 2) ? std::atoi(argv[2]) : 120;
+        auto bytes = assets::load_file("fonts/Inter.ttf");
+        if (!bytes) { std::fprintf(stderr, "bench-ui: cannot load fonts/Inter.ttf\n"); return 1; }
+        auto font = text::Font::load_from_bytes(std::move(*bytes));
+        if (!font) { std::fprintf(stderr, "bench-ui: cannot parse Inter.ttf\n"); return 1; }
+
+        const std::string proj = (argc > 3) ? argv[3] : "projects/creator.gameproject";
+        constexpr int LW = 1280, LH = 720;
+        std::printf("bench-ui  %dx%d logical, %d frames per configuration\n", LW, LH, frames);
+
+        for (int ss : {1, 2}) {
+            studioshell::StudioShellScene scene(proj);
+            std::vector<std::uint32_t> buf(static_cast<std::size_t>(LW * ss) * (LH * ss), 0);
+            platform::Framebuffer fb{buf.data(), LW * ss, LH * ss, LW * ss};
+            platform::InputState  in{};
+
+            std::vector<double> ms;
+            ms.reserve(static_cast<std::size_t>(frames));
+            for (int i = 0; i < frames; ++i) {
+                const auto t0 = std::chrono::steady_clock::now();
+                gfx::Renderer2D r(fb, ss);
+                const engine::Context ctx{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
+                scene.render(ctx);
+                const auto t1 = std::chrono::steady_clock::now();
+                ms.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+            }
+            std::sort(ms.begin(), ms.end());
+            const double med = ms[ms.size() / 2];
+            const double p95 = ms[static_cast<std::size_t>(ms.size() * 95 / 100)];
+            std::printf("  ss=%d  (%d x %d physical px)   median %6.2f ms   p95 %6.2f ms   %s\n",
+                        ss, LW * ss, LH * ss, med, p95,
+                        med <= 8.0 ? "within the 8 ms budget" : "OVER the 8 ms budget");
+        }
+        return 0;
     }
 
     // Windowed: the graphical Hub shell — the same view, drawn; Space/1/2 drive the ops.
