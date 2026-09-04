@@ -60,7 +60,10 @@ Everything is one `demo` executable; the first arg picks the mode. Windowed scen
 ./build/demo --sandbox  # declarative 2D sandbox: actors + data-only behaviors
 ./build/demo --maplab   # tile-grid level editor -> maps/level_NN.map
 ./build/demo --fx | --light | --audio | --anim     # particles / 2D lights / mixer / flipbook
-./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio shell (1280x720, resizable)
+./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio (1280x720, resizable)
+                                                  # --shell opens the Map workspace: paint/rect/fill a
+                                                  # map2, Cmd+Z undo, Cmd+S save, Cmd+K command palette,
+                                                  # Cmd+1..5 sections. Autosaves; offers recovery on open.
 ```
 
 **Headless platform-spine verbs** (no window; these are what CI smoke-tests, so keep
@@ -145,7 +148,8 @@ Understand these deliberate patterns before editing the build:
   `ui_core`, `text_core`, `viz3d_core`, `colony_core`, plus the platform-spine
   cores `project_core`, `resource_core`, `release_core`, `release_ops_core`,
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
-  `maplab_core`, `particles_core`, `tween_core`, `light_core`, `audio_core`,
+  `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
+  `particles_core`, `tween_core`, `light_core`, `audio_core`,
   `runner_core`). Each has a matching `test_*` target so simulation/logic is
   unit-tested with no window.
 - **`-DENGINE_BUILD_DESKTOP=OFF`** builds everything except the SDL2 `demo` target —
@@ -189,6 +193,11 @@ is the thing most likely to be broken by a careless edit:
    publishing *different* bytes under an existing id is refused.
 5. **Hub** (`hub_core`) — one pure `hub_lines`/`recommend` shared by the headless
    `--hub` and the windowed `--hub-ui`/`--shell`, so CLI and window can't drift.
+6. **Command registry** (`commands_core`) — every operation registers once under a
+   stable id; `--cmd <id>`, the Studio's `Cmd+K` palette and a button all go through
+   `cmd::run`, so an operation cannot exist in only one of them. The old CLI flags are
+   aliases onto it. Mutating commands **refuse blank arguments**: an audit line with
+   no reason looks like evidence and answers nothing.
 
 Two rules follow from that shape: **the operation lives in a pure `*_core` lib and the
 trigger (CLI flag or keypress) only calls it** — never reimplement an op in a Scene; and
