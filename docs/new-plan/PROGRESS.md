@@ -20,7 +20,7 @@
 | Phase A | Sửa PLAN/SPEC theo code | ✅ xong | `docs/new-plan-corrections` | — |
 | S1 | UTF-8 + độ nét + Studio dùng design system | ✅ xong | `feat/s1-text-utf8` | 108 |
 | S2 | `ui` v2 (seam → clip → overlay → id → focus → layout → widget) | ✅ xong | `feat/s2-ui-v2` | 109 |
-| S3 | `tilemap_core` v2 + `camera2d` | ⬜ chưa | | 110 |
+| S3 | `tilemap_core` v2 + `camera2d` | ✅ xong | `feat/s3-tilemap` | 110 |
 | S4 | Studio shell + `commands_core` + undo | ⬜ chưa | | 111–112 |
 | S5 | Farm — vertical slice | ⬜ chưa | | 113 |
 | S6 | Asset browser · Validation · Release workspace · Play viewport | ⬜ chưa | | 114 |
@@ -125,6 +125,40 @@ Merge `feat/s2-ui-v2`. Bảy commit, đúng thứ tự bắt buộc (mỗi bư�
 - `set_cursor` **chưa có consumer** (splitter chưa tồn tại).
 - Chưa thử IME / gõ không phải Latin.
 
+### S3 — `tilemap_core` + `camera2d` ✅ 2026-09-04 · chương 110
+
+Merge `feat/s3-tilemap`.
+
+- **`map2`**: layer có tên (tiles hoặc mask), entity (điểm + props `key=value`),
+  trigger (rect + props), tileset ref. Tile id là **int32** (trần 255 của `fpsmap1`
+  vô hình cho tới lúc vượt, và mở rộng sau lại tốn thêm một migration).
+- **`load()` tự nhận magic** → đọc cả `map2` lẫn `fpsmap1`. Migration tách `id` của
+  `fpsmap1` (vốn gộp *hình dạng* + *có đặc không*) thành layer `wall` + mask `collide`;
+  dòng `spawn` thành entity.
+- **Từ chối file version tương lai.** Parser cũ đọc schema mới = âm thầm mất trường
+  rồi ghi mất mát đó xuống đĩa.
+- **`Camera2D`**: deadzone, smoothing **độc lập framerate**, clamp bounds (thế giới
+  nhỏ hơn viewport thì **căn giữa**, không ghim góc), snap pixel nguyên, culling.
+- **Autotile 47-blob**: bảng **sinh bằng liệt kê 256 mask**, nên 47 là *kết quả*.
+  **Chưa** làm định dạng file tileset — nó đi cùng editor (S7).
+
+**✅ Đã chạy:**
+- `ctest` **63/63 xanh**.
+- `--fps` **đã chuyển sang** `fps::from_shared_text` → migration được chạy bởi app và
+  bởi CI golden path, không chỉ bởi unit test. `test_fps` đọc **level thật trong repo**
+  bằng cả hai đường và so từng ô + spawn → giống hệt.
+- **Mutation test**: lerp theo frame thay vì theo giây → đỏ test framerate;
+  bỏ một quy tắc đường chéo → autotile count lệch khỏi 47, đỏ 40+ assertion.
+- Web build xanh.
+
+**⚠️ Chưa xác minh:**
+- Chưa nhìn `--fps` chạy thật qua đường mới (không mở được cửa sổ).
+- **Chưa có file `map2` nào do người viết ra** — Map Lab vẫn ghi `fpsmap1`. Layer /
+  trigger / entity đã chứng minh parse + query được, **chưa** chứng minh là thứ một
+  editor sinh ra.
+- `iso::TileMap` **chưa** migrate (không có text format để migrate, và consumer đang chạy).
+- **Chưa có gì render map2** — culling + y-sort đi cùng game đầu tiên cần chúng.
+
 ---
 
 ## Quyết định kiến trúc đã chốt (đừng đảo lại mà không có lý do mới)
@@ -143,25 +177,29 @@ Merge `feat/s2-ui-v2`. Bảy commit, đúng thứ tự bắt buộc (mỗi bư�
 | D10 | Dịch vụ platform được **tiêm vào scene**, không gọi thẳng | Scene gọi `platform::clipboard_*` là không link được nếu thiếu SDL → giết `test_shell_golden` |
 | D11 | Hộp thoại huỷ diệt mở với **Cancel** đang focus | Enter đầu tiên sau khi dialog bật lên thường là phản xạ còn sót |
 | D12 | Mọi thao tác ghi audit log phải **nhập lý do** | Biến log từ danh sách timestamp thành lời giải thích |
+| D13 | Định dạng mới **từ chối** file version cao hơn | Đọc nửa vời = âm thầm mất trường rồi ghi mất mát xuống đĩa |
+| D14 | Bảng dữ liệu suy ra được thì **sinh bằng code**, đừng chép tay | `autotile_count()==47` là kết quả nên sai quy tắc là test kêu ngay |
+| D15 | Core mới phải có **consumer thật** ngay trong slice | `tilemap_core` không ai load = đúng bẫy "motion without connection" |
 
 ---
 
 ## Việc kế tiếp
 
-**S3 — `tilemap_core` v2 + `camera2d`**, branch `feat/s3-tilemap`, chương 110.
+**S4 — Studio unified shell + `commands_core` + undo**, branch `feat/s4-studio-commands`,
+chương 111–112.
 
-Nền tảng cần trước khi có bất kỳ game 2D nào. Hôm nay có **hai lưới ô độc lập**:
-`fps::Map` (uint8 + text `fpsmap1`, nằm trong `games/fps`) và `iso::TileMap`
-(enum `Terrain`, không có text I/O riêng). Map Lab không có layer / collision mask /
-trigger / tileset ảnh / autotile, và `engine/` không có camera 2D nào.
+Đây là bước biến Studio từ *cái khung* thành *công cụ authoring* (gap #4 của
+`PROJECT-BRIEF §10`). Việc:
 
-Việc:
-1. Format `map2` (text versioned): tileset refs, N layer, layer collide, entity, trigger.
-2. Migration `fpsmap1 → map2` + test round-trip (mọi format mới phải có migration test).
-3. Autotile 47-blob (dữ liệu rule trong tileset def; editor để S7).
-4. `camera2d`: follow + deadzone + smoothing (dùng `tween_core` đã có) + clamp + snap pixel.
-5. Render có culling theo viewport; y-sort cho entity layer.
-6. `--fps` vẫn chạy được bằng map đã migrate — CI golden path không đổi.
+1. `commands_core`: registry `{id, title, hotkey, run(args) -> engine::OpResult}`;
+   `main.cpp` thêm `--cmd <id> [args]` gọi **cùng hàm**; các flag headless cũ trở thành
+   alias một dòng → CI không đổi. Đây là hiện thực hoá Rule 8 ở mức code.
+2. `release_ops` bổ sung `status()` / `log()` — hiện chúng chỉ là hàm local trong
+   `main.cpp:260-288`, nên Release workspace sẽ phải nhân bản logic nếu không nâng lên.
+3. `studio_core`: `EditorDocument` + `CommandStack` (apply/revert/merge_key), dirty flag,
+   autosave `.autosave` + prompt recovery.
+4. Workspace model + hấp thụ Sandbox (→ workspace *Scene*) và Map Lab (→ *Map*),
+   kèm undo, zoom/pan, grid + snap, selection outline.
 
-Sau S3 là **S5 Farm vertical slice** (S4 Studio shell/commands có thể hoán đổi thứ tự
-theo blend — xem `PLAN.md §4`).
+**Lưu ý thứ tự**: theo blend (`PLAN.md §4`, Rule 5 của brief), có thể chèn **S5 Farm**
+trước S4 nếu cần đổi gió — S5 chỉ phụ thuộc S3, vốn đã xong.
