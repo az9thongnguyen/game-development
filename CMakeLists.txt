@@ -549,6 +549,13 @@ target_include_directories(test_inspect PRIVATE src)
 target_link_libraries(test_inspect PRIVATE engine_flags)
 add_test(NAME inspect COMMAND test_inspect)
 
+# The fixed-timestep accumulator, extracted from App so the Play viewport can share
+# it instead of writing a second one. Header-only and pure — the test just includes it.
+add_executable(test_fixed_step tests/test_fixed_step.cpp)
+target_include_directories(test_fixed_step PRIVATE src)
+target_link_libraries(test_fixed_step PRIVATE engine_flags)
+add_test(NAME fixed_step COMMAND test_fixed_step)
+
 add_executable(test_project tests/test_project.cpp
   src/engine/project/project.cpp
 )
