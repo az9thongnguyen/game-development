@@ -48,6 +48,22 @@ jobs:
       - name: Golden-path smoke (headless inspect)
         run: ./build/demo --project-inspect projects/creator.gameproject
 
+      - name: The CLI flag is an alias, not a second formatter
+        run: |
+          # --project-inspect and --cmd project.inspect must produce the IDENTICAL
+          # text, because there is one function producing it (chapter 114). The day
+          # someone prints "just this one extra thing" in main.cpp, this breaks.
+          ./build/demo --project-inspect projects/creator.gameproject > /tmp/flag.txt
+          ./build/demo --cmd project.inspect projects/creator.gameproject > /tmp/cmd.txt
+          diff /tmp/flag.txt /tmp/cmd.txt
+          # ...and a project with missing content reports EVERY problem, not the first.
+          printf 'gameproject1\nname Probe\nschema 1\nentry fps\nasset text a.txt\nasset text b.txt\nasset text c.txt\n' \
+            > assets/projects/_ci_probe.gameproject
+          ./build/demo --project-publish projects/_ci_probe.gameproject development ci 2>&1 \
+            | tee /tmp/pub.txt || true
+          grep -q 'a.txt' /tmp/pub.txt && grep -q 'b.txt' /tmp/pub.txt && grep -q 'c.txt' /tmp/pub.txt
+          rm -f assets/projects/_ci_probe.gameproject
+
       - name: Second-game smoke (the spine accepts a game it was not written for)
         run: |
           # The farm arrived as a manifest + an entry id and nothing in the spine
