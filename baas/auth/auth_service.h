@@ -38,6 +38,13 @@ Result register_user(long project_id, const std::string& email,
 Result login(long project_id, const std::string& email, const std::string& password);
 
 // Create an anonymous (guest) account so players can play before registering.
-Result guest(long project_id, const std::string& display_name);
+//
+// `device_id` is an opaque, client-generated id for one installation. Given the same
+// one, the SAME guest comes back — without it a guest is a new account every launch,
+// and anything that belongs to the player (a cloud save, an inventory) is written
+// into an account nothing will ever read again. Empty means "do not remember me",
+// which is the old behaviour and still the right one for a kiosk.
+Result guest(long project_id, const std::string& display_name,
+             const std::string& device_id = "");
 
 }  // namespace web::auth

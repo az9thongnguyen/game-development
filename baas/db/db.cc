@@ -210,6 +210,24 @@ CREATE TABLE IF NOT EXISTS operators (
 );
 )SQL";
 
+// Migrations 7 and 8 — a device id on a guest account. A guest used to be a NEW user
+// every launch, which is fine until something belongs to the player: cloud save then
+// lands in a fresh account each time and can never be read back. The client keeps an
+// opaque id for the installation and hands it over; the same id returns the same guest.
+// Nullable, because every existing guest predates it and NULLs stay distinct under a
+// unique index — old rows do not collide with each other.
+//
+// Split in two because ALTER ... ADD COLUMN is not idempotent, and the invariant below
+// says a migration is one statement or all-idempotent. One statement each keeps it,
+// with no transaction machinery.
+constexpr const char* kMigration7GuestDevice = R"SQL(
+ALTER TABLE users ADD COLUMN device_id TEXT;
+)SQL";
+
+constexpr const char* kMigration8GuestDeviceIndex = R"SQL(
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_device ON users(project_id, device_id);
+)SQL";
+
 constexpr Migration kMigrations[] = {
     {1, "initial schema", kMigration1},
     {2, "audit log", kMigration2Audit},
@@ -217,6 +235,8 @@ constexpr Migration kMigrations[] = {
     {4, "idempotency keys", kMigration4Idempotency},
     {5, "store catalog", kMigration5Catalog},
     {6, "operators", kMigration6Operators},
+    {7, "guest device id", kMigration7GuestDevice},
+    {8, "guest device id index", kMigration8GuestDeviceIndex},
 };
 
 bool is_blank(const std::string& s) {

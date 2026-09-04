@@ -154,6 +154,11 @@ public:
     class Auth {
     public:
         void guest(std::function<void(Result<Session>)> cb);
+        // Same guest again. `device_id` is an opaque id the CLIENT keeps for this
+        // installation; hand back the same one and the same account comes back. A
+        // guest with no device id is a new account every launch, which quietly makes
+        // cloud save (and anything else owned by the player) unreadable next time.
+        void guest(const std::string& device_id, std::function<void(Result<Session>)> cb);
         void login(const std::string& email, const std::string& password,
                    std::function<void(Result<Session>)> cb);
         void registerUser(const std::string& email, const std::string& password,

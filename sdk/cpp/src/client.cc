@@ -71,6 +71,14 @@ void Client::Auth::guest(std::function<void(Result<Session>)> cb) {
                          std::move(cb));
 }
 
+void Client::Auth::guest(const std::string& device_id,
+                         std::function<void(Result<Session>)> cb) {
+    const std::string body = "{\"device_id\":\"" + json::escape(device_id) + "\"}";
+    c_->request<Session>("POST", "/v1/auth/guest", body,
+                         [c = c_](const json::Value& j) { return c->parse_session_and_store(j); },
+                         std::move(cb));
+}
+
 void Client::Auth::login(const std::string& email, const std::string& password,
                          std::function<void(Result<Session>)> cb) {
     const std::string body = "{\"email\":\"" + json::escape(email) + "\",\"password\":\"" +

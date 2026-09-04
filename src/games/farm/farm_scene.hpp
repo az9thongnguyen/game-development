@@ -44,12 +44,15 @@ public:
     // `map_path` and the data files are asset-relative. Everything is loaded here so
     // a failure has one place to be reported from, and the scene still runs (drawing
     // the reason) rather than launching into a black window.
-    FarmScene();
+    // `cfg` says where the backend is; `transport` says how to reach it, and a null
+    // one means the platform's own. One constructor rather than three overloads: a
+    // test drives the whole cloud path through a fake transport (the alternative is a
+    // unit test that opens a socket, which is a unit test that fails on a train), and
+    // the end-to-end test needs a real transport pointed at a port it chose.
+    explicit FarmScene(gbaas::Config cfg = default_config(),
+                       std::unique_ptr<gbaas::ITransport> transport = nullptr);
 
-    // Inject the HTTP transport. Tests drive the whole cloud path through a fake one
-    // — the alternative is a unit test that opens a socket, which is a unit test that
-    // fails on an aeroplane.
-    explicit FarmScene(std::unique_ptr<gbaas::ITransport> transport);
+    static gbaas::Config default_config();
 
     void update(double dt, const platform::InputState& input) override;
     void render(const engine::Context& ctx) override;
@@ -62,6 +65,10 @@ public:
 
     // Cloud state, for tests and for the HUD (same source, so they cannot disagree).
     [[nodiscard]] const std::string& cloud_line() const { return cloud_line_; }
+    // What the HUD chip actually says. render() draws THIS, so a test that reads it is
+    // reading the screen rather than a parallel opinion about the screen.
+    [[nodiscard]] std::string cloud_chip() const;
+    [[nodiscard]] const std::string& config_problem() const { return config_problem_; }
     [[nodiscard]] bool  online()   const { return link_ == Link::Online; }
     [[nodiscard]] bool  conflict() const { return conflict_; }
     [[nodiscard]] const std::string& event_name() const { return event_name_; }
@@ -74,6 +81,7 @@ private:
 
     void        load();
     void        connect();                  // guest sign-in, then everything below
+    std::string device_id();                // stable per installation; created once
     void        pull_config();              // remote config + live events -> overrides
     void        sync_saves();               // download, decide, and act (or ask)
     void        push_save();                // upload the world we are holding
@@ -124,6 +132,11 @@ private:
     std::string   cloud_text_;
     long long     cloud_version_ = 0;
     bool          conflict_      = false;
+    // True from the moment the cloud copy is asked for until the verdict lands. A save
+    // made inside that window must not upload: the decision about to be taken is
+    // computed from a snapshot of the cloud taken BEFORE the upload, and acting on
+    // both is how a save gets sent twice — or, in the wrong order, overwritten.
+    bool          syncing_       = false;
     long long     synced_version_ = 0;
     std::uint64_t synced_hash_    = 0;
 

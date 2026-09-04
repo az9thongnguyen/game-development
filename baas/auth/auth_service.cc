@@ -51,12 +51,28 @@ Result login(long project_id, const std::string& email, const std::string& passw
             std::nullopt};
 }
 
-Result guest(long project_id, const std::string& display_name) {
+Result guest(long project_id, const std::string& display_name, const std::string& device_id) {
     const std::string name = display_name.empty() ? "Guest" : display_name;
     auto              db   = db::client();
-    const auto        ins  = db->execSqlSync(
-        "INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
-        project_id, name);
+
+    // A known device gets its own guest back, name and all. Returning the STORED name
+    // rather than the requested one matters: the account is the player's, and a later
+    // launch should not silently rename them.
+    if (!device_id.empty()) {
+        const auto rows = db->execSqlSync(
+            "SELECT id, display_name FROM users WHERE project_id=? AND device_id=?",
+            project_id, device_id);
+        if (!rows.empty())
+            return {User{rows[0]["id"].as<long>(), rows[0]["display_name"].as<std::string>(), true},
+                    std::nullopt};
+    }
+
+    const auto ins = device_id.empty()
+        ? db->execSqlSync("INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
+                          project_id, name)
+        : db->execSqlSync(
+              "INSERT INTO users(project_id, display_name, is_guest, device_id) VALUES(?,?,1,?)",
+              project_id, name, device_id);
     return {User{static_cast<long>(ins.insertId()), name, true}, std::nullopt};
 }
 

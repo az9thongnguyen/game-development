@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <sstream>
 #include <utility>
 
@@ -25,6 +26,10 @@ namespace {
 constexpr const char* kApiKey    = "pk_demo_farm";
 constexpr const char* kSaveSlot  = "farm";
 constexpr const char* kConfigKey = "farm_defs";
+
+// A flat, distinctive fill: the strip behind a remote-config problem. Named because a
+// test counts exactly these pixels to prove the message is on screen at all.
+constexpr gfx::Color kProblemChip = 0xFF301A20;
 
 constexpr int    kTile = 16;
 constexpr double kStepSeconds = 0.12;      // one tile per this long while held
@@ -76,13 +81,11 @@ int night_alpha(int minute) {
 
 } // namespace
 
-FarmScene::FarmScene() : client_(gbaas::Config{gbaas::default_base_url(), kApiKey}) {
-    load();
-    connect();
-}
+gbaas::Config FarmScene::default_config() { return {gbaas::default_base_url(), kApiKey}; }
 
-FarmScene::FarmScene(std::unique_ptr<gbaas::ITransport> transport)
-    : client_(gbaas::Config{gbaas::default_base_url(), kApiKey}, std::move(transport)) {
+FarmScene::FarmScene(gbaas::Config cfg, std::unique_ptr<gbaas::ITransport> transport)
+    : client_(std::move(cfg),
+              transport ? std::move(transport) : gbaas::make_default_transport()) {
     load();
     connect();
 }
@@ -238,10 +241,33 @@ LocalSave FarmScene::local_stamp() const {
     return l;
 }
 
+// An opaque id for THIS installation, made once and kept. It is what turns a guest
+// from a new account every launch into the same player coming back — without it a
+// cloud save is written into an account nothing will ever read again, which is how a
+// working upload and a working download can still add up to a feature that does not
+// work. Found exactly that way: the end-to-end test pushed a save and could not
+// pull it.
+//
+// Stored beside the saves rather than under farm/, because it identifies the machine,
+// not the game. It stays here until a second game wants it — then it moves up, and
+// moving it is a rename.
+std::string FarmScene::device_id() {
+    if (const std::string have = read_text("saves/device.id"); !have.empty()) return have;
+    std::random_device rd;
+    std::string        id;
+    static const char* kHex = "0123456789abcdef";
+    for (int i = 0; i < 4; ++i) {
+        const std::uint32_t v = rd();
+        for (int b = 28; b >= 0; b -= 4) id += kHex[(v >> b) & 0xF];
+    }
+    assets::write_file("saves/device.id", std::vector<std::uint8_t>(id.begin(), id.end()));
+    return id;
+}
+
 void FarmScene::connect() {
     link_       = Link::Connecting;
     cloud_line_ = "connecting";
-    client_.auth().guest([this](gbaas::Result<gbaas::Session> r) {
+    client_.auth().guest(device_id(), [this](gbaas::Result<gbaas::Session> r) {
         if (!r) {
             link_       = Link::Failed;
             cloud_line_ = "offline";
@@ -281,7 +307,9 @@ void FarmScene::pull_config() {
 }
 
 void FarmScene::sync_saves() {
+    syncing_ = true;
     client_.saves().get(kSaveSlot, [this](gbaas::Result<gbaas::Save> r) {
+        syncing_ = false;
         RemoteSave remote{};
         if (r) {
             std::string why;
@@ -325,6 +353,11 @@ void FarmScene::sync_saves() {
 
 void FarmScene::push_save() {
     if (link_ != Link::Online) return;
+    // A save pressed while the first sync is in flight is not lost: save_game() has
+    // already written the file, and the verdict about to arrive reads the file, so it
+    // sees this world and pushes it if that is the right answer. Uploading here as
+    // well would send it twice and decide from a cloud snapshot older than the upload.
+    if (syncing_) { cloud_line_ = "saved - syncing"; return; }
     const std::string   text = doc::to_text(to_save(world_));
     const std::uint64_t h    = hash(world_);
     // Disk first: the bookmark about to be written claims these two agree, and a
@@ -349,6 +382,13 @@ void FarmScene::adopt_cloud() {
     conflict_   = false;
     cloud_line_ = "cloud v" + std::to_string(cloud_version_);
     say("loaded from the cloud", 4.0);
+}
+
+// A conflict is the one cloud state the player has to DO something about, so the chip
+// stops reporting and starts asking — and names the two keys, because "two saves
+// differ" is a sentence that leaves someone staring at a farm they cannot save.
+std::string FarmScene::cloud_chip() const {
+    return conflict_ ? "F6 keep yours / F7 take cloud" : cloud_line_;
 }
 
 void FarmScene::track(const char* name, const std::string& props) {
@@ -589,8 +629,7 @@ void FarmScene::render(const engine::Context& ctx) {
                               : link_ == Link::Connecting ? th::text_muted
                               : conflict_               ? th::warn
                                                         : th::text_dim;
-        std::string line = cloud_line_;
-        if (conflict_) line = "F6 keep yours / F7 take cloud";
+        const std::string line = cloud_chip();
         const int cw = g.text_width(line.c_str());
         g.draw_text(W - cw - th::space_sm, 8, line.c_str(), conflict_ ? th::warn : tone);
         g.set_font_size(th::sz_caption);
@@ -634,9 +673,16 @@ void FarmScene::render(const engine::Context& ctx) {
                     "F5/F9 save/load", th::text_muted);
         // An operator's typo in remote config has to be visible to whoever is playing
         // the build, or the only symptom is a price that quietly did not change.
-        if (!config_problem_.empty())
-            g.draw_text(th::space_sm, y - th::sz_caption - th::space_xs,
-                        config_problem_.c_str(), th::warn);
+        if (!config_problem_.empty()) {
+            // On its own chip, not straight onto the field: warn-coloured text over a
+            // green tile is a colour nobody can read, and this is the one line an
+            // operator needs to be able to read from across the room.
+            const int pw = g.text_width(config_problem_.c_str());
+            const int py = y - th::sz_caption - th::space_sm - 2;
+            g.fill_round_rect(th::space_sm - th::space_xs, py, pw + th::space_sm,
+                              th::sz_caption + th::space_sm, th::radius_sm, kProblemChip);
+            g.draw_text(th::space_sm, py + th::space_xs, config_problem_.c_str(), th::warn);
+        }
     }
 
     if (message_t_ > 0 && !message_.empty()) {

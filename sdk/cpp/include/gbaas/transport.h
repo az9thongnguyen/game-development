@@ -10,6 +10,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,6 +36,11 @@ struct ITransport {
     // frame via Client::update(). Never blocks.
     virtual void poll() = 0;
 };
+
+// The platform's transport — libcurl on native, emscripten_fetch on the web, chosen
+// by CMake. Client(Config) uses it; it is declared here so a caller that wants to
+// DECIDE between this and a fake can hold both in the same variable.
+std::unique_ptr<ITransport> make_default_transport();
 
 // A transport that answers every request with a transport failure, immediately but
 // still ASYNCHRONOUSLY — the callback fires from poll(), like every other transport,

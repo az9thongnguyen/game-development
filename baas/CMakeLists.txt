@@ -175,6 +175,20 @@ add_executable(test_sdk_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_live.cc
 target_link_libraries(test_sdk_live PRIVATE gbaas_sdk baas_core runner_core CURL::libcurl engine_flags)
 add_test(NAME sdk_live COMMAND test_sdk_live)
 
+# End-to-end: the FARM against a live server. Not "the SDK works" (test_sdk_live has
+# that) but "an operator changes a price and a running game charges it" — the chain
+# from the admin route through the seed, the SDK, the override parser and the day's
+# sale. Compiles the scene + its engine deps because the thing under test is the GAME.
+add_executable(test_farm_live ${CMAKE_SOURCE_DIR}/tests/test_farm_live.cc
+  ${CMAKE_SOURCE_DIR}/src/games/farm/farm_scene.cpp
+  ${CMAKE_SOURCE_DIR}/src/engine/renderer2d.cpp
+  ${CMAKE_SOURCE_DIR}/src/engine/assets.cpp)
+target_include_directories(test_farm_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(test_farm_live PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_farm_live PRIVATE gbaas_sdk baas_core farm_core ui_core text_core
+  CURL::libcurl engine_flags)
+add_test(NAME farm_live COMMAND test_farm_live)
+
 # End-to-end realtime: the SDK's NATIVE ws:// transport against a live server.
 add_executable(test_sdk_realtime_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_realtime_live.cc)
 target_link_libraries(test_sdk_realtime_live PRIVATE gbaas_sdk baas_core CURL::libcurl engine_flags)
