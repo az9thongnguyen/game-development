@@ -63,8 +63,14 @@ public:
     void update(double dt, const platform::InputState& in, bool focused);
 
     // Render the scene into its own buffer, then blit it into `area` letterboxed at a
-    // whole-number scale. Returns the rect the game actually occupies.
+    // whole-number scale. Returns the rect the game actually occupies — which is also
+    // what the next update() maps the pointer through.
     ui::Rect draw(gfx::Renderer2D& g, ui::Rect area, text::Font* font, double real_dt);
+
+    // Where the game was last drawn, in the SHELL's logical space. Empty until the
+    // first draw. Exposed because a test that checks the pointer transform should be
+    // able to ask where the picture is rather than recompute the layout.
+    [[nodiscard]] ui::Rect shown() const { return shown_; }
 
     [[nodiscard]] double    clock()  const { return clock_.time(); }
     [[nodiscard]] long long steps()  const { return steps_; }
@@ -73,6 +79,10 @@ public:
     [[nodiscard]] const std::string& entry() const { return entry_; }
 
 private:
+    // The shell's pointer, translated into the game's own space — or no pointer at
+    // all. See the definition for what "no pointer" has to mean.
+    platform::InputState gate(const platform::InputState& in, bool focused);
+
     Factory                        factory_;
     std::unique_ptr<engine::Scene> scene_;
     std::string                    entry_;
@@ -82,6 +92,8 @@ private:
     bool                           paused_ = false;
     bool                           pending_step_ = false;
     long long                      steps_ = 0;
+    ui::Rect                       shown_{};      // last blit rect, shell space
+    bool                           grabbed_ = false;   // a press that started inside
 };
 
 } // namespace studioshell

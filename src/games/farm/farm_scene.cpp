@@ -541,6 +541,27 @@ void FarmScene::update(double dt, const platform::InputState& in) {
         }
     }
 
+    // ---- the pointer picks the tile you are working on ----
+    // The farm is the first thing in this project that consumes a mouse position at
+    // all, and it is why the Play viewport's transform exists rather than being a
+    // number nothing reads. The rule is the one the keyboard already had: you work on
+    // an ADJACENT tile. The pointer chooses which of the four, and a click acts on it.
+    //
+    // The camera origin is the one from the last render — update() runs first and does
+    // not know the viewport size. One frame of lag on a highlight is invisible; the
+    // alternative is computing the camera twice and keeping the copies in agreement.
+    if (in.mouse_x >= 0) {
+        const tilemap::Vec2f o = cam_.origin();
+        const int tx = static_cast<int>(std::floor((in.mouse_x + o.x) / kTile));
+        const int ty = static_cast<int>(std::floor((in.mouse_y + o.y) / kTile));
+        const int dx = tx - world_.px, dy = ty - world_.py;
+        if (std::abs(dx) + std::abs(dy) == 1) {
+            face_x_ = dx;
+            face_y_ = dy;
+            if (in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)]) interact();
+        }
+    }
+
     // ---- tools, seeds, actions ----
     if (in.pressed(platform::Key::Num1)) tool_ = Tab::Hoe;
     if (in.pressed(platform::Key::Num2)) tool_ = Tab::Water;

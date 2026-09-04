@@ -26,27 +26,57 @@ platform::InputState nothing() {
     return out;
 }
 
-platform::InputState gate(const platform::InputState& in, bool focused) {
-    if (!focused) return nothing();
-    // A chord belongs to the Studio. A game that could see Cmd+K would make the
-    // palette unreachable while it had focus, which turns an embedded player into a
-    // trap rather than a tool.
-    if (in.mods.super || in.mods.ctrl) return nothing();
+}  // namespace
+
+// The shell's pointer, in the game's own space — or none.
+//
+// Chapter 115 handed the game no pointer at all, on the grounds that a viewport which
+// lies about where the pointer is is worse than one that admits it has none. That was
+// right while there was no way to CHECK the transform: the shell had never been
+// clicked. It has now, so the honest thing is to do the arithmetic.
+//
+// The rect comes from the last draw(), so the pointer is one frame behind. That is
+// what every embedded viewport has, and the alternative is computing the layout twice
+// and keeping the two copies in agreement — the failure this project keeps finding.
+platform::InputState PlayViewport::gate(const platform::InputState& in, bool focused) {
+    if (!focused || in.mods.super || in.mods.ctrl) {
+        // A chord belongs to the Studio. A game that could see Cmd+K would make the
+        // palette unreachable while it had focus, which turns an embedded player into
+        // a trap rather than a tool.
+        grabbed_ = false;
+        return nothing();
+    }
 
     platform::InputState out = in;
     const int esc = static_cast<int>(platform::Key::Escape);
     out.key_down[esc] = out.key_pressed[esc] = out.key_released[esc] = out.key_repeat[esc] = false;
-    // Mouse coordinates are in the SHELL's logical space and mean nothing in the
-    // game's. Rather than hand a scene a plausible-looking wrong position, hand it
-    // none: a viewport that lies about where the pointer is is worse than one that
-    // admits it does not have one yet.
-    out.mouse_x = out.mouse_y = -1;
+
+    bool any_down = false;
     for (int i = 0; i < static_cast<int>(platform::MouseButton::Count); ++i)
-        out.mouse_down[i] = out.mouse_pressed[i] = out.mouse_released[i] = false;
+        any_down = any_down || in.mouse_down[i];
+
+    const bool inside = shown_.w > 0 && shown_.h > 0 &&
+                        in.mouse_x >= shown_.x && in.mouse_x < shown_.x + shown_.w &&
+                        in.mouse_y >= shown_.y && in.mouse_y < shown_.y + shown_.h;
+
+    // A press that started inside keeps the pointer until it is released, wherever it
+    // goes. Without that, dragging off the picture would stop the game hearing the
+    // release, and every drag would end with a button the game still thinks is held.
+    grabbed_ = any_down && (grabbed_ || inside);
+
+    if (!inside && !grabbed_) {
+        out.mouse_x = out.mouse_y = -1;
+        for (int i = 0; i < static_cast<int>(platform::MouseButton::Count); ++i)
+            out.mouse_down[i] = out.mouse_pressed[i] = out.mouse_released[i] = false;
+        return out;
+    }
+
+    // Mapped through the rect rather than a stored scale: the panel can be smaller
+    // than one native frame, and then the blit is fitted rather than whole-numbered.
+    out.mouse_x = (in.mouse_x - shown_.x) * w_ / shown_.w;
+    out.mouse_y = (in.mouse_y - shown_.y) * h_ / shown_.h;
     return out;
 }
-
-}  // namespace
 
 engine::OpResult PlayViewport::start(const std::string& entry) {
     if (!factory_) return {false, "no scene factory wired (this build cannot play)"};
@@ -70,6 +100,8 @@ engine::OpResult PlayViewport::start(const std::string& entry) {
 }
 
 void PlayViewport::stop() {
+    shown_   = ui::Rect{};
+    grabbed_ = false;
     scene_.reset();
     entry_.clear();
     pixels_.clear();
@@ -144,6 +176,7 @@ ui::Rect PlayViewport::draw(gfx::Renderer2D& g, ui::Rect area, text::Font* font,
     const gfx::Sprite s{pixels_.data(), w_, h_};
     g.blit_scaled(s, dst.x, dst.y, dst.w, dst.h);
     g.draw_rect(dst.x - 1, dst.y - 1, dst.w + 2, dst.h + 2, th::border);
+    shown_ = dst;   // what the next update() maps the pointer through
     return dst;
 }
 
