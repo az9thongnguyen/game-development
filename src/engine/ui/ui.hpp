@@ -146,8 +146,13 @@ public:
     // A modal confirmation over the whole screen. Draws the scrim and the card
     // itself, and its own controls are live even while everything else is inert, so
     // the usual shape is: begin_inert(); ...normal UI...; confirm(...).
+    // When `reason` is given the card grows a required text field and the accept
+    // button stays disabled until it is non-empty. The release ops already record a
+    // reason in the audit log; making the operator type one is the difference between
+    // an audit trail and a list of timestamps.
     Confirm confirm(const char* id, const char* title, const char* body,
-                    const char* yes_label, bool danger = false);
+                    const char* yes_label, bool danger = false,
+                    std::string* reason = nullptr);
 
     // ---- more controls -------------------------------------------------------
     // Editable single-line text. Returns true when the value changed this frame.

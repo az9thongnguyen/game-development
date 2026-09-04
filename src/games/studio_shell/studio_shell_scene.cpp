@@ -10,6 +10,7 @@
 #include "engine/release/ops.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/ui/theme.hpp"
+#include "engine/ui/ui_input.hpp"
 
 namespace studioshell {
 
@@ -72,39 +73,66 @@ StudioShellScene::StudioShellScene(std::string project_path)
     rebuild_hub();
 }
 
+void StudioShellScene::set_clipboard(std::function<std::string()> get,
+                                     std::function<void(const std::string&)> set) {
+    clip_get_ = std::move(get);
+    clip_set_ = std::move(set);
+}
+
 void StudioShellScene::rebuild_hub() { hub_ = engine::build_hub_view(project_path_, known_entries_); }
 
-void StudioShellScene::run(const hubui::Action& a) {
-    auto did = [&](const engine::OpResult& r) { flash_ = r.message; flash_t_ = 5.0; rebuild_hub(); };
-    if      (a.publish)            did(engine::publish(project_path_, "development", "shell", known_entries_));
-    else if (a.promote_preview)    did(engine::promote("development", "preview", "shell"));
-    else if (a.promote_production) did(engine::promote("preview", "production", "shell"));
-    else if (a.refresh)            rebuild_hub();
+void StudioShellScene::run(hubui::Op op) {
+    auto did = [&](const engine::OpResult& r) {
+        flash_ = r.message; flash_ok_ = r.ok; flash_t_ = 5.0; rebuild_hub();
+    };
+    const std::string why = reason_.empty() ? std::string("shell") : reason_;
+    switch (op) {
+        case hubui::Op::Publish:           did(engine::publish(project_path_, "development", why, known_entries_)); break;
+        case hubui::Op::PromotePreview:    did(engine::promote("development", "preview", why)); break;
+        case hubui::Op::PromoteProduction: did(engine::promote("preview", "production", why)); break;
+        case hubui::Op::Refresh:           rebuild_hub(); break;
+        case hubui::Op::CopySourceHash:
+            if (hub_ && !hub_->local_package.empty() && clip_set_) {
+                clip_set_(hub_->local_package);
+                flash_ = "copied " + hub_->local_package; flash_ok_ = true; flash_t_ = 3.0;
+            }
+            break;
+        case hubui::Op::None: break;
+    }
 }
 
 void StudioShellScene::update(double dt, const platform::InputState& in) {
     if (flash_t_ > 0) flash_t_ -= dt;
 
     if (nav_click_ >= 0) { section_ = nav_click_; nav_click_ = -1; }
-    if (in.pressed(platform::Key::Down) || in.pressed(platform::Key::Tab))
-        section_ = (section_ + 1) % SectionCount;
-    if (in.pressed(platform::Key::Up))
-        section_ = (section_ + SectionCount - 1) % SectionCount;
 
-    // The Hub section is the interactive controller. A click is resolved during
-    // render (that is where the layout is known) and arrives here next frame; keys
-    // are read directly. Both funnel into one run(), so mouse and keyboard cannot
-    // diverge into two ways of publishing.
-    run(pending_);
-    pending_ = hubui::Action{};
+    // Tab now belongs to the UI (it moves focus between controls), so the nav rail
+    // is driven by the arrow keys alone. A key that means two things means neither.
+    if (confirming_ == hubui::Op::None) {
+        if (in.pressed(platform::Key::Down)) section_ = (section_ + 1) % SectionCount;
+        if (in.pressed(platform::Key::Up))   section_ = (section_ + SectionCount - 1) % SectionCount;
+    }
 
-    if (section_ == Hub) {
-        hubui::Action k;
-        if      (in.pressed(platform::Key::Space)) k.publish = true;
-        else if (in.pressed(platform::Key::Num1))  k.promote_preview = true;
-        else if (in.pressed(platform::Key::Num2))  k.promote_production = true;
-        else if (in.pressed(platform::Key::R))     k.refresh = true;
-        run(k);
+    // A click resolves during render (that is where the layout is known) and arrives
+    // here next frame; keys are read directly. Both funnel into one place, so mouse
+    // and keyboard cannot become two different ways of publishing.
+    hubui::Op asked = requested_;
+    requested_ = hubui::Op::None;
+
+    if (section_ == Hub && confirming_ == hubui::Op::None && asked == hubui::Op::None) {
+        if      (in.pressed(platform::Key::Space)) asked = hubui::Op::Publish;
+        else if (in.pressed(platform::Key::Num1))  asked = hubui::Op::PromotePreview;
+        else if (in.pressed(platform::Key::Num2))  asked = hubui::Op::PromoteProduction;
+        else if (in.pressed(platform::Key::R))     asked = hubui::Op::Refresh;
+    }
+
+    // Refresh and copy change nothing a channel points at, so they run immediately.
+    // Everything else appends to the audit log and needs a typed reason first.
+    if (asked == hubui::Op::Refresh || asked == hubui::Op::CopySourceHash) {
+        run(asked);
+    } else if (asked != hubui::Op::None && confirming_ == hubui::Op::None) {
+        confirming_ = asked;
+        reason_.clear();
     }
 }
 
@@ -114,11 +142,12 @@ void StudioShellScene::render(const engine::Context& ctx) {
     g.clear(th::bg);
     g.set_font(ctx.font, th::sz_body);
 
-    ui::Input min{ctx.input.mouse_x, ctx.input.mouse_y,
-                  ctx.input.down(platform::MouseButton::Left),
-                  ctx.input.pressed(platform::MouseButton::Left),
-                  ctx.input.released(platform::MouseButton::Left)};
-    ui_.begin(&g, min);
+    ui_.set_clipboard(clip_get_, clip_set_);
+    ui_.begin(&g, ui::from_platform(ctx.input));
+
+    // Everything behind an open dialog is drawn but inert — that is what makes it
+    // modal rather than merely on top.
+    if (confirming_ != hubui::Op::None) ui_.begin_inert();
 
     // ---- left nav rail ----
     const int rail = 200;
@@ -127,11 +156,14 @@ void StudioShellScene::render(const engine::Context& ctx) {
     g.set_font_size(th::sz_title);
     g.draw_text(th::space_lg, th::space_xl, "Studio", th::text);
 
-    const int nav_y = th::space_xl + th::sz_title + th::space_xl;
-    for (int i = 0; i < SectionCount; ++i) {
-        const ui::Rect r{th::space_md, nav_y + i * (32 + th::space_xs), rail - th::space_md * 2, 32};
-        if (ui_.button(r, kSections[i], /*primary*/ i == section_)) nav_click_ = i;
-    }
+    ui_.push_id("nav");
+    ui_.begin_layout(ui::Rect{th::space_md, th::space_xl + th::sz_title + th::space_xl,
+                              rail - th::space_md * 2, h},
+                     ui::Axis::Y, ui::LayoutOpts{th::space_xs, 0});
+    for (int i = 0; i < SectionCount; ++i)
+        if (ui_.button(ui_.slot(32), kSections[i], /*primary*/ i == section_)) nav_click_ = i;
+    ui_.end_layout();
+    ui_.pop_id();
 
     g.set_font_size(th::sz_caption);
     g.draw_text(th::space_lg, h - th::space_xl, "Up / Down to switch", th::text_muted);
@@ -142,8 +174,9 @@ void StudioShellScene::render(const engine::Context& ctx) {
     int y = area.y;
 
     if (section_ == Hub) {
-        pending_ = hubui::draw_hub_panel(ui_, g, hub_ ? &*hub_ : nullptr, project_path_,
-                                         area, flash_, flash_t_);
+        const hubui::Op clicked = hubui::draw_hub_panel(ui_, g, hub_ ? &*hub_ : nullptr,
+                                                        project_path_, area);
+        if (clicked != hubui::Op::None) requested_ = clicked;
     } else if (section_ == Guide) {
         g.set_font_size(th::sz_title);
         g.draw_text(area.x, y, "Guide", th::text);
@@ -184,6 +217,18 @@ void StudioShellScene::render(const engine::Context& ctx) {
         if (hub_) g.draw_text(area.x, y, (hub_->name + "  (entry " + hub_->entry + ")").c_str(),
                               th::text_muted);
     }
+
+    if (confirming_ != hubui::Op::None) {
+        const ui::Confirm c = ui_.confirm("hubop", hubui::op_title(confirming_),
+                                          hubui::op_body(confirming_),
+                                          hubui::op_verb(confirming_),
+                                          hubui::op_is_destructive(confirming_), &reason_);
+        if      (c == ui::Confirm::Yes) { run(confirming_); confirming_ = hubui::Op::None; }
+        else if (c == ui::Confirm::No)  { confirming_ = hubui::Op::None; reason_.clear(); }
+    }
+
+    if (flash_t_ > 0 && !flash_.empty())
+        ui_.toast(flash_.c_str(), flash_ok_ ? ui::Tone::Success : ui::Tone::Danger);
 
     ui_.end();
 }

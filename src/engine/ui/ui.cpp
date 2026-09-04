@@ -432,13 +432,14 @@ void Context::draw_overlays() {
 }
 
 Confirm Context::confirm(const char* id, const char* title, const char* body,
-                         const char* yes_label, bool danger) {
+                         const char* yes_label, bool danger, std::string* reason) {
     // The card's own controls must be live even though everything behind is inert.
     const bool was_inert = inert_;
     inert_ = false;
     push_id(id);
 
-    const int w = 420, h = 170;
+    const int w = 460;
+    const int h = reason ? 240 : 170;
     const int x = (screen_w_ - w) / 2, y = (screen_h_ - h) / 2;
 
     if (r_) {
@@ -454,20 +455,37 @@ Confirm Context::confirm(const char* id, const char* title, const char* body,
         r_->draw_text(x + th::space_lg, y + th::space_lg, title, th::text);
         r_->set_font_size(th::sz_body);
         r_->draw_text(x + th::space_lg, y + th::space_lg + th::sz_title + th::space_md, body, th::text_dim);
+        if (reason) {
+            r_->set_font_size(th::sz_caption);
+            r_->draw_text(x + th::space_lg,
+                          y + th::space_lg + th::sz_title + th::space_md + th::sz_body + th::space_lg,
+                          "REASON (recorded in the audit log)", th::text_muted);
+        }
+    }
+
+    if (reason) {
+        const int ry = y + th::space_lg + th::sz_title + th::space_md + th::sz_body +
+                       th::space_lg + th::sz_caption + th::space_xs;
+        text_input("reason", Rect{x + th::space_lg, ry, w - th::space_lg * 2, 30}, *reason,
+                   "why are you doing this?");
     }
 
     // Trap the keyboard inside the card, and choose the safe default. When focus is
     // anywhere else the modal has just opened (or something outside stole it), so it
     // claims focus — Cancel for a destructive action, because the first Enter after a
     // dialog appears is very often a reflex from whatever the user was doing before.
-    const Id yes_id = id_of(yes_label);
-    const Id no_id  = id_of("Cancel");
-    if (focused_ != yes_id && focused_ != no_id) focused_ = danger ? no_id : yes_id;
+    const Id yes_id    = id_of(yes_label);
+    const Id no_id     = id_of("Cancel");
+    const Id reason_id = id_of("reason");
+    if (focused_ != yes_id && focused_ != no_id && !(reason && focused_ == reason_id))
+        focused_ = reason ? reason_id : (danger ? no_id : yes_id);
 
     Confirm result = Confirm::Pending;
     const int bh = 30, bw = 120;
     const int by = y + h - th::space_lg - bh;
-    if (button(Rect{x + w - th::space_lg - bw, by, bw, bh}, yes_label, /*primary*/ !danger))
+    const bool can_accept = !reason || !reason->empty();
+    if (button(Rect{x + w - th::space_lg - bw, by, bw, bh}, yes_label,
+               /*primary*/ !danger, /*enabled*/ can_accept))
         result = Confirm::Yes;
     if (button(Rect{x + w - th::space_lg - bw * 2 - th::space_sm, by, bw, bh}, "Cancel"))
         result = Confirm::No;

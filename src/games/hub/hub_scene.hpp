@@ -11,6 +11,7 @@
 //  same panel, so there is one Hub rendering, not two that drift.
 // =============================================================================
 #pragma once
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,17 +29,29 @@ public:
     void update(double dt, const platform::InputState& input) override;
     void render(const engine::Context& ctx) override;
 
+    // Clipboard access is INJECTED rather than called. The scene must stay linkable
+    // without the SDL backend — that is what lets test_shell_golden drive the whole
+    // shell headless — so main.cpp wires these to platform::clipboard_* and a test
+    // leaves them unset (copying then does nothing, which is the truth).
+    void set_clipboard(std::function<std::string()> get,
+                       std::function<void(const std::string&)> set);
+
 private:
     void rebuild();                          // re-read the project + release store
-    void run(const Action& a);               // perform whatever the panel/keys asked for
+    void run(Op op);                         // perform one irreversible operation
 
     std::string                    path_;
     std::vector<std::string>       known_entries_;
     std::optional<engine::HubView> view_;
-    std::string                    flash_;     // last op result message
+    std::string                    flash_;        // last op result message
+    bool                           flash_ok_ = true;
     double                         flash_t_ = 0;  // seconds the flash stays visible
     ui::Context                    ui_;
-    Action                         pending_{};    // keyboard action, applied on the next update
+    Op                             requested_ = Op::None;   // asked for this frame
+    Op                             confirming_ = Op::None;  // dialog on screen
+    std::string                    reason_;
+    std::function<std::string()>            clip_get_;
+    std::function<void(const std::string&)> clip_set_;
 };
 
 } // namespace hubui

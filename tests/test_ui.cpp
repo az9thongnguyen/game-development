@@ -698,6 +698,54 @@ static void test_tabs_and_list() {
     CHECK(b);
 }
 
+// ---------------------------------------------------------------------------
+//  A confirmation that requires a reason. The release ops already write a reason
+//  into the audit log; making the operator type one is what turns that log from a
+//  list of timestamps into an account of why.
+// ---------------------------------------------------------------------------
+static void test_confirm_reason() {
+    ui::Context ui;
+    std::string reason;
+    std::string board;
+    ui.set_clipboard([&] { return board; }, [&](const std::string& s) { board = s; });
+
+    ui::Confirm res = ui::Confirm::Pending;
+    auto frame = [&](const ui::Input& in) {
+        ui.begin(nullptr, in, 800, 600);
+        ui.begin_inert();
+        res = ui.confirm("promote", "Promote to production?",
+                         "This changes what players get.", "Promote", false, &reason);
+        ui.end();
+    };
+
+    // The card is 460x240 centred in 800x600 -> (170,180). Buttons sit 16px from the
+    // bottom-right, 120x30 each.
+    const int yes_x = 170 + 460 - 16 - 120 + 60;
+    const int yes_y = 180 + 240 - 16 - 30 + 15;
+
+    // With an empty reason the accept button is disabled: clicking it does nothing.
+    frame(idle(-1000, -1000));
+    frame(press(yes_x, yes_y));
+    frame(release(yes_x, yes_y));
+    CHECK(res == ui::Confirm::Pending);
+
+    // The reason field has focus on open, so typing goes straight into it.
+    frame(typed("shipping the fix"));
+    CHECK(reason == "shipping the fix");
+
+    // Now the accept button works.
+    frame(press(yes_x, yes_y));
+    frame(release(yes_x, yes_y));
+    CHECK(res == ui::Confirm::Yes);
+
+    // Cancel still works whatever the reason says.
+    reason.clear();
+    frame(idle(-1000, -1000));
+    ui::Keys esc; esc.cancel = true;
+    frame(keys(esc));
+    CHECK(res == ui::Confirm::No);
+}
+
 int main() {
     test_button_click();
     test_checkbox();
@@ -712,6 +760,7 @@ int main() {
     test_text_input();
     test_scroll();
     test_tabs_and_list();
+    test_confirm_reason();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;

@@ -13,57 +13,28 @@ namespace {
 
 namespace th = ui::theme;
 
-// Blend two opaque colours. fill_rect writes opaquely (alpha is only honoured by the
-// per-pixel blend paths), so a "tinted" badge background is produced by mixing here rather
-// than by drawing a translucent rectangle.
-// ponytail: when S2 adds a real alpha fill for the modal scrim, this can go.
-gfx::Color mix(gfx::Color fg, gfx::Color bg, int pct) {
-    const auto ch = [&](int shift) {
-        const int a = static_cast<int>((fg >> shift) & 0xFF);
-        const int b = static_cast<int>((bg >> shift) & 0xFF);
-        return static_cast<std::uint32_t>((a * pct + b * (100 - pct)) / 100) << shift;
-    };
-    return 0xFF000000u | ch(16) | ch(8) | ch(0);
-}
-
-// A pill: tinted background, coloured text. The status of a thing should be visible
-// as colour AND readable as a word — colour alone excludes anyone who cannot
-// distinguish these hues, and a word alone makes the eye read every row.
-void badge(gfx::Renderer2D& g, int x, int y, const char* label, gfx::Color tone, gfx::Color on) {
-    g.set_font_size(th::sz_caption);
-    const int w = g.text_width(label) + th::space_md;
-    const int h = th::sz_caption + th::space_sm;
-    g.fill_round_rect(x, y, w, h, th::radius_sm, mix(tone, on, 22));
-    g.draw_text(x + th::space_sm - 2, y + th::space_xs - 1, label, tone);
-}
-
-int badge_width(gfx::Renderer2D& g, const char* label) {
-    g.set_font_size(th::sz_caption);
-    return g.text_width(label) + th::space_md;
-}
-
-// Release ids are 16 hex characters; only the first 8 carry any recognition value
-// at a glance. The ellipsis is a real U+2026 — before the UTF-8 fix it would have
-// printed as three question marks, which is exactly the bug this slice removes.
+// Release ids are 16 hex characters; only the first 8 carry recognition value at a
+// glance. The ellipsis is a real U+2026 — before the UTF-8 fix it printed as three
+// question marks, which is what started this whole slice.
 std::string short_hash(const std::string& h) {
     return h.size() > 8 ? h.substr(0, 8) + "…" : h;
 }
 
-struct Status { const char* word; gfx::Color tone; };
+struct Status { const char* word; ui::Tone tone; };
 
 Status channel_status(const engine::HubChannel& c) {
-    if (c.release.empty()) return {"unset",   th::text_muted};
-    if (!c.present)        return {"MISSING", th::danger};
-    if (c.matches_local)   return {"in sync", th::success};
-    return {"behind", th::warn};
+    if (c.release.empty()) return {"unset",   ui::Tone::Neutral};
+    if (!c.present)        return {"MISSING", ui::Tone::Danger};
+    if (c.matches_local)   return {"in sync", ui::Tone::Success};
+    return {"behind", ui::Tone::Warning};
 }
 
-// One channel per column, in pipeline order, so the eye reads left-to-right the
-// same direction the release actually travels.
+// One channel per column, in pipeline order, so the eye reads left to right in the
+// direction a release actually travels.
 gfx::Color channel_tone(const std::string& name) {
-    if (name == "development") return th::accent;
-    if (name == "preview")     return th::warn;
-    return th::success;                                   // production
+    if (name == "development") return th::chan_dev;
+    if (name == "preview")     return th::chan_preview;
+    return th::chan_prod;                                 // production
 }
 
 void card(gfx::Renderer2D& g, ui::Rect r) {
@@ -73,147 +44,181 @@ void card(gfx::Renderer2D& g, ui::Rect r) {
 
 } // namespace
 
-Action draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
-                      const engine::HubView* view, const std::string& project_path,
-                      ui::Rect area, const std::string& flash, double flash_t) {
-    Action act;
-    const int x = area.x;
-    int       y = area.y;
+const char* op_title(Op op) {
+    switch (op) {
+        case Op::Publish:           return "Publish to development?";
+        case Op::PromotePreview:    return "Promote to preview?";
+        case Op::PromoteProduction: return "Promote to production?";
+        default:                    return "";
+    }
+}
+
+const char* op_body(Op op) {
+    switch (op) {
+        case Op::Publish:
+            return "Writes an immutable release and points development at it.";
+        case Op::PromotePreview:
+            return "Moves the preview channel to the development release.";
+        case Op::PromoteProduction:
+            return "This is what players get. It takes effect immediately.";
+        default: return "";
+    }
+}
+
+const char* op_verb(Op op) {
+    switch (op) {
+        case Op::Publish:           return "Publish";
+        case Op::PromotePreview:    return "Promote";
+        case Op::PromoteProduction: return "Promote";
+        default:                    return "OK";
+    }
+}
+
+// Only production is treated as destructive. Publishing is additive and promoting to
+// preview is reversible in one step; changing what players are running is neither.
+bool op_is_destructive(Op op) { return op == Op::PromoteProduction; }
+
+Op draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
+                  const engine::HubView* view, const std::string& project_path,
+                  ui::Rect area) {
+    Op op = Op::None;
 
     if (!view) {
         g.set_font_size(th::sz_title);
-        g.draw_text(x, y, "Cannot read this project", th::danger);
+        g.draw_text(area.x, area.y, "Cannot read this project", th::danger);
         g.set_font_size(th::sz_body);
-        g.draw_text(x, y + th::sz_title + th::space_sm, project_path.c_str(), th::text_dim);
-        return act;
+        g.draw_text(area.x, area.y + th::sz_title + th::space_sm, project_path.c_str(), th::text_dim);
+        return op;
     }
 
-    // ---- heading: what am I looking at ----
-    g.set_font_size(th::sz_display);
-    g.draw_text(x, y, view->name.c_str(), th::text);
-    y += th::sz_display + th::space_xs;
+    ui.begin_layout(area, ui::Axis::Y, ui::LayoutOpts{th::space_md, 0});
 
-    char sub[160];
-    std::snprintf(sub, sizeof sub, "entry %s   ·   schema %d   ·   %s",
-                  view->entry.c_str(), view->schema, project_path.c_str());
-    g.set_font_size(th::sz_body);
-    g.draw_text(x, y, sub, th::text_dim);
-    badge(g, x + g.text_width(sub) + th::space_md, y - 2,
-          view->shippable ? "shippable" : "NOT shippable",
-          view->shippable ? th::success : th::danger, th::bg);
-    y += th::sz_body + th::space_lg;
+    // ---- heading -------------------------------------------------------------
+    {
+        const ui::Rect r = ui.slot(th::sz_display);
+        g.set_font_size(th::sz_display);
+        g.draw_text(r.x, r.y, view->name.c_str(), th::text);
+    }
+    {
+        const ui::Rect r = ui.slot(th::sz_body + th::space_xs);
+        char sub[200];
+        std::snprintf(sub, sizeof sub, "entry %s   ·   schema %d   ·   %s",
+                      view->entry.c_str(), view->schema, project_path.c_str());
+        g.set_font_size(th::sz_body);
+        g.draw_text(r.x, r.y, sub, th::text_dim);
+        ui.badge(r.x + g.text_width(sub) + th::space_md, r.y - 2,
+                 view->shippable ? "shippable" : "NOT shippable",
+                 view->shippable ? ui::Tone::Success : ui::Tone::Danger, th::bg);
+    }
 
-    // ---- problems, if any: the reason nothing else on this screen can proceed ----
+    // ---- problems: the reason nothing else here can proceed ------------------
     if (!view->problems.empty()) {
-        const int ph = th::space_md * 2 + static_cast<int>(view->problems.size()) * (th::sz_body + th::space_xs);
-        card(g, ui::Rect{x, y, area.w, ph});
-        int py = y + th::space_md;
+        const int n = static_cast<int>(view->problems.size());
+        const ui::Rect r = ui.slot(th::space_md * 2 + n * (th::sz_body + th::space_xs));
+        card(g, r);
+        int py = r.y + th::space_md;
         for (const auto& p : view->problems) {
             g.set_font_size(th::sz_body);
-            g.draw_text(x + th::space_md, py, ("•  " + p).c_str(), th::warn);
+            g.draw_text(r.x + th::space_md, py, ("•  " + p).c_str(), th::warn);
             py += th::sz_body + th::space_xs;
         }
-        y += ph + th::space_md;
     }
 
-    // ---- source card: the bytes every channel is compared against ----
+    // ---- source: the bytes every channel is compared against -----------------
     {
-        const int h = th::space_md * 2 + th::sz_caption + th::space_xs + th::sz_label;
-        card(g, ui::Rect{x, y, area.w, h});
+        const ui::Rect r = ui.slot(th::space_md * 2 + th::sz_caption + th::space_xs + th::sz_label);
+        card(g, r);
         g.set_font_size(th::sz_caption);
-        g.draw_text(x + th::space_md, y + th::space_md, "SOURCE PACKAGE", th::text_muted);
+        g.draw_text(r.x + th::space_md, r.y + th::space_md, "SOURCE PACKAGE", th::text_muted);
         g.set_font_size(th::sz_label);
-        g.draw_text(x + th::space_md, y + th::space_md + th::sz_caption + th::space_xs,
-                    view->local_package.empty() ? "—" : view->local_package.c_str(),
-                    view->local_package.empty() ? th::text_muted : th::text);
-        y += h + th::space_md;
+        const bool have = !view->local_package.empty();
+        g.draw_text(r.x + th::space_md, r.y + th::space_md + th::sz_caption + th::space_xs,
+                    have ? view->local_package.c_str() : "—", have ? th::text : th::text_muted);
+        if (have) {
+            const ui::Rect b{r.x + r.w - th::space_md - 70, r.y + (r.h - 26) / 2, 70, 26};
+            if (ui.button(b, "Copy")) op = Op::CopySourceHash;
+            ui.tooltip(b, "Copy the full 16-character release id");
+        }
     }
 
-    // ---- the three channels, as cards in pipeline order ----
+    // ---- the three channels, as cards in pipeline order ----------------------
+    const int ch_h = th::space_md * 2 + th::sz_label + th::space_sm + th::sz_body +
+                     th::space_sm + th::sz_caption;
     {
-        const int n    = static_cast<int>(view->channels.size());
-        const int gap  = th::space_md;
-        const int cw   = n > 0 ? (area.w - gap * (n - 1)) / n : area.w;
-        const int ch_h = th::space_md * 2 + th::sz_label + th::space_sm + th::sz_body + th::space_sm + th::sz_caption + th::space_sm;
+        const ui::Rect row = ui.slot(ch_h);
+        ui.begin_layout(row, ui::Axis::X, ui::LayoutOpts{th::space_md, 0});
+        const int n = static_cast<int>(view->channels.size());
         for (int i = 0; i < n; ++i) {
             const engine::HubChannel& c = view->channels[static_cast<std::size_t>(i)];
-            const int cx = x + i * (cw + gap);
-            card(g, ui::Rect{cx, y, cw, ch_h});
-
-            // A 3px rail in the channel's colour: the card is identifiable before
-            // any word on it is read.
-            g.fill_round_rect(cx, y, 3, ch_h, 0, channel_tone(c.name));
+            const ui::Rect cr = ui.cell(n, i);
+            card(g, cr);
+            // A 3px rail in the channel's colour: the card is identifiable before a
+            // single word on it is read.
+            g.fill_round_rect(cr.x, cr.y, 3, cr.h, 0, channel_tone(c.name));
 
             g.set_font_size(th::sz_label);
-            g.draw_text(cx + th::space_md, y + th::space_md, c.name.c_str(), th::text);
+            g.draw_text(cr.x + th::space_md, cr.y + th::space_md, c.name.c_str(), th::text);
 
             const Status st = channel_status(c);
-            badge(g, cx + cw - th::space_md - badge_width(g, st.word), y + th::space_md, st.word, st.tone, th::elevated);
+            g.set_font_size(th::sz_caption);
+            const int bw = g.text_width(st.word) + th::space_md;
+            ui.badge(cr.x + cr.w - th::space_md - bw, cr.y + th::space_md, st.word, st.tone);
 
             g.set_font_size(th::sz_body);
-            g.draw_text(cx + th::space_md, y + th::space_md + th::sz_label + th::space_sm,
+            g.draw_text(cr.x + th::space_md, cr.y + th::space_md + th::sz_label + th::space_sm,
                         c.release.empty() ? "not published" : short_hash(c.release).c_str(),
                         c.release.empty() ? th::text_muted : th::text_dim);
-
             if (!c.release.empty()) {
                 g.set_font_size(th::sz_caption);
-                g.draw_text(cx + th::space_md,
-                            y + th::space_md + th::sz_label + th::space_sm + th::sz_body + th::space_sm,
+                g.draw_text(cr.x + th::space_md,
+                            cr.y + th::space_md + th::sz_label + th::space_sm + th::sz_body + th::space_sm,
                             c.matches_local ? "matches your source" : "differs from your source",
                             th::text_muted);
+                ui.tooltip(cr, c.release.c_str());
             }
         }
-        y += ch_h + th::space_lg;
+        ui.end_layout();
     }
 
-    // ---- the one recommended step, then the controls that perform it ----
+    // ---- the one recommended step, then the controls that perform it ---------
     const engine::Next next = engine::next_action(*view);
-    g.set_font_size(th::sz_label);
-    g.draw_text(x, y, engine::recommend(*view).c_str(),
-                next == engine::Next::Fix ? th::warn
-                : next == engine::Next::InSync ? th::success : th::accent);
-    y += th::sz_label + th::space_md;
+    {
+        const ui::Rect r = ui.slot(th::sz_label);
+        g.set_font_size(th::sz_label);
+        g.draw_text(r.x, r.y, engine::recommend(*view).c_str(),
+                    next == engine::Next::Fix ? th::warn
+                    : next == engine::Next::InSync ? th::success : th::accent);
+    }
+    {
+        // Exactly one primary button per screen — whichever step next_action names.
+        // Everything else stays neutral, so the accent still means "do this".
+        const ui::Rect row = ui.slot(30);
+        ui.begin_layout(row, ui::Axis::X, ui::LayoutOpts{th::space_sm, 0});
+        const int refresh_w = 90;
+        // Widths follow the space available: the window resizes, and four fixed-width
+        // buttons ran off the right edge below about 1000px.
+        const int avail = row.w - refresh_w - th::space_sm * 3;
+        const int bw = avail / 3 < 120 ? 120 : (avail / 3 > 210 ? 210 : avail / 3);
+        const bool ok = view->shippable;
+        if (ui.button(ui.slot(bw), "Publish → development",
+                      next == engine::Next::Publish, ok)) op = Op::Publish;
+        if (ui.button(ui.slot(bw), "Promote → preview",
+                      next == engine::Next::PromotePreview, ok)) op = Op::PromotePreview;
+        if (ui.button(ui.slot(bw), "Promote → production",
+                      next == engine::Next::PromoteProduction, ok)) op = Op::PromoteProduction;
+        if (ui.button(ui.slot_end(refresh_w), "Refresh")) op = Op::Refresh;
+        ui.end_layout();
+    }
 
     {
-        // Exactly one primary button per screen — whichever step `next_action` names.
-        // Everything else stays neutral, so the accent still means "do this".
-        //
-        // Widths come from the space available, not from a constant: the window is
-        // resizable, and four fixed-width buttons run off the right edge below about
-        // 1000px. They shrink to a floor and no further — past that the labels stop
-        // fitting, and that is the point where this row wants to wrap.
-        // ponytail: wrapping is the layout engine's job (S2), not a special case here.
-        const int bh = 30, gap = th::space_sm, refresh_w = 90;
-        const int avail = area.w - refresh_w - gap * 3;
-        const int bw = avail / 3 < 120 ? 120 : (avail / 3 > 210 ? 210 : avail / 3);
-        int bx = x;
-        const bool ok = view->shippable;
-        if (ui.button(ui::Rect{bx, y, bw, bh}, "Publish → development",
-                      next == engine::Next::Publish, ok)) act.publish = true;
-        bx += bw + gap;
-        if (ui.button(ui::Rect{bx, y, bw, bh}, "Promote → preview",
-                      next == engine::Next::PromotePreview, ok)) act.promote_preview = true;
-        bx += bw + gap;
-        if (ui.button(ui::Rect{bx, y, bw, bh}, "Promote → production",
-                      next == engine::Next::PromoteProduction, ok)) act.promote_production = true;
-        bx += bw + gap;
-        if (ui.button(ui::Rect{bx, y, refresh_w, bh}, "Refresh")) act.refresh = true;
-        y += bh + th::space_md;
+        const ui::Rect r = ui.slot_end(th::sz_caption);
+        g.set_font_size(th::sz_caption);
+        g.draw_text(r.x, r.y, "Space publishes  ·  1 and 2 promote  ·  R refreshes  ·  Tab moves focus",
+                    th::text_muted);
     }
 
-    // ---- the last operation's result ----
-    if (flash_t > 0 && !flash.empty()) {
-        const int h = th::sz_body + th::space_md * 2;
-        g.fill_round_rect(x, y, area.w, h, th::radius_sm, mix(th::success, th::bg, 14));
-        g.set_font_size(th::sz_body);
-        g.draw_text(x + th::space_md, y + th::space_md, flash.c_str(), th::success);
-    }
-
-    g.set_font_size(th::sz_caption);
-    g.draw_text(x, area.y + area.h - th::sz_caption,
-                "Space publishes  ·  1 and 2 promote  ·  R refreshes",
-                th::text_muted);
-    return act;
+    ui.end_layout();
+    return op;
 }
 
 } // namespace hubui

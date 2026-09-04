@@ -506,7 +506,9 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         cfg.supersample = kAA;   // was missing: this and --shell were the ONLY windowed
-        return run_window(cfg, std::make_unique<hubui::HubScene>(proj));
+        auto scene = std::make_unique<hubui::HubScene>(proj);
+        scene->set_clipboard(&platform::clipboard_get, &platform::clipboard_set);
+        return run_window(cfg, std::move(scene));
     }
 
     // Windowed: the Studio shell — nav rail (Hub / Guide / Learn / About) over the same domain.
@@ -521,7 +523,10 @@ int main(int argc, char** argv) {
         cfg.highdpi   = true;
         cfg.supersample = kAA;   // scenes without it, so their text was upscaled, not rasterized
         cfg.resizable = true;    // a workspace should fit the screen it is on
-        return run_window(cfg, std::make_unique<studioshell::StudioShellScene>(proj));
+        cfg.quit_on_escape = false;   // Escape now closes a dialog; quitting on it loses work
+        auto scene = std::make_unique<studioshell::StudioShellScene>(proj);
+        scene->set_clipboard(&platform::clipboard_get, &platform::clipboard_set);
+        return run_window(cfg, std::move(scene));
     }
 
     if (mode == "--3d") {
