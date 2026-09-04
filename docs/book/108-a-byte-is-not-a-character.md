@@ -181,16 +181,41 @@ work by four. `--bench-ui` renders the Studio headless and reports median and p9
 frame time, because S2 is about to add layout, clipping, overlays and a dozen
 widgets to this exact path.
 
-Debug build, this machine, 1280×720:
+Getting a number worth quoting took three corrections, and the third is the one
+that matters most.
 
-| supersample | physical pixels | median | p95 |
+**The first measurement was a lucky sample.** It reported 4.63 ms at ss=2; repeated
+runs gave 11–18 ms. The timed loop included the first frames, which pay for
+first-touch page faults across a freshly allocated 14 MB framebuffer and for
+rasterizing each type-scale size once. Real costs — but *start-up*, not steady
+state. Twenty warm-up frames before timing removed that.
+
+**Debug is not the shipping cost.** The two builds are four to five times apart, so
+`--bench-ui` now prints which one it is. Quoting the wrong one is how a budget
+quietly stops meaning anything.
+
+**This laptop is not a benchmark rig.** Even warmed up, medians move by roughly 2×
+between runs on an idle machine — thermal state and which core the scheduler picks
+dominate. So the honest output is a range, and the honest use of it is *relative*:
+
+| build | ss | physical px | median across 5 runs |
 |---|---|---|---|
-| 1 | 1280×720 | 1.24 ms | 1.50 ms |
-| 2 | 2560×1440 | 4.63 ms | 5.04 ms |
+| Release | 1 | 1280×720 | 0.6 – 1.2 ms |
+| **Release** | **2** | **2560×1440** | **2.4 – 4.4 ms** |
+| Debug | 1 | 1280×720 | 1.2 – 5.7 ms |
+| Debug | 2 | 2560×1440 | 11 – 18 ms |
 
-So turning supersampling on cost about 3.4 ms and bought the crisp text this
-chapter is about — and the shell still sits at roughly half its 8 ms budget, in a
-*Debug* build. That is the line the next slice must not cross.
+Two ratios survive the noise, and they are what the number is actually for:
+
+- **ss=2 costs about 4× ss=1** — exactly the pixel count, which says this workload
+  is fill-bound, not logic-bound. Optimizing the widget code would buy nothing;
+  drawing fewer pixels would.
+- **Debug costs about 4–5× Release.** A developer on an unoptimized build sees the
+  Studio over budget and will wrongly suspect the UI code.
+
+The shipped configuration uses roughly a third of an 8 ms budget. The right way to
+use this in S2 is not to compare against "2.4 ms" — it is to re-run `--bench-ui`
+on the same machine in the same sitting, before and after, and watch the ratio.
 
 ## 7. Testing a window without opening one
 
@@ -220,12 +245,16 @@ Verified, by running it:
   The Studio and the Guide tab were rendered offscreen at the real 1280×720×2 and
   inspected as images: arrows, em dashes, en dashes, `×` and `…` all appear.
 - The Emscripten build still links and produces `demo.js` + `demo.wasm`.
-- The frame-time numbers in §6 are measured, not estimated — Debug, this machine.
+- The frame-time numbers in §6 are measured in both build types across five runs.
 
 Not verified here:
 
-- **No release-build measurement.** All timings are Debug. Release will be faster
-  by an unmeasured factor; do not quote §6 as the shipping cost.
+- **The absolute frame times are not reliable to better than ~2×.** They come from
+  one arm64 laptop whose scheduler and thermal state move the median between runs.
+  The *ratios* in §6 are stable; the point values are not, and should not be
+  quoted as a spec.
+- **Nothing here measures the web build**, where the same fill runs in WASM and
+  where `kAA` is already forced to 1 for precisely this cost reason.
 - **The window itself was never opened for this chapter.** Screen capture is
   unavailable in this environment, so every visual claim rests on the offscreen
   render, which uses the identical scene, renderer, framebuffer size and

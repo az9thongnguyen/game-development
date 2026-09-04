@@ -447,13 +447,33 @@ int main(int argc, char** argv) {
 
         const std::string proj = (argc > 3) ? argv[3] : "projects/creator.gameproject";
         constexpr int LW = 1280, LH = 720;
-        std::printf("bench-ui  %dx%d logical, %d frames per configuration\n", LW, LH, frames);
+        // Which build this is matters more than any other line of output: the same
+        // code is ~5x slower unoptimized, so a Debug number quoted as a shipping
+        // cost is simply wrong.
+#ifdef NDEBUG
+        const char* build = "Release";
+#else
+        const char* build = "Debug (unoptimized — NOT the shipping cost)";
+#endif
+        std::printf("bench-ui  %dx%d logical, %d frames per configuration (after 20 warm-up)\n",
+                    LW, LH, frames);
+        std::printf("          build: %s\n", build);
 
         for (int ss : {1, 2}) {
             studioshell::StudioShellScene scene(proj);
             std::vector<std::uint32_t> buf(static_cast<std::size_t>(LW * ss) * (LH * ss), 0);
             platform::Framebuffer fb{buf.data(), LW * ss, LH * ss, LW * ss};
             platform::InputState  in{};
+
+            // Warm up before timing. The first frames pay for first-touch page faults
+            // on a freshly-allocated 14 MB framebuffer and for rasterizing each type-scale
+            // size once; including them measures start-up, not steady state, and produces
+            // a number that drifts by 3x between runs.
+            {
+                gfx::Renderer2D r(fb, ss);
+                const engine::Context ctx{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
+                for (int i = 0; i < 20; ++i) scene.render(ctx);
+            }
 
             std::vector<double> ms;
             ms.reserve(static_cast<std::size_t>(frames));

@@ -355,7 +355,7 @@ An agent must not upgrade any of these from "written" to "works" without running
 | Purchase affordability check | ⚠️ **known ceiling:** documented TOCTOU — the affordability check and the debit are not under one lock. Recorded deliberately, not accidentally. |
 | Scene visual output | ⚠️ mostly manual visual accept. Two structural golden tests now exist (`test_ui_golden`, `test_shell_golden`); the rest is eyeball. |
 | Studio shell renders correctly | ✅ verified 2026-09-04 by offscreen render at the real 1280×720×2, inspected as an image. **The window itself was not opened** — screen capture is unavailable here, so SDL's `present()` path is untested. |
-| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui`, **Debug** build: ss=1 median 1.24 ms, ss=2 median 4.63 ms / p95 5.04 ms against an 8 ms budget. No Release measurement. |
+| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (5 runs, warm-up excluded): **Release ss=2 median 2.4–4.4 ms** vs an 8 ms budget; Debug ss=2 11–18 ms. ⚠️ absolute values move ~2× run to run on this laptop — only the **ratios** (ss=2 ≈ 4× ss=1, Debug ≈ 4–5× Release) are dependable. |
 
 ---
 

@@ -77,14 +77,19 @@ Merge `feat/s1-text-utf8`. Bốn commit:
 - Render shell ra ngoài màn hình ở đúng 1280×720×ss2 rồi **soi ảnh**: `→`, `…`,
   `—`, `–`, `×` đều hiện đúng. Không còn `???`.
 - Web build (Emscripten) vẫn xanh — `demo.js` + `demo.wasm` sinh ra bình thường.
-- `--bench-ui` (Debug): ss=1 median **1.24 ms**, ss=2 median **4.63 ms** / p95 5.04 ms.
-  Ngân sách 8 ms còn khoảng một nửa — **đây là mốc S2 không được vượt.**
+- `--bench-ui` sau khi thêm warm-up, 5 lần chạy: **Release ss=2 median 2.4–4.4 ms**
+  (khoảng 1/3 ngân sách 8 ms); Debug ss=2 **11–18 ms** (vượt ngân sách — nhưng Debug
+  không phải cấu hình ship). Số đo đầu tiên (4.63 ms) **sai** vì tính cả frame khởi
+  động; đã sửa.
 
 **⚠️ Chưa chạy / chưa xác minh:**
 - **Chưa mở cửa sổ thật.** Môi trường này không có quyền screen-capture, nên mọi
   khẳng định thị giác dựa trên bản render ngoài màn hình (cùng scene, cùng renderer,
   cùng kích thước và supersample — nhưng **không** qua đường `present()` của SDL).
-- Số đo là **Debug**, không phải Release.
+- **Số tuyệt đối không tin được quá ~2×** — máy laptop arm64, scheduler + nhiệt làm
+  median dao động giữa các lần chạy. Chỉ **tỉ lệ** là ổn định: ss=2 ≈ 4× ss=1 (nên
+  tải là fill-bound, không phải logic-bound), Debug ≈ 4–5× Release. Cách dùng đúng
+  ở S2: chạy lại `--bench-ui` **cùng máy, cùng phiên**, trước/sau, rồi so tỉ lệ.
 - Chưa thử chữ CJK thật (không bundle font CJK); không có shaping/kerning/bidi —
   đây là bộ vẽ theo codepoint, không phải text shaper.
 
