@@ -13,13 +13,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>hand-engine — WebAssembly</title>
+  <!-- Inline, so the page does not 404 on /favicon.ico. A 404 in the console of a
+       page whose whole job is to prove the build works is noise that hides signal. -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%234e7a3c'/></svg>">
   <style>
     html, body { margin: 0; background: #15171e; color: #c8d0dc;
                  font-family: ui-monospace, Menlo, monospace; }
     .wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; }
     h1 { font-size: 15px; font-weight: 600; color: #9fb4d6; margin: 4px 0; }
+    /* Both maxima, with width/height left auto: a canvas is a replaced element, so the
+       browser shrinks it preserving its aspect ratio. Without the height cap a
+       1280x720 game is cut off below the fold on a laptop — which is how the first
+       browser screenshot of the farm lost its hotbar. */
     canvas { background: #000; border: 1px solid #2a2f3a; image-rendering: auto;
-             max-width: 100%; }
+             max-width: 100%; max-height: 78vh; }
     #status { font-size: 12px; color: #7f8aa0; min-height: 1em; }
     #log { white-space: pre-wrap; font-size: 11px; color: #66708a;
            width: min(960px, 92vw); max-height: 110px; overflow: auto; }
@@ -49,15 +56,47 @@
       // Golden path: launch the reference game from a game.project manifest — the same
       // named project the native build runs, so web/native pick the scene identically.
       project: ['--project', 'projects/creator.gameproject'],
+      farm:    ['--project', 'projects/farm.gameproject'],
       // The platform shells, browser-rendered from the same manifest (the web VFS is
       // read-only, so channels show "unset" → the Hub recommends "publish").
       hubui:  ['--hub-ui', 'projects/creator.gameproject'],
       shell:  ['--shell',  'projects/creator.gameproject'],
       demo:   []
     };
-    var mode = new URLSearchParams(location.search).get('mode') || 'gui';
+    // A GAME is named by its manifest, not by an entry in the table above. `?project=`
+    // passes the path straight through to --project, so adding a game needs no edit
+    // here — the same reason main.cpp has one entries() table rather than a chain of
+    // ifs. The named modes stay for the dev scenes that have no manifest.
+    var params  = new URLSearchParams(location.search);
+    var project = params.get('project');
+    var mode    = params.get('mode') || 'gui';
+    if (project) argsByMode[mode = '_project'] = ['--project', project];
     var Module = {
       arguments: argsByMode[mode] || argsByMode.gui,
+      // The preloaded asset tree is MEMFS: it lives in this tab and dies with it. That
+      // is right for the game's content (it ships inside demo.data) and wrong for the
+      // one directory that is the player's — saves, the sync bookmark, the device id.
+      // Mount that on IDBFS and read the browser's copy BEFORE main runs.
+      //
+      // addRunDependency is the supported way to make an async step block startup.
+      // Without it main() would start against an empty directory, conclude there is no
+      // save, and the real one would arrive a moment later with nothing looking at it.
+      preRun: [function () {
+        try {
+          FS.mkdirTree('/assets/saves');
+          FS.mount(IDBFS, {}, '/assets/saves');
+          addRunDependency('idbfs');
+          FS.syncfs(true, function (err) {
+            if (err) console.error('idbfs load failed: ' + err);
+            removeRunDependency('idbfs');
+          });
+        } catch (e) {
+          // No IDBFS (private mode, storage blocked) is not a reason not to play. The
+          // game runs; it just forgets. Saying so beats a save that silently vanishes.
+          console.error('persistent storage unavailable: ' + e);
+          statusEl.textContent = 'running (saves will not persist)';
+        }
+      }],
       canvas: document.getElementById('canvas'),
       setStatus: function (t) { statusEl.textContent = t; },
       print:    function (t) { logEl.textContent += t + "\n"; logEl.scrollTop = logEl.scrollHeight; },
