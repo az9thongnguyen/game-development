@@ -355,7 +355,8 @@ An agent must not upgrade any of these from "written" to "works" without running
 | Purchase affordability check | ⚠️ **known ceiling:** documented TOCTOU — the affordability check and the debit are not under one lock. Recorded deliberately, not accidentally. |
 | Scene visual output | ⚠️ mostly manual visual accept. Two structural golden tests now exist (`test_ui_golden`, `test_shell_golden`); the rest is eyeball. |
 | Studio shell renders correctly | ✅ verified 2026-09-04 by offscreen render at the real 1280×720×2, inspected as an image. **The window itself was not opened** — screen capture is unavailable here, so SDL's `present()` path is untested. |
-| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (5 runs, warm-up excluded): **Release ss=2 median 2.4–4.4 ms** vs an 8 ms budget; Debug ss=2 11–18 ms. ⚠️ absolute values move ~2× run to run on this laptop — only the **ratios** (ss=2 ≈ 4× ss=1, Debug ≈ 4–5× Release) are dependable. |
+| UI layer: keyboard, focus, clipping, modals, text editing | ✅ verified 2026-09-04 (chapter 109): 62 tests including a full text editor and two mutation checks; confirmation screen rendered offscreen with its negative control. ❌ **the window itself has still never been opened**, and resizing has never been performed. |
+| Studio frame cost | ✅ measured 2026-09-04 via `--bench-ui` (warm-up excluded): **Release ss=2 1.4–2.6 ms** after the whole UI v2 landed, against an 8 ms budget — unchanged from before it. ⚠️ absolute values move ~2× run to run on this laptop; only the **ratios** are dependable (ss=2 ≈ 4× ss=1 → fill-bound, so draw fewer pixels rather than optimise widget code; Debug ≈ 4–5× Release). |
 
 ---
 

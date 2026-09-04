@@ -60,7 +60,7 @@ Everything is one `demo` executable; the first arg picks the mode. Windowed scen
 ./build/demo --sandbox  # declarative 2D sandbox: actors + data-only behaviors
 ./build/demo --maplab   # tile-grid level editor -> maps/level_NN.map
 ./build/demo --fx | --light | --audio | --anim     # particles / 2D lights / mixer / flipbook
-./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio shell
+./build/demo --hub-ui [proj] | --shell [proj]      # interactive Hub / Studio shell (1280x720, resizable)
 ```
 
 **Headless platform-spine verbs** (no window; these are what CI smoke-tests, so keep
