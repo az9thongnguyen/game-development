@@ -127,6 +127,7 @@ add_executable(demo
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
   src/games/studio_shell/project_panel.cpp
+  src/games/studio_shell/play_viewport.cpp
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
@@ -259,7 +260,9 @@ add_executable(test_shell_golden tests/test_shell_golden.cpp
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
+  src/games/farm/farm_scene.cpp
   src/games/studio_shell/project_panel.cpp
+  src/games/studio_shell/play_viewport.cpp
   src/games/hub/hub_panel.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp
@@ -268,7 +271,7 @@ target_include_directories(test_shell_golden PRIVATE src)
 target_compile_definitions(test_shell_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_shell_golden PRIVATE
   hub_build_core hub_core release_ops_core release_core project_core inspect_core resource_core
-  commands_core map_edit_core document_core ui_core text_core engine_flags)
+  commands_core map_edit_core document_core ui_core text_core farm_core engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
 
 # ---- Documents: undo/redo history and autosave+recovery for an edited file -------

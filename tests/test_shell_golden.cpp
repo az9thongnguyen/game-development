@@ -26,6 +26,8 @@
 #include "engine/project/inspect.hpp"
 #include "engine/release/ops.hpp"
 #include "games/hub/hub_panel.hpp"
+#include "games/farm/farm_scene.hpp"
+#include "games/studio_shell/play_viewport.hpp"
 #include "games/studio_shell/project_panel.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
 
@@ -100,8 +102,8 @@ int main() {
     platform::Framebuffer fb{buf.data(), PW, PH, PW};
     platform::InputState  input{};                 // no mouse over anything, no keys
 
-    const char* names[] = {"map", "project", "hub", "guide", "learn", "about"};
-    constexpr int kSections = 6;
+    const char* names[] = {"map", "project", "play", "hub", "guide", "learn", "about"};
+    constexpr int kSections = 7;
 
     // A fingerprint of the CONTENT area only (right of the rail). The previous version
     // of this loop pressed Tab, which the shell does not bind to navigation — so it
@@ -110,7 +112,7 @@ int main() {
     std::vector<std::uint64_t> prints;
 
     for (int section = 0; section < kSections; ++section) {
-        // Section 0 is the default; the rail is on Cmd/Ctrl+1..6.
+        // Section 0 is the default; the rail is on Cmd/Ctrl+1..7.
         if (section > 0) {
             platform::InputState nav{};
             nav.mods.super = nav.mods.ctrl = true;
@@ -160,9 +162,212 @@ int main() {
         dump_ppm(buf, PW, PH, (std::string("shell_") + names[section] + ".ppm").c_str());
     }
 
-    // Six sections, six different screens.
+    // Seven sections, seven different screens.
     for (std::size_t i = 1; i < prints.size(); ++i) CHECK(prints[i] != prints[i - 1]);
     CHECK(prints[0] != prints[prints.size() - 1]);
+
+    // ---------------------------------------------------------------------
+    //  The Play viewport: a scene gets its own framebuffer, its own clock, and
+    //  only the input it is entitled to.
+    // ---------------------------------------------------------------------
+    {
+        // A scene that reports exactly what happened to it. Sharper than driving a
+        // real game here: the assertions below are about the MECHANISM, and a fake
+        // that counts its own ticks can prove things a real game only implies.
+        struct CountingScene : engine::Scene {
+            int updates = 0, renders = 0, saw_space = 0, saw_mouse = 0;
+            void update(double, const platform::InputState& in) override {
+                ++updates;
+                if (in.pressed(platform::Key::Space)) ++saw_space;
+                if (in.mouse_x >= 0) ++saw_mouse;
+            }
+            void render(const engine::Context& c) override {
+                ++renders;
+                c.gfx.clear(0xFF00FF00u);          // a colour nothing else in the shell uses
+            }
+        };
+        CountingScene* probe = nullptr;
+        studioshell::PlayViewport vp;
+        CHECK(!vp.has_factory());
+        // Playing with no factory wired must FAIL with a reason, not crash and not
+        // silently look like a game that renders nothing.
+        CHECK(!vp.start("anything").ok);
+
+        vp.set_factory([&probe](const std::string& id) {
+            studioshell::PlayTarget t;
+            if (id != "probe") return t;           // an unknown entry yields no scene
+            auto sc = std::make_unique<CountingScene>();
+            probe = sc.get();
+            t.scene = std::move(sc);
+            t.w = 160; t.h = 90;
+            return t;
+        });
+        CHECK(vp.has_factory());
+        CHECK(!vp.start("nosuch").ok);             // ...and that is reported, not ignored
+        CHECK(!vp.running());
+
+        CHECK(vp.start("probe").ok);
+        CHECK(vp.running() && probe != nullptr);
+        CHECK(vp.width() == 160 && vp.height() == 90);
+        CHECK(vp.steps() == 0);                    // starting is not running
+
+        const double kDt = 1.0 / 60.0;
+        platform::InputState idle{};
+        for (int i = 0; i < 10; ++i) vp.update(kDt, idle, /*focused*/ true);
+        CHECK(vp.steps() == 10);
+        CHECK(probe->updates == 10);
+        CHECK(vp.clock() > 0.16 && vp.clock() < 0.17);
+
+        // ---- input gating ---------------------------------------------------
+        platform::InputState space{};
+        space.key_pressed[static_cast<int>(platform::Key::Space)] = true;
+        space.mouse_x = 640; space.mouse_y = 360;      // the SHELL's coordinates
+
+        vp.update(kDt, space, /*focused*/ false);
+        CHECK(probe->saw_space == 0);               // unfocused: the game hears nothing
+
+        vp.update(kDt, space, /*focused*/ true);
+        CHECK(probe->saw_space == 1);               // focused: it does
+
+        // A chord belongs to the Studio. If the game could see Cmd+K the palette
+        // would be unreachable while a game had focus, which is how an embedded
+        // player becomes a trap.
+        platform::InputState chord = space;
+        chord.mods.super = true;
+        vp.update(kDt, chord, /*focused*/ true);
+        CHECK(probe->saw_space == 1);               // still 1 — the chord went nowhere
+
+        // The pointer is in the shell's space and means nothing in the game's, so the
+        // game is told there is no pointer rather than given a plausible wrong one.
+        CHECK(probe->saw_mouse == 0);
+
+        // ---- pause and step -------------------------------------------------
+        const long long before = vp.steps();
+        vp.set_paused(true);
+        for (int i = 0; i < 10; ++i) vp.update(kDt, idle, true);
+        CHECK(vp.steps() == before);                // paused means paused
+        const double frozen = vp.clock();
+        CHECK(frozen == vp.clock());
+
+        vp.step_once();
+        vp.update(kDt, idle, true);
+        CHECK(vp.steps() == before + 1);            // EXACTLY one
+        vp.update(kDt, idle, true);
+        CHECK(vp.steps() == before + 1);            // ...and it does not keep going
+        CHECK(vp.clock() > frozen);                 // the one step did advance time
+
+        vp.set_paused(false);
+        vp.update(kDt, idle, true);
+        CHECK(vp.steps() == before + 2);
+
+        // ---- the frame reaches the panel, letterboxed at a whole scale -------
+        {
+            std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+            platform::Framebuffer f{b.data(), PW, PH, PW};
+            gfx::Renderer2D r(f, SS);
+            r.set_font(font.get(), th::sz_body);
+            r.clear(th::bg);
+            const ui::Rect area{300, 100, 640, 400};
+            const ui::Rect shown = vp.draw(r, area, font.get(), kDt);
+            CHECK(probe->renders == 1);             // rendering happens in draw, once
+
+            // 160x90 into 640x400 → scale 4 (640/160=4, 400/90=4), so 640x360 centred.
+            CHECK(shown.w == 640 && shown.h == 360);
+            CHECK(shown.w % vp.width() == 0);       // a whole-number scale, always
+            CHECK(shown.x == 300 && shown.y == 100 + (400 - 360) / 2);
+
+            const auto at = [&](int lx, int ly) { return b[(ly * SS) * PW + (lx * SS)]; };
+            CHECK(at(shown.x + shown.w / 2, shown.y + shown.h / 2) == 0xFF00FF00u);
+            // ...and the letterbox bar above it is the shell's background, not the game.
+            CHECK(at(shown.x + shown.w / 2, area.y + 4) == th::bg);
+        }
+
+        // ---- stop clears everything, including the clock --------------------
+        vp.stop();
+        CHECK(!vp.running());
+        CHECK(vp.steps() == 0);
+        CHECK(vp.clock() == 0.0);
+        CHECK(vp.width() == 0);
+        // Updating a stopped viewport is a no-op, not a null dereference.
+        vp.update(kDt, idle, true);
+        CHECK(vp.steps() == 0);
+    }
+
+    // ---------------------------------------------------------------------
+    //  ...and a REAL game in it. The mechanism above is proven with a fake; this
+    //  is the part that says the seam main.cpp wires actually carries a scene.
+    // ---------------------------------------------------------------------
+    {
+        studioshell::StudioShellScene sc("projects/farm.gameproject", kKnownEntries);
+        sc.set_play_factory([](const std::string& id) {
+            studioshell::PlayTarget t;
+            if (id == "farm") {
+                t.scene = std::make_unique<farm::FarmScene>();
+                t.w = 640; t.h = 360;              // the size main.cpp's entry table uses
+            }
+            return t;
+        });
+        CHECK(sc.play().has_factory());
+        CHECK(sc.play().start(sc.inspection().project.entry).ok);
+        CHECK(sc.play().running());
+
+        // Two seconds of game time, driven exactly as the shell drives it.
+        platform::InputState idle{};
+        for (int i = 0; i < 120; ++i) sc.play().update(1.0 / 60.0, idle, false);
+        CHECK(sc.play().steps() == 120);
+
+        std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+        platform::Framebuffer f{b.data(), PW, PH, PW};
+        gfx::Renderer2D r(f, SS);
+        r.set_font(font.get(), th::sz_body);
+        r.clear(th::bg);
+        const ui::Rect shown = sc.play().draw(r, ui::Rect{224, 120, LW - 248, 480},
+                                              font.get(), 1.0 / 60.0);
+        CHECK(shown.w == 640 * 1 || shown.w == 640);   // 1056x480 fits 640x360 once
+        CHECK(shown.w % 640 == 0);
+
+        // The frame is a GAME, not a blank rectangle: count distinct colours inside it.
+        // A scene that failed to load its map would clear to one colour and pass any
+        // "did we draw something" check that only looks for non-background pixels.
+        std::vector<std::uint32_t> seen;
+        for (int y = shown.y + 8; y < shown.y + shown.h - 8; y += 7)
+            for (int x = shown.x + 8; x < shown.x + shown.w - 8; x += 7) {
+                const std::uint32_t p = b[static_cast<std::size_t>(y * SS) * PW + x * SS];
+                bool have = false;
+                for (auto c : seen) if (c == p) { have = true; break; }
+                if (!have && seen.size() < 64) seen.push_back(p);
+            }
+        CHECK(seen.size() >= 5);
+        dump_ppm(b, PW, PH, "shell_play_farm.ppm");
+
+        // ...and the whole composed screen: rail, toolbar, the running game, status.
+        // Driven through the scene's own update, so the path is the one --shell takes.
+        {
+            const long long before = sc.play().steps();
+            platform::InputState nav{};
+            nav.mods.super = nav.mods.ctrl = true;
+            nav.key_pressed[static_cast<int>(platform::Key::Num3)] = true;   // section 2 = Play
+            sc.update(1.0 / 60.0, nav);
+            platform::InputState none{};
+            for (int i = 0; i < 60; ++i) sc.update(1.0 / 60.0, none);
+            // Every shell update is one game step — including the one that carried the
+            // navigation chord. A game does not pause because you changed tabs.
+            CHECK(sc.play().steps() == before + 61);
+
+            std::vector<std::uint32_t> b2(static_cast<std::size_t>(PW) * PH, 0);
+            platform::Framebuffer f2{b2.data(), PW, PH, PW};
+            gfx::Renderer2D r2(f2, SS);
+            const engine::Context c2{r2, none, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            sc.render(c2);
+            dump_ppm(b2, PW, PH, "shell_play_running.ppm");
+
+            // The rail is still the rail: a game drawing into its own buffer cannot
+            // paint over the Studio's chrome, which is the whole reason for the buffer.
+            const auto at2 = [&](int lx, int ly) { return b2[(ly * SS) * PW + (lx * SS)]; };
+            CHECK(at2(60, 400) == th::elevated);
+            CHECK(at2(199, 400) == th::border);
+        }
+    }
 
     // ---------------------------------------------------------------------
     //  The Hub's history: status says WHERE a release is, the log says how it got
@@ -433,7 +638,7 @@ int main() {
         {
             platform::InputState nav{};
             nav.mods.super = nav.mods.ctrl = true;
-            nav.key_pressed[static_cast<int>(platform::Key::Num3)] = true;   // section 2 = Hub
+            nav.key_pressed[static_cast<int>(platform::Key::Num4)] = true;   // section 3 = Hub
             sc.update(1.0 / 60.0, nav);
         }
 
@@ -492,7 +697,7 @@ int main() {
             studioshell::StudioShellScene sc2(kProject, kKnownEntries);
             platform::InputState nav2{};
             nav2.mods.super = nav2.mods.ctrl = true;
-            nav2.key_pressed[static_cast<int>(platform::Key::Num3)] = true;   // section 2 = Hub
+            nav2.key_pressed[static_cast<int>(platform::Key::Num4)] = true;   // section 3 = Hub
             sc2.update(1.0 / 60.0, nav2);
             platform::InputState sp{};
             sp.key_pressed[static_cast<int>(platform::Key::Space)] = true;

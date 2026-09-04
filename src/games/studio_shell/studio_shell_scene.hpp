@@ -25,6 +25,7 @@
 #include "games/studio_shell/map_workspace.hpp"
 #include "engine/project/inspect.hpp"
 #include "games/studio_shell/palette.hpp"
+#include "games/studio_shell/play_viewport.hpp"
 #include "games/studio_shell/project_panel.hpp"
 
 namespace studioshell {
@@ -50,6 +51,12 @@ public:
     // CLI prints. Exposed so a test can assert the Studio and the CLI agree.
     [[nodiscard]] const engine::Inspection& inspection() const { return inspection_; }
 
+    // How a game gets built for the Play viewport. INJECTED, like the clipboard, so
+    // this scene stays linkable without SDL and main.cpp keeps the one entry table.
+    void set_play_factory(PlayViewport::Factory f) { play_.set_factory(std::move(f)); }
+    [[nodiscard]] const PlayViewport& play() const { return play_; }
+    [[nodiscard]] PlayViewport&       play() { return play_; }
+
     // The map the workspace opened, for tests and for the status bar.
     [[nodiscard]] const MapWorkspace& map_workspace() const { return map_; }
     [[nodiscard]] MapWorkspace&       map_workspace() { return map_; }
@@ -57,7 +64,7 @@ public:
 private:
     // Map first: this is an authoring tool, and the thing you came to do should be
     // the thing that is already open.
-    enum Section { Map = 0, Project, Hub, Guide, Learn, About, SectionCount };
+    enum Section { Map = 0, Project, Play, Hub, Guide, Learn, About, SectionCount };
     // One modal at a time, by construction. Two booleans would eventually both be
     // true and draw two cards on top of each other.
     enum class Modal { None, HubOp, Recovery };
@@ -74,6 +81,7 @@ private:
     void run(hubui::Op op);
     void flash(const engine::OpResult& r, double seconds = 5.0);
     void draw_map_section(gfx::Renderer2D& g, ui::Rect area);
+    void draw_play_section(gfx::Renderer2D& g, ui::Rect area, text::Font* font, double dt);
     void run(projectui::Op op);
 
     std::string                    project_path_;
@@ -94,6 +102,10 @@ private:
     int                            nav_click_ = -1;
     MapWorkspace                   map_;
     CommandPalette                 palette_;
+    PlayViewport                   play_;
+    bool                           play_focused_ = false;   // the game has the keyboard
+    bool                           play_focus_click_ = false;   // clicked during the last draw
+    int                            play_button_ = -1;           // toolbar button clicked
     std::string                    palette_click_;   // id clicked during the last draw
     std::function<std::string()>            clip_get_;
     std::function<void(const std::string&)> clip_set_;
