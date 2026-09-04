@@ -273,6 +273,7 @@ add_test(NAME shell_golden COMMAND test_shell_golden)
 add_library(document_core STATIC
   src/engine/document/command_stack.cpp
   src/engine/document/document.cpp
+  src/engine/document/save.cpp
 )
 target_include_directories(document_core PUBLIC src)
 target_link_libraries(document_core PRIVATE engine_flags)
@@ -280,6 +281,7 @@ target_link_libraries(document_core PRIVATE engine_flags)
 add_executable(test_document tests/test_document.cpp
   src/engine/document/command_stack.cpp
   src/engine/document/document.cpp
+  src/engine/document/save.cpp
   src/engine/assets.cpp
 )
 target_include_directories(test_document PRIVATE src)
@@ -355,6 +357,22 @@ target_include_directories(test_map_workspace PRIVATE src)
 target_link_libraries(test_map_workspace PRIVATE
   map_edit_core commands_core document_core ui_core text_core fps_core engine_flags)
 add_test(NAME map_workspace COMMAND test_map_workspace)
+
+# ---- Farm: the second game's simulation, with no renderer in it ------------------
+# The day loop, the crops, the NPC schedules and the save format are all pure, so a
+# test can play three days and check the parsnips came up when the definition says.
+add_library(farm_core STATIC
+  src/games/farm/defs.cpp
+  src/games/farm/world.cpp
+  src/games/farm/dialogue.cpp
+)
+target_include_directories(farm_core PUBLIC src)
+target_link_libraries(farm_core PUBLIC tilemap_core document_core PRIVATE engine_flags)
+
+add_executable(test_farm tests/test_farm.cpp)
+target_include_directories(test_farm PRIVATE src)
+target_link_libraries(test_farm PRIVATE farm_core engine_flags)
+add_test(NAME farm COMMAND test_farm)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;
