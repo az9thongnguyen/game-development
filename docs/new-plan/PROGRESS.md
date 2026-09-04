@@ -325,6 +325,21 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D46 | Undo của scene bằng **snapshot toàn cảnh**, một bước cho cả gesture | `to_scene/from_scene` đã round-trip; không có nghịch đảo nào để viết sai |
 | D47 | `commit()` **giữ lại selection** qua chính cú apply của nó | apply cài lại đúng thế giới đang có; xoá selection ở đó là artefact, không phải ý định |
 | D48 | Hấp thụ editor cũ, **không viết cái thứ hai** | Hai implementation của một ý tưởng chỉ đồng ý vào ngày chúng được viết |
+| D49 | Remote config + live event dùng **đúng định dạng defs của file** | Người vận hành gõ đúng dòng họ sẽ gõ trong file; không parser mới, không schema thứ hai |
+| D50 | Override **gán theo trường**, không thay cả bản ghi (`merge_defs`) | `crop parsnip sell=70` từ dashboard sẽ reset days/stages/seed về mặc định struct |
+| D51 | Một dòng override là **nguyên tử**; lỗi ⇒ không commit gì | Bản ghi sửa nửa vời = cân bằng không ai chọn và không ai thấy |
+| D52 | Field lạ: **file bỏ qua**, dashboard **báo lỗi** | File cần tương thích tiến; ô dashboard vừa được người ta gõ 30 giây trước |
+| D53 | Override **không được** làm game không chơi được (`days<1`, `stages<2`) | Remote config là cần gạt không cần build — cũng là input duy nhất hạ được game đang chạy |
+| D54 | Quyết định sync là **hàm thuần**, chốt bằng test trước khi gửi byte nào | Thao tác đầu tiên có thể **huỷ việc bằng cách thành công** |
+| D55 | So **nội dung** trước, so version sau | Hai save trùng byte *là* cùng một ván; đẩy lại chỉ vì máy khác lưu sau là rủi ro không đổi lấy gì |
+| D56 | Cần **bookmark** (version+hash đã đồng ý), không chỉ hai hash | Hai hash khác nhau không nói được ai đã đổi |
+| D57 | 404 là ô trống; **mọi lỗi khác thì không** | "Không biết" mà thành upload là mất dữ liệu |
+| D58 | Bản mây **đọc không được thì để nguyên** | Build mới hơn có thể đọc tốt; ghi đè biến việc không tương thích tạm thời thành xoá vĩnh viễn |
+| D59 | Hai bên cùng đổi ⇒ **hỏi**, và chip phải **nêu tên phím** | "Hai save khác nhau" không nói thì người chơi đứng nhìn nông trại không lưu được |
+| D60 | Các lớp config **nối chuỗi**, không bắn song song | Hai request cùng bay = cái về sau thắng; fake transport trả lời **ngược thứ tự** để test được điều đó |
+| D61 | Save trong lúc sync đầu **không upload** | Verdict sắp về đọc chính file đó; upload ở đây = gửi hai lần và quyết định từ ảnh chụp cũ hơn |
+| D62 | Guest cần **`device_id`** để quay lại được | Không có nó, save đẩy lên vào một tài khoản không lần nào sau đọc được |
+| D63 | Không seed dữ liệu mà **không ai đọc** (leaderboard farm) | Một dòng seed vô dụng là thứ người sau tưởng là tính năng |
 
 ---
 
@@ -397,7 +412,8 @@ Studio tự giữ `unique_ptr<Scene>` được. Rào cản thật là `App::fram
 chỗ, `>` thay `>=`, reset giữ phần dư, gán thay vì cộng accumulator.
 
 **Số liệu:** 71/71 test · ASan+UBSan sạch (71/71) · web build xanh · Release ss=2
-**1.56 ms** median (budget 8 ms, **chưa có game chạy** trong số đo này) · golden path +
+**1.56 ms** median (đây là **ss=1** — nhãn "ss=2" ở dòng này sai, xem phần sửa ở S8;
+**chưa có game chạy** trong số đo này) · golden path +
 second-game smoke xanh · không rò `.tmp`.
 
 **Chưa xác minh:** vẫn **chưa ai bấm Play** — chỉ render ngoài màn hình. **Chuột chưa
@@ -439,7 +455,7 @@ ghi cả edit rỗng · Stop tính là edit · commit xoá selection · recovery
 từ chối recovery mà xoá autosave · recovery không undo được.
 
 **Số liệu:** 71/71 test · ASan+UBSan sạch (71/71) · web build xanh · Release ss=2
-**1.13 ms** median (budget 8 ms) · golden path xanh (release id đổi vì manifest thêm
+**1.13 ms** median (đây là **ss=1** — nhãn "ss=2" sai, xem phần sửa ở S8) · golden path xanh (release id đổi vì manifest thêm
 asset — đúng như thiết kế).
 
 **Chưa xác minh:** chưa ai **bấm**. Scene canvas **không có pan/zoom**, không
@@ -450,24 +466,77 @@ Texture vẫn dò theo tên cố định. **`--maplab` vẫn còn và vẫn ghi 
 
 ---
 
+## S8 — Farm nối vào backend: giá từ dashboard, save biết cãi (chương 117) — XONG
+
+Commit: `aa174df` (hai quyết định thuần) · `f794567` (scene + SDK + BaaS).
+
+**Cái gì đã chạy:**
+
+- **Một định dạng, ba nguồn.** Remote config và live event gửi đúng text mà
+  `assets/farm/crops.def` dùng: `crop parsnip sell=70`. Layer: file → remote config →
+  live event, **nối chuỗi** chứ không bắn song song.
+- **`apply_overrides` ≠ `merge_defs`.** Chỉ gán trường được nêu tên; một dòng lỗi
+  không commit gì; dòng làm cây không trồng được bị từ chối.
+- **Cloud save đối chiếu**: 404 là ô trống, 500 thì không; bản đọc không được thì để
+  nguyên; hai bên cùng đổi thì **hỏi** (F6/F7).
+- **Farm biết tiếp tục ván cũ** — trước đây chỉ có F9, phím không ai bấm.
+- **HUD**: hotbar 4 ô, chip cloud, dải cảnh báo lỗi remote config (có nền riêng).
+- **`test_farm_live`**: dựng Drogon thật, đổi giá qua `PUT /v1/admin/config/farm_defs`,
+  và game đang chạy tính đúng giá mới.
+
+**Bug thật do test end-to-end tìm ra:**
+
+1. **Guest là tài khoản mới mỗi lần chạy** → save đẩy lên được nhưng không kéo về được.
+   Upload chạy, download chạy, **tính năng không hoạt động**. Migration 7+8 thêm
+   `device_id`. Colony dính lỗi này từ chương 57 mà không ai thấy vì colony không bao
+   giờ đọc save về rồi so.
+2. **Bấm F5 khi sync đầu còn đang bay** → gửi hai lần, và quyết định sync tính từ ảnh
+   chụp mây cũ hơn cú upload. Bản gương của nó (Pull từ ảnh cũ đè lên save vừa lưu)
+   mới là bản mất dữ liệu.
+
+**Lỗi cùng họ, lần thứ tư:** `sell` được viết ở **cả** `crops.def` và `items.def`, và
+`end_day` đọc bản của item — nên giá cây là con số **duy nhất một đợt cân bằng không
+đổi được**. Hai file trùng số thì đồng ý vào ngày viết, rồi một bên lặng lẽ hết được đọc.
+
+**Đã mutation-test 20 lần, giết hết.**
+
+**Bài học về chất lượng test:** (1) ảnh chụp là ảnh của scene mình truyền vào — lambda
+`render` đóng gói scene đầu tiên, nên mọi ảnh chụp phía dưới (của scene KHÁC) đều là
+ảnh của scene đó, và ảnh "conflict" là một nông trại không có conflict. (2) **đếm, đừng
+dò** — lần thứ tư liên tiếp.
+
+**Số liệu:** 72/72 test · ASan+UBSan sạch (72/72) · web build xanh · golden path (cả
+`creator` lẫn `farm`) xanh · không rò `.tmp`.
+
+**Sửa lại một con số đã ghi sai:** mọi lần trước đều chép "Release ss=2 1.1–1.6 ms" —
+đó là cột **ss=1**. Đo lại, và dựng luôn commit trước (`eaa54b4`) ở Release để đối
+chứng: **ss=1 1.0–1.8 ms · ss=2 6–10 ms**, và ss=2 **vượt ngân sách 8 ms ở 2/3 lần
+chạy**. Không phải slice này gây ra — con số đã bị dán nhãn sai từ lần đo đầu tiên.
+Phát biểu đúng là: ở 1280×720 Studio thoải mái, **bật supersample thì nó chạm hoặc
+vượt ngân sách**.
+
+**Chưa xác minh:** `test_farm_live` **không chạy trong CI** (CI chỉ cài SDL2, mọi test
+gác sau Drogon đều biến mất ở đó). `device_id` là theo **máy**, không theo người.
+Remote config chỉ lấy một lần lúc khởi động. Analytics bắn-rồi-quên. Vẫn **chưa ai bấm**.
+
+---
+
 ## Việc kế tiếp
 
-**S8 — Farm v1 + BaaS + HUD**, chương 117 (theo PLAN). Farm hiện đã chạy được trong
-Studio (Play viewport) nhưng chưa nói chuyện với BaaS: chưa có save đám mây, chưa có
-leaderboard, chưa có HUD thật. Đây là chỗ game thứ hai bắt đầu **tiêu thụ backend** —
-đúng Rule 1 của brief (golden path phải tiêu thụ tính năng).
+**S9 — Web + chuẩn bị open source**, chương 118 (theo PLAN): `web/shell.html`, trang
+Collection, điều khiển cảm ứng, README/license audit. Đây cũng là chỗ **kiểm chứng
+cloud save native ↔ web thật** — hôm nay chỉ chứng minh được "máy này ↔ máy khác" bằng
+hai `FarmScene` trên cùng một tiến trình.
 
-Hoặc, nếu anh muốn Studio chín thêm trước: **hấp thụ Map Lab** (`--maplab` → workspace
-thứ ba, bỏ `fpsmap1`) là việc nhỏ hơn và dùng lại đúng `WorkspaceHost` vừa có.
+Hoặc, nếu muốn Studio chín thêm: **hấp thụ Map Lab** (`--maplab` → workspace thứ ba,
+bỏ `fpsmap1`) — việc nhỏ hơn, dùng lại đúng `WorkspaceHost`.
 
-**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S8):
+**Ba quyết định vẫn cần anh chốt** (không cái nào chặn S9):
 
 1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã đi vào
    `assets/projects/farm.gameproject`, `entries()` và `launch_entry`.
 2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) cho Farm — hay tự vẽ trong Studio?
-3. **Xoá 10 flag CLI cũ.** Lưu ý: S7 vừa làm `--sandbox` thành một *khung* chứ không
-   phải một editor riêng, nên xoá nó bây giờ **rẻ hơn hẳn** — nó không còn giữ code
-   nào của riêng nó. **Chưa xoá gì cả.**
+3. **Xoá 10 flag CLI cũ.** Chưa xoá gì cả.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
