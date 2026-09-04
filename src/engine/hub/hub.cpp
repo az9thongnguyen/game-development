@@ -18,11 +18,9 @@ std::string pad(const std::string& s) {
 }
 }  // namespace
 
-std::string recommend(const HubView& v) {
+Next next_action(const HubView& v) {
     // Not shippable yet: the only useful next step is to fix the first problem.
-    if (!v.shippable)
-        return "fix: " + (v.problems.empty() ? std::string("project is not shippable")
-                                             : v.problems.front());
+    if (!v.shippable) return Next::Fix;
 
     // Shippable: walk the promotion pipeline development -> preview -> production and
     // recommend the first step that isn't in sync. "matches_local" catches source that
@@ -31,12 +29,22 @@ std::string recommend(const HubView& v) {
     const HubChannel* prev = find(v, "preview");
     const HubChannel* prod = find(v, "production");
 
-    if (!dev || dev->release.empty() || !dev->matches_local)
-        return "publish: your source is not yet the development release";
-    if (!prev || prev->release != dev->release)
-        return "promote: development -> preview";
-    if (!prod || prod->release != prev->release)
-        return "promote: preview -> production";
+    if (!dev || dev->release.empty() || !dev->matches_local) return Next::Publish;
+    if (!prev || prev->release != dev->release)              return Next::PromotePreview;
+    if (!prod || prod->release != prev->release)             return Next::PromoteProduction;
+    return Next::InSync;
+}
+
+std::string recommend(const HubView& v) {
+    switch (next_action(v)) {
+        case Next::Fix:
+            return "fix: " + (v.problems.empty() ? std::string("project is not shippable")
+                                                 : v.problems.front());
+        case Next::Publish:           return "publish: your source is not yet the development release";
+        case Next::PromotePreview:    return "promote: development -> preview";
+        case Next::PromoteProduction: return "promote: preview -> production";
+        case Next::InSync:            break;
+    }
     return "in sync: production matches your source";
 }
 

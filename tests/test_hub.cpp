@@ -89,6 +89,35 @@ int main() {
     for (const auto& l : blines) if (l == "  - missing asset: a.map") prob_line = true;
     CHECK(prob_line);
 
+    // --- next_action: the same decision as a value, for renderers -------------
+    //  A window highlights ONE primary button; it must pick the same step the
+    //  sentence names. Asserting both here is what keeps them from drifting apart
+    //  the next time someone edits one of them.
+    {
+        struct Case { HubView v; Next want; const char* sentence; };
+        const Case cases[] = {
+            {shippable(H, "",  "",  ""),  Next::Publish,           "publish: your source is not yet the development release"},
+            {shippable(H, OLD, "",  ""),  Next::Publish,           "publish: your source is not yet the development release"},
+            {shippable(H, H,   "",  ""),  Next::PromotePreview,    "promote: development -> preview"},
+            {shippable(H, H,   H,   OLD), Next::PromoteProduction, "promote: preview -> production"},
+            {shippable(H, H,   H,   H),   Next::InSync,            "in sync: production matches your source"},
+        };
+        for (const auto& c : cases) {
+            CHECK(next_action(c.v) == c.want);
+            CHECK(recommend(c.v) == c.sentence);
+        }
+
+        HubView bad; bad.name = "X"; bad.shippable = false; bad.problems = {"missing asset: a.map"};
+        CHECK(next_action(bad) == Next::Fix);
+        CHECK(recommend(bad) == "fix: missing asset: a.map");
+
+        // Not shippable wins over any channel state — you cannot promote a project
+        // that will not build.
+        HubView bad2 = shippable(H, H, H, H);
+        bad2.shippable = false; bad2.problems = {"boom"};
+        CHECK(next_action(bad2) == Next::Fix);
+    }
+
     if (g_failures == 0) std::printf("hub: all tests passed\n");
     else                 std::printf("hub: %d FAILURE(S)\n", g_failures);
     return g_failures;

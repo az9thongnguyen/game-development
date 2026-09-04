@@ -35,6 +35,19 @@ struct HubView {
     std::vector<HubChannel> channels;          // development, preview, production (in that order)
 };
 
+// The single next recommended action, as a value. `recommend()` below is this same
+// decision rendered as a sentence — one brain, two presentations, so the text a
+// terminal prints and the button a window highlights can never disagree about what
+// to do next.
+enum class Next {
+    Fix,                 // not shippable: problems.front() must be fixed first
+    Publish,             // source is not yet the development release
+    PromotePreview,      // development -> preview
+    PromoteProduction,   // preview -> production
+    InSync,              // production already matches the source
+};
+Next next_action(const HubView& v);
+
 // The single next recommended action for a project, derived from its aggregate state.
 // Pure — the decision brain of the hub, tested independently of I/O and rendering.
 std::string recommend(const HubView& v);

@@ -121,6 +121,7 @@ add_executable(demo
   src/games/audio/audio_scene.cpp
   src/games/anim/anim_scene.cpp
   src/games/hub/hub_scene.cpp
+  src/games/hub/hub_panel.cpp
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/runner/worker.cpp
 )
@@ -246,6 +247,22 @@ target_include_directories(test_ui_golden PRIVATE src)
 target_compile_definitions(test_ui_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_ui_golden PRIVATE ui_core text_core engine_flags)
 add_test(NAME ui_golden COMMAND test_ui_golden)
+
+# Golden: drive the whole Studio shell headless (no window) and check its structure.
+# A Scene needs only an engine::Context, and Renderer2D writes into any framebuffer the
+# caller owns — so a "window" screen is unit-testable like anything else.
+add_executable(test_shell_golden tests/test_shell_golden.cpp
+  src/games/studio_shell/studio_shell_scene.cpp
+  src/games/hub/hub_panel.cpp
+  src/engine/renderer2d.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_shell_golden PRIVATE src)
+target_compile_definitions(test_shell_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_shell_golden PRIVATE
+  hub_build_core hub_core release_ops_core release_core project_core resource_core
+  ui_core text_core engine_flags)
+add_test(NAME shell_golden COMMAND test_shell_golden)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;
