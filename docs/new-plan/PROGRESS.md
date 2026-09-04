@@ -347,6 +347,11 @@ xanh; `--bench-ui` Release ss=2 **1.4–1.5 ms** (không đổi).
 | D68 | Chỉ `saves/` là **bền** trên web (IDBFS), phần còn lại là nội dung | Nội dung đi kèm `demo.data`; thứ thuộc về người chơi thì không |
 | D69 | Flush IDBFS **tuần tự + gộp**, không phải mỗi lần ghi | syncfs chồng nhau đan vào nhau → file về 0 byte |
 | D70 | Chứng minh persistence phải **cắt mạng**, không chỉ tải lại | Cloud save âm thầm đóng thế cho filesystem |
+| D71 | Con trỏ vào viewport ánh xạ qua **rect vừa vẽ**, không qua scale lưu riêng | Panel nhỏ hơn khung game thì blit là *fit*, không phải bội số nguyên |
+| D72 | Chấp nhận con trỏ **trễ một frame**, không tính layout hai lần | Bản sao thứ hai của layout là bug chờ một lần resize |
+| D73 | Press **bắt đầu bên trong** thì giữ con trỏ tới khi nhả | Không thì game không bao giờ nghe thấy nhả, và giữ nút mãi |
+| D74 | "Bấm không ăn" phải **hỏi DOM và app**, đừng suy từ ảnh | Ảnh chụp canvas bị CSS scale — toạ độ trong ảnh **không phải** toạ độ game |
+| D75 | Mutation **sống sót thì ghi lại**, không giấu | Một hàng "8/8 giết" sai còn tệ hơn "7/8, và đây là lý do" |
 
 ---
 
@@ -576,21 +581,53 @@ và chưa có UI cho việc đó.
 
 ---
 
+## S10 — Con trỏ, và thứ đầu tiên cần đến nó (chương 119) — XONG
+
+**Lần đầu có người bấm.** Và điều đáng ghi nhất: chuột **đã hoạt động sẵn** — cái sai là
+**toạ độ trong bài test của tôi**, đọc ra từ ảnh chụp trong khi canvas đang bị CSS thu
+nhỏ 0.82×, nên điểm bấm rơi ra ngoài nav rail 8 px. "Bấm không ăn" trông y hệt một lỗi
+input thật; cách phân biệt rẻ nhất là **hỏi DOM và hỏi app xem mỗi bên thấy gì**, đừng
+suy luận từ bức ảnh.
+
+**Đã bấm thật, trong trình duyệt:** Project (mở asset browser) · Play → Play (FPS
+raycaster chạy trong Studio) · **vẽ một ô tile** (tab → `Map *`, status `tile 7, 7`,
+Undo sáng, hint `undo: paint`) — cả editor trong một cú bấm.
+
+**Cái được xây: chuột vào Play viewport.** Chương 115 cố ý không đưa con trỏ vào game vì
+**không kiểm chứng được** phép biến đổi. Giờ kiểm được:
+
+- ánh xạ qua **rect mà `draw()` vừa blit vào**, không qua hệ số scale lưu riêng;
+- **trễ một frame** có chủ ý — cách khác là tính layout hai lần rồi giữ hai bản khớp;
+- bấm ngoài tranh là của Studio, nhưng **press bắt đầu bên trong thì giữ con trỏ** tới
+  khi nhả (không thì mọi cú kéo để lại một nút game tưởng vẫn đang giữ).
+
+**Con trỏ có người tiêu thụ** (D15): farm rê lên ô **kề bên** thì quay mặt, bấm thì dùng
+công cụ. Kiểm chứng cuối: bấm một ô **bên trong farm đang chạy trong Play viewport, trong
+trình duyệt** → `tilled the soil`, đúng ô. Sáu phép biến đổi, một cú bấm.
+
+**8 mutation, giết 7.** Cái sống sót **ghi lại chứ không giấu**: bỏ guard `mouse_x >= 0`
+trong farm không làm test đỏ, vì cả nông trại vừa màn hình nên camera căn giữa, và
+(-1,-1) rơi ra ngoài bốn ô kề. Guard vẫn giữ (đó là hợp đồng của platform, và đọc -1
+thành vị trí chính là bug chương 115), nhưng assertion cạnh nó là **kiểm hợp đồng, không
+phải bằng chứng**.
+
+**Số liệu:** 72/72 test · web build xanh.
+
+**Chưa xác minh:** không wheel, không chuột phải, không kéo-thả trong trình duyệt ·
+**không touch gì cả** · chỉ render phần mềm, một trình duyệt · raycaster và colony vẫn
+không đọc chuột nên phép biến đổi của viewport chỉ có **một** nhân chứng.
+
+---
+
 ## Việc kế tiếp
 
-**Chọn một trong hai:**
-
-- **Chuột + touch trong trình duyệt** (nốt nửa còn lại của chương 118): dispatch
-  `Input.dispatchMouseEvent`, bấm thật vào Studio, rồi touch controls cho farm. Đây là ô
-  ❌ to nhất còn lại: "chưa ai bấm".
-- **Hấp thụ Map Lab** (`--maplab` → workspace thứ ba, bỏ `fpsmap1`) — dùng lại đúng
-  `WorkspaceHost`.
+- **Touch + điều khiển cảm ứng** cho farm (nốt phần còn lại của S9 trong PLAN), hoặc
+- **Hấp thụ Map Lab** (`--maplab` → workspace thứ ba, bỏ `fpsmap1`).
 
 **Ba quyết định vẫn cần anh chốt:**
 
-1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã đi vào manifest,
-   `entries()` và `launch_entry`.
-2. **Bộ tileset pixel-art license mở** (CC0/CC-BY) cho Farm — hay tự vẽ trong Studio?
+1. **Tên hai game** — *Farm* / *Creatures* đang là tên tạm, đã vào manifest + `entries()`.
+2. **Tileset pixel-art license mở** (CC0/CC-BY) cho Farm — hay tự vẽ trong Studio?
 3. **Xoá 10 flag CLI cũ.** Chưa xoá gì cả.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
