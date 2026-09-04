@@ -48,6 +48,15 @@ jobs:
       - name: Golden-path smoke (headless inspect)
         run: ./build/demo --project-inspect projects/creator.gameproject
 
+      - name: Second-game smoke (the spine accepts a game it was not written for)
+        run: |
+          # The farm arrived as a manifest + an entry id and nothing in the spine
+          # changed to accept it. That is the claim; this is where it stops being an
+          # assertion in a chapter and becomes something CI can break.
+          ./build/demo --project-inspect projects/farm.gameproject
+          ./build/demo --project-package projects/farm.gameproject | grep -q '^packagehash '
+          ./build/demo --hub projects/farm.gameproject
+
       - name: Create-verb smoke (scaffold → inspect the scaffold)
         run: |
           # Every verb takes paths relative to the ASSET ROOT (assets/), never to the
