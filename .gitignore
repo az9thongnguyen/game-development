@@ -67,3 +67,4 @@ shell_*.png
 assets/saves/
 farm_*.png
 farm_*.ppm
+*.autosave

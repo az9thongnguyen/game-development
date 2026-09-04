@@ -27,6 +27,7 @@
 #include "games/studio_shell/palette.hpp"
 #include "games/studio_shell/play_viewport.hpp"
 #include "games/studio_shell/project_panel.hpp"
+#include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/workspace.hpp"
 
 namespace studioshell {
@@ -58,9 +59,12 @@ public:
     [[nodiscard]] const PlayViewport& play() const { return play_; }
     [[nodiscard]] PlayViewport&       play() { return play_; }
 
-    // The map the workspace opened, for tests and for the status bar.
+    // The workspaces, for tests and for the status bar.
     [[nodiscard]] const MapWorkspace& map_workspace() const { return map_; }
     [[nodiscard]] MapWorkspace&       map_workspace() { return map_; }
+    [[nodiscard]] const SceneWorkspace& scene_workspace() const { return scene_; }
+    [[nodiscard]] SceneWorkspace&       scene_workspace() { return scene_; }
+    [[nodiscard]] int open_workspace() const { return ws_; }
 
 private:
     // Map first: this is an authoring tool, and the thing you came to do should be
@@ -72,8 +76,11 @@ private:
 
     // The first `asset map` the manifest declares, or empty. Static so it can run in
     // the member-init list, before the object exists.
-    static std::string map_asset_of(const std::string& project_path,
-                                    const std::vector<std::string>& known_entries);
+    // The first asset of a given type the manifest declares, or empty. Static so it
+    // can run in the member-init list, before the object exists.
+    static std::string asset_of(const std::string& project_path,
+                                const std::vector<std::string>& known_entries,
+                                const char* type);
 
     // One refresh: the hub view and the inspection are two readings of the same
     // files, and letting them go stale independently is how a panel ends up
@@ -102,6 +109,7 @@ private:
     std::string                    reason_;
     int                            nav_click_ = -1;
     MapWorkspace                   map_;
+    SceneWorkspace                 scene_;
     // Concrete members, plus a vector of pointers to drive them through the interface.
     // ponytail: the set is fixed at construction, so no allocation and no ownership
     // question; it becomes unique_ptrs the day a workspace can be opened and closed.

@@ -85,12 +85,13 @@ const char* const kGuideLines[] = {
 
 }  // namespace
 
-std::string StudioShellScene::map_asset_of(const std::string& project_path,
-                                           const std::vector<std::string>& known_entries) {
+std::string StudioShellScene::asset_of(const std::string& project_path,
+                                       const std::vector<std::string>& known_entries,
+                                       const char* type) {
     // The fifth copy of "read and parse the manifest" used to live here. It reads
-    // through engine::inspect now, so the workspace opens the map the browser lists.
+    // through engine::inspect now, so a workspace opens the file the browser lists.
     for (const engine::InspectedAsset& a : engine::inspect(project_path, known_entries).assets)
-        if (a.type == "map" && a.present) return a.path;
+        if (a.type == type && a.present) return a.path;
     return {};
 }
 
@@ -98,9 +99,10 @@ StudioShellScene::StudioShellScene(std::string project_path,
                                    std::vector<std::string> known_entries)
     : project_path_(std::move(project_path)),
       known_entries_(std::move(known_entries)),
-      map_(map_asset_of(project_path_, known_entries_)) {
+      map_(asset_of(project_path_, known_entries_, "map")),
+      scene_(asset_of(project_path_, known_entries_, "scene")) {
     rebuild();
-    workspaces_ = {&map_};
+    workspaces_ = {&map_, &scene_};
     // Each workspace binds its own ids here, so the palette lists exactly what THIS
     // process can do. --cmd in a terminal sees the release commands and not these,
     // which is the truth: there is no document open in a terminal.

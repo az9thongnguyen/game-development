@@ -1,0 +1,10 @@
+sandbox1
+bounds 640 360
+e x=140 y=90 rot=0 color=f0c846 round w=26 h=26 mover=120,90 bouncer
+e x=470 y=110 rot=0 color=f0c846 round w=26 h=26 mover=-90,140 bouncer
+e x=320 y=180 rot=0 color=5ac878 w=40 h=14 spinner=2.5
+e x=200 y=260 rot=0 color=f0dc78 round w=16 h=16 tag=1
+e x=320 y=285 rot=0 color=f0dc78 round w=16 h=16 tag=1
+e x=440 y=260 rot=0 color=f0dc78 round w=16 h=16 tag=1
+e x=320 y=40 rot=0 color=50a0f0 w=22 h=22 spawner=0.6:[color=b4d2ff round w=8 h=8 mover=0,140 lifetime=2.5]
+e x=90 y=300 rot=0 color=e65a50 w=30 h=30 mover=100,60 bouncer onoverlap=1:other
