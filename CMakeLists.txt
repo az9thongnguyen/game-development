@@ -126,7 +126,7 @@ add_executable(demo
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core tilemap_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core tilemap_core commands_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -263,6 +263,32 @@ target_link_libraries(test_shell_golden PRIVATE
   hub_build_core hub_core release_ops_core release_core project_core resource_core
   ui_core text_core engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
+
+# ---- Commands: every operation, named once and callable from anywhere ------------
+# The registry itself is pure. release_commands binds the platform-spine ops to ids,
+# so --cmd, a palette and a button all reach the same release_ops function.
+add_library(commands_core STATIC
+  src/engine/commands/registry.cpp
+  src/engine/commands/release_commands.cpp
+)
+target_include_directories(commands_core PUBLIC src)
+target_link_libraries(commands_core PUBLIC release_ops_core PRIVATE engine_flags)
+
+# Compiles the spine sources directly (like test_release_ops) so the test binary owns
+# a complete assets:: implementation without linking a window or a backend.
+add_executable(test_commands tests/test_commands.cpp
+  src/engine/commands/registry.cpp
+  src/engine/commands/release_commands.cpp
+  src/engine/release/ops.cpp
+  src/engine/release/release.cpp
+  src/engine/project/project.cpp
+  src/engine/resource/resource.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_commands PRIVATE src)
+target_compile_definitions(test_commands PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_commands PRIVATE engine_flags)
+add_test(NAME commands COMMAND test_commands)
 
 # ---- Tilemap: the shared 2D map format, follow camera and autotile rule -----------
 # PURE: text in, structs out; no renderer, no I/O. Replaces two incompatible private
