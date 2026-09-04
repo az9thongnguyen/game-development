@@ -50,7 +50,12 @@ jobs:
 
       - name: Create-verb smoke (scaffold → inspect the scaffold)
         run: |
-          ./build/demo --project-new assets/ci_new.gameproject fps "CI New"
+          # Every verb takes paths relative to the ASSET ROOT (assets/), never to the
+          # working directory — so this writes assets/ci_new.gameproject, which is what
+          # .gitignore's `assets/ci_*.gameproject` was always meant to match. The extra
+          # `assets/` prefix this line used to carry made it write
+          # assets/assets/ci_new.gameproject, and the inspect below then failed.
+          ./build/demo --project-new ci_new.gameproject fps "CI New"
           ./build/demo --project-inspect ci_new.gameproject   # scaffolded manifest must inspect OK
 
       - name: Release-store smoke (publish → verify → promote dev→preview→prod → audit)
@@ -64,3 +69,19 @@ jobs:
           ./build/demo --release-log         # append-only audit history
           ./build/demo --hub projects/creator.gameproject   # aggregate status + next recommended action
           test "$(find assets/releases assets/channels -name '*.tmp' | wc -l)" -eq 0  # atomic writes leave no .tmp
+
+      - name: Command-registry smoke (the CLI verbs are aliases onto it)
+        run: |
+          ./build/demo --cmd release.status                       # same data --release-status prints
+          ./build/demo --cmd release.log production
+          # A mutating operation with no reason must be REFUSED. The audit log is only
+          # worth keeping if every line in it explains something, so this is a
+          # behaviour guarantee, not a nicety.
+          if ./build/demo --project-publish projects/creator.gameproject; then
+            echo "publish without a reason was accepted — it must not be" >&2
+            exit 1
+          fi
+          if ./build/demo --cmd release.promote development preview ""; then
+            echo "promote with an empty reason was accepted — it must not be" >&2
+            exit 1
+          fi
