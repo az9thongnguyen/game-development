@@ -520,6 +520,7 @@ int main(int argc, char** argv) {
         cfg.smooth    = true;
         cfg.highdpi   = true;
         cfg.supersample = kAA;   // scenes without it, so their text was upscaled, not rasterized
+        cfg.resizable = true;    // a workspace should fit the screen it is on
         return run_window(cfg, std::make_unique<studioshell::StudioShellScene>(proj));
     }
 

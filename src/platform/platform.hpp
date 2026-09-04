@@ -43,6 +43,10 @@ struct Config {
     bool        highdpi   = true;   // use the display's full resolution for a crisp present
     int         supersample = 1;    // SSAA: render the framebuffer at NxN and downsample on present
                                     // (1=off). Costs N^2 fill; the game still uses LOGICAL coords.
+    bool        resizable = false;  // let the user resize; the framebuffer follows the window
+    // Escape quits. True for a game (it is the universal "get me out of here"); false
+    // for a tool, where Escape means "close this popup" and quitting on it loses work.
+    bool        quit_on_escape = true;
 };
 
 // ---- Lifetime ----
