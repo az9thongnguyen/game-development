@@ -19,6 +19,21 @@ int index_of(std::string_view id) {
     return -1;
 }
 
+// A subsequence match, folded to lower case. Not a fuzzy score: ordering the results
+// by quality would mean the same keystrokes select different commands as the registry
+// grows, and a palette whose first entry moves is a palette you have to read.
+bool subsequence(std::string_view needle, std::string_view hay) {
+    const auto lower = [](char ch) {
+        return (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch - 'A' + 'a') : ch;
+    };
+    std::size_t i = 0;
+    for (char ch : hay) {
+        if (i == needle.size()) break;
+        if (lower(ch) == lower(needle[i])) ++i;
+    }
+    return i == needle.size();
+}
+
 } // namespace
 
 void register_command(Info info, Handler handler) {
@@ -35,6 +50,24 @@ void register_command(Info info, Handler handler) {
 const std::vector<Info>& all() { return infos(); }
 
 bool exists(std::string_view id) { return index_of(id) >= 0; }
+
+std::vector<std::size_t> filter(std::string_view query) {
+    std::vector<std::size_t> out;
+    const auto& v = infos();
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        const std::string hay = v[i].id + "  " + v[i].title;
+        if (query.empty() || subsequence(query, hay)) out.push_back(i);
+    }
+    return out;
+}
+
+bool unregister(std::string_view id) {
+    const int at = index_of(id);
+    if (at < 0) return false;
+    infos().erase(infos().begin() + at);
+    handlers().erase(handlers().begin() + at);
+    return true;
+}
 
 engine::OpResult run(std::string_view id, const std::vector<std::string>& args) {
     const int at = index_of(id);

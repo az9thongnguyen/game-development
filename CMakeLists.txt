@@ -326,6 +326,19 @@ target_compile_definitions(test_tilemap PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}"
 target_link_libraries(test_tilemap PRIVATE tilemap_core engine_flags)
 add_test(NAME tilemap COMMAND test_tilemap)
 
+# ---- Map edits: the joint between the map format and the undo stack ---------------
+# Its own library rather than a third file in tilemap_core, because it is the ONLY
+# piece that needs both: tilemap_core stays free of document_core, and a game that
+# only reads maps does not link an undo stack.
+add_library(map_edit_core STATIC src/engine/tilemap/map_edit.cpp)
+target_include_directories(map_edit_core PUBLIC src)
+target_link_libraries(map_edit_core PUBLIC tilemap_core document_core PRIVATE engine_flags)
+
+add_executable(test_map_edit tests/test_map_edit.cpp)
+target_include_directories(test_map_edit PRIVATE src)
+target_link_libraries(test_map_edit PRIVATE map_edit_core engine_flags)
+add_test(NAME map_edit COMMAND test_map_edit)
+
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;
 # A + D + F are used by its scene). Reuses iso_core's A*/TileMap (generic algorithms).

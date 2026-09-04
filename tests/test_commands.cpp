@@ -87,6 +87,46 @@ static void test_registry() {
     CHECK(!cmd::run("test.null").ok);
 }
 
+// The palette's two moving parts: narrowing a list by typing, and taking a command
+// back out again when the object it was bound to goes away.
+static void test_filter_and_unregister() {
+    cmd::clear();
+    const auto noop = [](const std::vector<std::string>&) { return engine::OpResult{true, ""}; };
+    cmd::register_command(cmd::Info{"release.promote", "Promote a release", "", ""}, noop);
+    cmd::register_command(cmd::Info{"release.rollback", "Roll back a channel", "", ""}, noop);
+    cmd::register_command(cmd::Info{"map.save", "Save the map", "Cmd+S", ""}, noop);
+
+    CHECK(cmd::filter("").size() == 3);          // no query = everything
+    CHECK(cmd::filter("map").size() == 1);
+    CHECK(cmd::filter("MAP").size() == 1);       // case-insensitive: nobody types the dot-case
+
+    // A subsequence, not a substring — that is what makes a few letters enough.
+    CHECK(cmd::filter("rp").size() == 1);
+    CHECK(cmd::filter("rp")[0] == 0);            // release.promote
+    CHECK(cmd::filter("rlb").size() == 1);
+    CHECK(cmd::filter("zz").empty());
+
+    // The title is searchable too, so "roll" finds the command whose id says "rollback"
+    // and whose title is the words a person would actually reach for.
+    CHECK(cmd::filter("Roll back").size() == 1);
+
+    // Results stay in registration order rather than being ranked, so the same
+    // keystrokes always select the same command however the registry grows.
+    const auto both = cmd::filter("release");
+    CHECK(both.size() == 2);
+    CHECK(both[0] == 0 && both[1] == 1);
+
+    // A window that registered handlers capturing itself must be able to take them
+    // back out; otherwise the palette keeps a dangling call.
+    CHECK(cmd::unregister("map.save"));
+    CHECK(!cmd::exists("map.save"));
+    CHECK(cmd::all().size() == 2);
+    CHECK(!cmd::unregister("map.save"));         // twice is false, not a crash
+    CHECK(cmd::filter("").size() == 2);
+    // ...and the surviving entries keep their handlers, not just their names.
+    CHECK(cmd::run("release.promote").ok);
+}
+
 static void test_release_commands() {
     cmd::clear();
     cmd::register_release_commands({"fps"});
@@ -153,6 +193,7 @@ static void test_release_commands() {
 
 int main() {
     test_registry();
+    test_filter_and_unregister();
     test_release_commands();
     if (g_failures == 0) std::printf("commands: all tests passed\n");
     else                 std::printf("commands: %d FAILURE(S)\n", g_failures);
