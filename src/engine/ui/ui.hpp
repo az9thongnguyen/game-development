@@ -90,6 +90,13 @@ public:
     // `primary` uses the accent fill (one hot-action per screen); `enabled=false`
     // draws a muted, non-interactive control (always returns false).
     bool button(Rect r, const char* label, bool primary = false, bool enabled = true);
+    // An interactive region that draws NOTHING: the caller paints it (a colour
+    // swatch, a tile, a canvas) and this supplies the hover/press/focus/click
+    // machinery, so a custom-drawn control behaves like every other one instead of
+    // hand-rolling its own hit test. `hovered` reports the pointer for the caller's
+    // own feedback, since there is no default appearance to show it with.
+    bool hit(const char* id, Rect r, bool* hovered = nullptr);
+
     bool checkbox(Rect r, const char* label, bool& value);     // true if toggled
     bool slider(Rect r, const char* label, float& value, float lo, float hi);  // true if changed
     void label(int x, int y, const char* text, gfx::Color color = gfx::colors::white);
@@ -188,6 +195,15 @@ public:
     // scene that wants to skip its own shortcuts while a text field has focus.
     [[nodiscard]] Id focused() const { return focused_; }
     void set_focus(Id id) { focused_ = id; }
+    // The id a label resolves to in the CURRENT scope, so a caller can focus a widget
+    // it is about to declare (a palette's query field must have the keyboard the
+    // moment it opens, and only the caller knows that).
+    [[nodiscard]] Id id_for(const char* label) const { return id_of(label); }
+
+    // Suspend/restore inert mode, returning the previous value. An overlay that owns
+    // the screen needs live controls while everything behind it stays inert; confirm()
+    // does this internally, and this is the same seam for one built outside.
+    bool set_inert(bool on) { const bool was = inert_; inert_ = on; return was; }
 
 private:
     Id   id_of(const char* s) const;      // hashes the label, mixed with the id stack

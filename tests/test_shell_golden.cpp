@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "engine/assets.hpp"
+#include "engine/commands/registry.hpp"
 #include "engine/hub/hub_build.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/scene.hpp"
@@ -39,6 +40,9 @@ static int g_failures = 0;
 
 namespace {
 
+// One logical pixel out of a physical buffer.
+std::uint32_t at_px(const std::vector<std::uint32_t>& b, int lx, int ly);
+
 constexpr int LW = 1280, LH = 720, SS = 2;       // the same size --shell runs at
 constexpr int PW = LW * SS, PH = LH * SS;
 
@@ -53,6 +57,10 @@ void dump_ppm(const std::vector<std::uint32_t>& buf, int pw, int ph, const char*
         }
         std::fclose(f);
     }
+}
+
+std::uint32_t at_px(const std::vector<std::uint32_t>& b, int lx, int ly) {
+    return b[static_cast<std::size_t>(ly * SS) * PW + lx * SS];
 }
 
 } // namespace
@@ -83,13 +91,22 @@ int main() {
     platform::Framebuffer fb{buf.data(), PW, PH, PW};
     platform::InputState  input{};                 // no mouse over anything, no keys
 
-    const char* names[] = {"hub", "guide", "learn", "about"};
-    for (int section = 0; section < 4; ++section) {
-        // Section 0 is the default; step to the next one with a Tab edge each round.
+    const char* names[] = {"map", "hub", "guide", "learn", "about"};
+    constexpr int kSections = 5;
+
+    // A fingerprint of the CONTENT area only (right of the rail). The previous version
+    // of this loop pressed Tab, which the shell does not bind to navigation — so it
+    // rendered section 0 five times and still passed every structural check. Comparing
+    // consecutive fingerprints is what makes "we looked at five screens" true.
+    std::vector<std::uint64_t> prints;
+
+    for (int section = 0; section < kSections; ++section) {
+        // Section 0 is the default; the rail is on Cmd/Ctrl+1..5.
         if (section > 0) {
-            platform::InputState tab{};
-            tab.key_pressed[static_cast<int>(platform::Key::Tab)] = true;
-            scene.update(1.0 / 60.0, tab);
+            platform::InputState nav{};
+            nav.mods.super = nav.mods.ctrl = true;
+            nav.key_pressed[static_cast<int>(platform::Key::Num1) + section] = true;
+            scene.update(1.0 / 60.0, nav);
         }
         scene.update(1.0 / 60.0, input);
 
@@ -103,8 +120,6 @@ int main() {
         // The rail is a solid elevated strip on the left, separated by a hairline.
         CHECK(at(60, 400) == th::elevated);
         CHECK(at(199, 400) == th::border);
-        // ...and the content area behind it is the window background.
-        CHECK(at(1270, 700) == th::bg);
 
         // Text was actually rasterized: the anti-aliased glyphs put pixels on the
         // rail that are neither the surface colour nor any flat token.
@@ -121,13 +136,82 @@ int main() {
         // Exactly one nav item is the primary (accent) button — the one-hot-action
         // rule, enforced rather than eyeballed.
         int accent_rows = 0;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < kSections; ++i) {
             const int ry = (24 + 20 + 24) + i * (32 + 4) + 16;   // middle of nav item i
             if (at(20, ry) == th::accent) ++accent_rows;
         }
         CHECK(accent_rows == 1);
 
+        std::uint64_t print = 1469598103934665603ull;
+        for (int y = 0; y < PH; ++y)
+            for (int x = 210 * SS; x < PW; ++x)
+                print = (print ^ buf[static_cast<std::size_t>(y) * PW + x]) * 1099511628211ull;
+        prints.push_back(print);
+
         dump_ppm(buf, PW, PH, (std::string("shell_") + names[section] + ".ppm").c_str());
+    }
+
+    // Five sections, five different screens.
+    for (std::size_t i = 1; i < prints.size(); ++i) CHECK(prints[i] != prints[i - 1]);
+    CHECK(prints[0] != prints[prints.size() - 1]);
+
+    // ---------------------------------------------------------------------
+    //  The Map workspace: the project's declared map is actually on screen, and the
+    //  command palette lists what this process can do.
+    // ---------------------------------------------------------------------
+    {
+        studioshell::StudioShellScene sc(kProject);        // opens on Map
+        CHECK(sc.map_workspace().loaded());
+        CHECK(sc.map_workspace().path() == "maps/level_00.map");
+        CHECK(!sc.map_workspace().dirty());                // opening is not editing
+
+        std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+        platform::Framebuffer f{b.data(), PW, PH, PW};
+        const auto render = [&](const platform::InputState& in) {
+            for (auto& p : b) p = 0;
+            gfx::Renderer2D r(f, SS);
+            const engine::Context c{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            sc.render(c);
+        };
+
+        sc.update(1.0 / 60.0, input);
+        render(input);
+
+        // The map is actually ON SCREEN: the canvas is mostly its own surface colour,
+        // and a rendered map covers a large part of it with something else. A failed
+        // load draws one line of warning text, a few hundred anti-aliased pixels —
+        // nowhere near this. (Counting one exact tile colour would not work: the
+        // collision mask washes red over the walls it marks.)
+        int ink = 0;
+        for (int y = 100 * SS; y < 600 * SS; ++y)
+            for (int x = 240 * SS; x < 900 * SS; ++x) {
+                const std::uint32_t p = b[static_cast<std::size_t>(y) * PW + x];
+                if (p != th::elevated && p != th::bg) ++ink;
+            }
+        CHECK(ink > 20000);
+
+        // ---- command palette ----
+        platform::InputState k{};
+        k.mods.super = k.mods.ctrl = true;
+        k.key_pressed[static_cast<int>(platform::Key::K)] = true;
+        sc.update(1.0 / 60.0, k);
+        render(input);
+        dump_ppm(b, PW, PH, "shell_palette.ppm");
+
+        // The scrim darkened the rail, so the palette is modal rather than on top...
+        CHECK(at_px(b, 60, 400) != th::elevated);
+        // ...and the workspace's own commands are in it. map.save is registered by
+        // the workspace, so its presence here is the registry and the palette being
+        // the same list rather than two that agree today.
+        CHECK(cmd::exists("map.save"));
+        CHECK(!cmd::filter("save").empty());
+
+        // Escape closes it and the map screen comes back.
+        platform::InputState esc{};
+        esc.key_pressed[static_cast<int>(platform::Key::Escape)] = true;
+        sc.update(1.0 / 60.0, esc);
+        render(input);
+        CHECK(at_px(b, 60, 400) == th::elevated);
     }
 
     // ---------------------------------------------------------------------
@@ -152,9 +236,13 @@ int main() {
             const auto px = [&](int lx, int ly) { return b[(ly * sz.ss) * pw + (lx * sz.ss)]; };
 
             // The rail spans the FULL height whatever that height is — the bug a
-            // hard-coded panel height produces is a rail that stops short.
-            CHECK(px(60, 2) == th::elevated);
-            CHECK(px(60, sz.h - 3) == th::elevated);
+            // hard-coded panel height produces is a rail that stops short. Stated as
+            // "no window background inside the rail" rather than as one probe pixel,
+            // because a probe lands on whatever text happens to be drawn there.
+            bool rail_full_height = true;
+            for (int lx = 0; lx < 199; ++lx)
+                if (px(lx, 2) == th::bg || px(lx, sz.h - 3) == th::bg) rail_full_height = false;
+            CHECK(rail_full_height);
             CHECK(px(199, sz.h / 2) == th::border);
 
             // Nothing overflows the right edge. Checking a single corner is not
@@ -184,6 +272,14 @@ int main() {
         platform::Framebuffer f{b.data(), PW, PH, PW};
 
         studioshell::StudioShellScene sc(kProject);
+
+        // The shell opens on the Map workspace now, so switch to the Hub first.
+        {
+            platform::InputState nav{};
+            nav.mods.super = nav.mods.ctrl = true;
+            nav.key_pressed[static_cast<int>(platform::Key::Num2)] = true;   // section 1 = Hub
+            sc.update(1.0 / 60.0, nav);
+        }
 
         // Space asks to publish; the scene should raise a dialog, not publish.
         platform::InputState space{};
@@ -238,6 +334,10 @@ int main() {
         // as happily if the reason requirement were not enforced at all.
         {
             studioshell::StudioShellScene sc2(kProject);
+            platform::InputState nav2{};
+            nav2.mods.super = nav2.mods.ctrl = true;
+            nav2.key_pressed[static_cast<int>(platform::Key::Num2)] = true;
+            sc2.update(1.0 / 60.0, nav2);
             platform::InputState sp{};
             sp.key_pressed[static_cast<int>(platform::Key::Space)] = true;
             sc2.update(1.0 / 60.0, sp);

@@ -68,6 +68,27 @@ static void test_format() {
     // means opening a map in an editor and saving it produces a spurious diff.
     CHECK(to_text(*m) == text);
 
+    // A tiles layer with NO tileset must survive the same round trip. It used to
+    // serialize to `layer ground tiles` with the field simply missing, and this very
+    // parser then read the following "row" as the tileset name — so a map built in
+    // memory (which is what an editor produces before any art exists) wrote a file
+    // that would not open. The empty tileset is spelled "-".
+    {
+        Map bare;
+        bare.name = "bare"; bare.w = 2; bare.h = 2; bare.tile = 8;
+        Layer l; l.name = "ground"; l.kind = LayerKind::Tiles;
+        l.cells = {1, 0, 0, 2};
+        bare.layers.push_back(std::move(l));
+        const std::string t = to_text(bare);
+        CHECK(t.find("tiles -") != std::string::npos);
+        const auto back = load(t);
+        CHECK(back.has_value());
+        CHECK(back && back->layers.size() == 1);
+        CHECK(back && back->layers[0].tileset.empty());
+        CHECK(back && back->at("ground", 1, 1) == 2);
+        CHECK(back && to_text(*back) == t);
+    }
+
     // Layer queries, including out of bounds and unknown layers.
     CHECK(m->at("ground", 0, 0) == 1);
     CHECK(m->at("ground", 3, 2) == 12);

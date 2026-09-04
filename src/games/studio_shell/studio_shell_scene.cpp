@@ -6,7 +6,10 @@
 #include <string>
 #include <utility>
 
+#include "engine/assets.hpp"
+#include "engine/commands/registry.hpp"
 #include "engine/hub/hub_build.hpp"
+#include "engine/project/project.hpp"
 #include "engine/release/ops.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/ui/theme.hpp"
@@ -17,7 +20,7 @@ namespace studioshell {
 namespace th = ui::theme;
 
 namespace {
-const char* const kSections[] = {"Hub", "Guide", "Learn", "About"};
+const char* const kSections[] = {"Map", "Hub", "Guide", "Learn", "About"};
 
 // The Learn panel is a static map from the platform to its documentation — the roadmap's
 // "build your first project" journey, pointing at the guide and the chapters behind it.
@@ -63,14 +66,40 @@ const char* const kGuideLines[] = {
     "  --release-status|where development / preview / production point",
     "  --project-verify|<proj> <channel> — exit 0 = match, 2 = drift",
     "",
-    "This shell: click the rail, or Up/Down (or Tab). The Hub tab drives the releases.",
+    "  --shell|this Studio: Map workspace + Hub + these pages",
+    "",
+    "THIS SHELL",
+    "  Cmd+1..5|switch section (click the rail too)   Cmd+K = command palette",
+    "  Map|B/R/G tool, 0-9 brush, RMB erase, MMB pan, wheel zoom, Cmd+S save, Cmd+Z undo",
+    "  Hub|Space publish, 1 promote to preview, 2 to production, R refresh",
 };
 
 }  // namespace
 
+std::string StudioShellScene::map_asset_of(const std::string& project_path) {
+    const auto bytes = assets::load_file(project_path);
+    if (!bytes) return {};
+    const auto proj = engine::parse_project(std::string(bytes->begin(), bytes->end()));
+    if (!proj) return {};
+    for (const engine::AssetRef& a : proj->assets)
+        if (a.type == "map") return a.path;
+    return {};
+}
+
 StudioShellScene::StudioShellScene(std::string project_path)
-    : project_path_(std::move(project_path)), known_entries_{"fps"} {
+    : project_path_(std::move(project_path)),
+      known_entries_{"fps"},
+      map_(map_asset_of(project_path_)) {
     rebuild_hub();
+    // The workspace binds map.* to itself here, so the palette lists exactly what THIS
+    // process can do. --cmd in a terminal sees the release commands and not these,
+    // which is the truth: there is no map open in a terminal.
+    map_.register_commands();
+    if (map_.recovery_pending()) modal_ = Modal::Recovery;
+}
+
+void StudioShellScene::flash(const engine::OpResult& r, double seconds) {
+    flash_ = r.message; flash_ok_ = r.ok; flash_t_ = seconds;
 }
 
 void StudioShellScene::set_clipboard(std::function<std::string()> get,
@@ -106,20 +135,60 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
 
     if (nav_click_ >= 0) { section_ = nav_click_; nav_click_ = -1; }
 
-    // Tab now belongs to the UI (it moves focus between controls), so the nav rail
-    // is driven by the arrow keys alone. A key that means two things means neither.
-    if (confirming_ == hubui::Op::None) {
-        if (in.pressed(platform::Key::Down)) section_ = (section_ + 1) % SectionCount;
-        if (in.pressed(platform::Key::Up))   section_ = (section_ + SectionCount - 1) % SectionCount;
+#ifdef __APPLE__
+    const bool cmd = in.mods.super;
+#else
+    const bool cmd = in.mods.ctrl;
+#endif
+
+    // The rail moved off the arrow keys: a workspace needs them, and a key that means
+    // two things means neither. Cmd+1..5 is what every tabbed application already uses.
+    if (modal_ == Modal::None && cmd && !palette_.is_open()) {
+        for (int i = 0; i < SectionCount; ++i) {
+            const auto k = static_cast<platform::Key>(static_cast<int>(platform::Key::Num1) + i);
+            if (in.pressed(k)) section_ = i;
+        }
     }
 
-    // A click resolves during render (that is where the layout is known) and arrives
-    // here next frame; keys are read directly. Both funnel into one place, so mouse
-    // and keyboard cannot become two different ways of publishing.
+    // ---- command palette ----
+    if (cmd && in.pressed(platform::Key::K) && modal_ == Modal::None) {
+        if (palette_.is_open()) palette_.close(); else palette_.open();
+    }
+    if (palette_.is_open()) {
+        std::string chosen = palette_click_;
+        palette_click_.clear();
+        if (in.pressed(platform::Key::Escape)) palette_.close();
+        if (in.repeated(platform::Key::Down))  palette_.move(1);
+        if (in.repeated(platform::Key::Up))    palette_.move(-1);
+        if (in.pressed(platform::Key::Enter))  chosen = palette_.selected();
+        if (!chosen.empty()) {
+            // A command that needs arguments is listed so you know it exists, but a
+            // one-line box is not where three validated values get typed — the Hub
+            // tab's dialog is. Say what it wants instead of running it wrong.
+            const cmd::Info* info = nullptr;
+            for (const cmd::Info& i : cmd::all()) if (i.id == chosen) info = &i;
+            if (info && !info->args_help.empty()) {
+                flash(engine::OpResult{false, chosen + " needs arguments: " + info->args_help});
+            } else {
+                flash(cmd::run(chosen));
+                rebuild_hub();
+            }
+            palette_.close();
+        }
+        // The palette owns the keyboard while it is up; nothing below sees this frame.
+        map_.update(dt, in, /*interactive*/ false);
+        return;
+    }
+
+    // ---- the map workspace ----
+    map_.update(dt, in, /*interactive*/ modal_ == Modal::None && section_ == Map);
+    if (auto msg = map_.take_message()) flash(*msg);
+
+    // ---- hub operations ----
     hubui::Op asked = requested_;
     requested_ = hubui::Op::None;
 
-    if (section_ == Hub && confirming_ == hubui::Op::None && asked == hubui::Op::None) {
+    if (section_ == Hub && modal_ == Modal::None && asked == hubui::Op::None && !cmd) {
         if      (in.pressed(platform::Key::Space)) asked = hubui::Op::Publish;
         else if (in.pressed(platform::Key::Num1))  asked = hubui::Op::PromotePreview;
         else if (in.pressed(platform::Key::Num2))  asked = hubui::Op::PromoteProduction;
@@ -130,10 +199,36 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
     // Everything else appends to the audit log and needs a typed reason first.
     if (asked == hubui::Op::Refresh || asked == hubui::Op::CopySourceHash) {
         run(asked);
-    } else if (asked != hubui::Op::None && confirming_ == hubui::Op::None) {
+    } else if (asked != hubui::Op::None && modal_ == Modal::None) {
         confirming_ = asked;
+        modal_ = Modal::HubOp;
         reason_.clear();
     }
+}
+
+// The Map section: canvas on the left, inspector on the right, status strip under
+// both. The split is fixed — a draggable one needs a cursor shape, a hit zone and a
+// persisted position, and no second author has asked for it yet.
+void StudioShellScene::draw_map_section(gfx::Renderer2D& g, ui::Rect area) {
+    const int insp_w = 260;
+    const int status_h = th::sz_caption + th::space_md;
+    const ui::Rect body{area.x, area.y, area.w, area.h - status_h - th::space_sm};
+
+    map_.draw_canvas(ui_, g, ui::Rect{body.x, body.y,
+                                      body.w - insp_w - th::space_md, body.h});
+    map_.draw_inspector(ui_, g, ui::Rect{body.x + body.w - insp_w, body.y, insp_w, body.h});
+
+    g.set_font_size(th::sz_caption);
+    const int sy = area.y + area.h - th::sz_caption;
+    std::string left = map_.loaded()
+                           ? map_.path() + (map_.dirty() ? "  *  unsaved" : "  saved")
+                           : std::string("no map");
+    if (map_.hover_x() >= 0)
+        left += "   tile " + std::to_string(map_.hover_x()) + ", " +
+                std::to_string(map_.hover_y());
+    g.draw_text(area.x, sy, left.c_str(), map_.dirty() ? th::warn : th::text_muted);
+    const char* hint = "Cmd+K commands   Cmd+S save   Cmd+Z undo   MMB pan   wheel zoom";
+    g.draw_text(area.x + area.w - g.text_width(hint), sy, hint, th::text_muted);
 }
 
 void StudioShellScene::render(const engine::Context& ctx) {
@@ -145,9 +240,9 @@ void StudioShellScene::render(const engine::Context& ctx) {
     ui_.set_clipboard(clip_get_, clip_set_);
     ui_.begin(&g, ui::from_platform(ctx.input));
 
-    // Everything behind an open dialog is drawn but inert — that is what makes it
+    // Everything behind an open overlay is drawn but inert — that is what makes it
     // modal rather than merely on top.
-    if (confirming_ != hubui::Op::None) ui_.begin_inert();
+    if (modal_ != Modal::None || palette_.is_open()) ui_.begin_inert();
 
     // ---- left nav rail ----
     const int rail = 200;
@@ -166,14 +261,20 @@ void StudioShellScene::render(const engine::Context& ctx) {
     ui_.pop_id();
 
     g.set_font_size(th::sz_caption);
-    g.draw_text(th::space_lg, h - th::space_xl, "Up / Down to switch", th::text_muted);
+    const int hint_line = th::sz_caption + th::space_xs;
+    g.draw_text(th::space_lg, h - th::space_lg - hint_line * 2, "Cmd+1..5  switch section",
+                th::text_muted);
+    g.draw_text(th::space_lg, h - th::space_lg - hint_line, "Cmd+K  command palette",
+                th::text_muted);
 
     // ---- main panel ----
     const ui::Rect area{rail + th::space_xl, th::space_xl,
                         w - rail - th::space_xl * 2, h - th::space_xl * 2};
     int y = area.y;
 
-    if (section_ == Hub) {
+    if (section_ == Map) {
+        draw_map_section(g, area);
+    } else if (section_ == Hub) {
         const hubui::Op clicked = hubui::draw_hub_panel(ui_, g, hub_ ? &*hub_ : nullptr,
                                                         project_path_, area);
         if (clicked != hubui::Op::None) requested_ = clicked;
@@ -218,13 +319,31 @@ void StudioShellScene::render(const engine::Context& ctx) {
                               th::text_muted);
     }
 
-    if (confirming_ != hubui::Op::None) {
+    // ---- overlays: at most one, and it owns the keyboard ----
+    if (modal_ == Modal::HubOp) {
         const ui::Confirm c = ui_.confirm("hubop", hubui::op_title(confirming_),
                                           hubui::op_body(confirming_),
                                           hubui::op_verb(confirming_),
                                           hubui::op_is_destructive(confirming_), &reason_);
-        if      (c == ui::Confirm::Yes) { run(confirming_); confirming_ = hubui::Op::None; }
-        else if (c == ui::Confirm::No)  { confirming_ = hubui::Op::None; reason_.clear(); }
+        if (c == ui::Confirm::Yes) {
+            run(confirming_);
+            confirming_ = hubui::Op::None; modal_ = Modal::None;
+        } else if (c == ui::Confirm::No) {
+            confirming_ = hubui::Op::None; modal_ = Modal::None; reason_.clear();
+        }
+    } else if (modal_ == Modal::Recovery) {
+        const ui::Confirm c = ui_.confirm(
+            "recover", "Unsaved changes were found",
+            ("An autosave of " + map_.path() + " is newer than the file.").c_str(),
+            "Recover", /*danger*/ false);
+        // Cancel keeps the saved file AND leaves the autosave alone: declining by
+        // reflex must not be the thing that destroys the work.
+        if (c == ui::Confirm::Yes)      { map_.take_recovery();    modal_ = Modal::None; }
+        else if (c == ui::Confirm::No)  { map_.dismiss_recovery(); modal_ = Modal::None; }
+        if (auto msg = map_.take_message()) flash(*msg);
+    } else if (palette_.is_open()) {
+        const std::string clicked = palette_.draw(ui_, g);
+        if (!clicked.empty()) palette_click_ = clicked;
     }
 
     if (flash_t_ > 0 && !flash_.empty())
