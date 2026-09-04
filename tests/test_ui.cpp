@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 static int g_failures = 0;
 #define CHECK(cond)                                                       \
@@ -501,6 +502,202 @@ static void test_overlays() {
     ui.end();
 }
 
+// ---------------------------------------------------------------------------
+//  Text input. The caret and selection are byte offsets that must always land on
+//  UTF-8 boundaries — stepping by byte would let Backspace chop a multi-byte
+//  character in half and leave mojibake behind.
+// ---------------------------------------------------------------------------
+static ui::Input typed(const char* utf8) {
+    ui::Input in{-1000, -1000, false, false, false};
+    in.text = utf8;
+    in.text_len = 0;
+    for (const char* p = utf8; *p; ++p) ++in.text_len;
+    return in;
+}
+
+static void test_text_input() {
+    ui::Context ui;
+    const ui::Rect r{0, 0, 200, 28};
+    std::string v;
+
+    // A fake clipboard, so the widget is testable with no SDL anywhere in sight.
+    std::string board;
+    ui.set_clipboard([&] { return board; }, [&](const std::string& s) { board = s; });
+
+    auto frame = [&](const ui::Input& in) {
+        ui.begin(nullptr, in, 400, 200);
+        const bool ch = ui.text_input("name", r, v);
+        ui.end();
+        return ch;
+    };
+
+    // Click to focus, then type.
+    frame(press(10, 10));
+    frame(release(10, 10));
+    CHECK(frame(typed("ab")));
+    CHECK(v == "ab");
+
+    // Backspace removes one character.
+    ui::Keys bs; bs.backspace = true;
+    frame(keys(bs));
+    CHECK(v == "a");
+
+    // A multi-byte character is ONE backspace, not three. This is the whole reason
+    // the caret walks UTF-8 boundaries.
+    frame(typed("→"));
+    CHECK(v == "a→");
+    frame(keys(bs));
+    CHECK(v == "a");
+
+    // ...and the same for a Vietnamese letter.
+    frame(typed("ế"));
+    CHECK(v == "aế");
+    frame(keys(bs));
+    CHECK(v == "a");
+
+    // Left/right walk by character, not by byte: after typing a 3-byte character,
+    // one Left puts the caret before it, so typing lands in front of it.
+    v.clear();
+    frame(typed("x→"));
+    ui::Keys left; left.left = true;
+    frame(keys(left));
+    frame(typed("Z"));
+    CHECK(v == "xZ→");
+
+    // Select-all then type replaces everything.
+    ui::Keys sa; sa.select_all = true;
+    frame(keys(sa));
+    frame(typed("new"));
+    CHECK(v == "new");
+
+    // Copy / paste round-trips through the seam.
+    frame(keys(sa));
+    ui::Keys cp; cp.copy = true;
+    frame(keys(cp));
+    CHECK(board == "new");
+    ui::Keys end_k; end_k.end = true;
+    frame(keys(end_k));
+    ui::Keys pa; pa.paste = true;
+    frame(keys(pa));
+    CHECK(v == "newnew");
+
+    // Cut removes the selection and puts it on the clipboard.
+    frame(keys(sa));
+    ui::Keys cut; cut.cut = true;
+    frame(keys(cut));
+    CHECK(v.empty());
+    CHECK(board == "newnew");
+
+    // Shift+Left extends a selection rather than moving; typing then replaces it.
+    v = "abcd";
+    frame(keys(end_k));
+    ui::Keys shl; shl.left = true; shl.shift = true;
+    frame(keys(shl));
+    frame(keys(shl));
+    frame(typed("Z"));
+    CHECK(v == "abZ");
+
+    // Delete removes forward; at the end it does nothing rather than misbehaving.
+    v = "ab";
+    ui::Keys home_k; home_k.home = true;
+    frame(keys(home_k));
+    ui::Keys del; del.del = true;
+    frame(keys(del));
+    CHECK(v == "b");
+    frame(keys(end_k));
+    frame(keys(del));
+    CHECK(v == "b");
+    frame(keys(bs));
+    CHECK(v.empty());
+    frame(keys(bs));        // backspace on an empty field: no crash, no change
+    CHECK(v.empty());
+
+    // An unfocused field ignores typing entirely.
+    ui::Context other;
+    std::string v2 = "kept";
+    other.begin(nullptr, typed("XYZ"), 400, 200);
+    other.text_input("f", r, v2);
+    other.end();
+    CHECK(v2 == "kept");
+}
+
+// ---------------------------------------------------------------------------
+//  Scrolling viewport: the wheel moves the content and the offset is clamped to
+//  what there actually is to scroll.
+// ---------------------------------------------------------------------------
+static void test_scroll() {
+    ui::Context ui;
+    const ui::Rect view{0, 0, 100, 100};
+
+    auto scroll_by = [&](int ticks) {
+        ui::Input in{10, 10, false, false, false};
+        in.wheel = ticks;
+        ui.begin(nullptr, in, 400, 400);
+        const ui::Rect content = ui.begin_scroll("list", view, 300);
+        ui.end_scroll();
+        ui.end();
+        return content.y;
+    };
+
+    CHECK(scroll_by(0) == 0);
+    CHECK(scroll_by(-1) == -40);      // one tick down moves content up by 40
+    CHECK(scroll_by(-1) == -80);
+    for (int i = 0; i < 20; ++i) scroll_by(-1);
+    CHECK(scroll_by(0) == -200);      // clamped: 300 content - 100 view
+    for (int i = 0; i < 20; ++i) scroll_by(1);
+    CHECK(scroll_by(0) == 0);         // clamped at the top too
+
+    // Content that fits does not scroll at all.
+    ui::Input in{10, 10, false, false, false};
+    in.wheel = -5;
+    ui.begin(nullptr, in, 400, 400);
+    const ui::Rect c = ui.begin_scroll("small", view, 50);
+    ui.end_scroll();
+    ui.end();
+    CHECK(c.y == 0);
+}
+
+// ---------------------------------------------------------------------------
+//  Tabs and list rows.
+// ---------------------------------------------------------------------------
+static void test_tabs_and_list() {
+    ui::Context ui;
+    const char* labels[] = {"One", "Two", "Three"};
+    const ui::Rect bar{0, 0, 300, 30};
+    int current = 0;
+
+    auto click_tab = [&](int x) {
+        ui.begin(nullptr, press(x, 15), 400, 400);
+        ui.tabs("nav", bar, labels, 3, current);
+        ui.end();
+        ui.begin(nullptr, release(x, 15), 400, 400);
+        current = ui.tabs("nav", bar, labels, 3, current);
+        ui.end();
+    };
+    click_tab(150);   CHECK(current == 1);
+    click_tab(250);   CHECK(current == 2);
+    click_tab(50);    CHECK(current == 0);
+
+    // Clicking the already-selected tab keeps it selected rather than toggling off.
+    click_tab(50);    CHECK(current == 0);
+
+    // A list row reports a click; two rows with the same label are distinguished by
+    // the index scope around them, exactly as a real list would push.
+    const ui::Rect r1{0, 100, 200, 24};
+    const ui::Rect r2{0, 130, 200, 24};
+    bool a = false, b = false;
+    auto rows = [&](const ui::Input& in) {
+        ui.begin(nullptr, in, 400, 400);
+        ui.push_id(0); a = ui.list_item(r1, "item", false); ui.pop_id();
+        ui.push_id(1); b = ui.list_item(r2, "item", true, "12 KB", "new", ui::Tone::Info); ui.pop_id();
+        ui.end();
+    };
+    rows(press(10, 140));
+    rows(release(10, 140));
+    CHECK(!a);
+    CHECK(b);
+}
+
 int main() {
     test_button_click();
     test_checkbox();
@@ -512,6 +709,9 @@ int main() {
     test_layout();
     test_modal();
     test_overlays();
+    test_text_input();
+    test_scroll();
+    test_tabs_and_list();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;

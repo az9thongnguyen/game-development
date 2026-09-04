@@ -149,6 +149,32 @@ public:
     Confirm confirm(const char* id, const char* title, const char* body,
                     const char* yes_label, bool danger = false);
 
+    // ---- more controls -------------------------------------------------------
+    // Editable single-line text. Returns true when the value changed this frame.
+    // Caret and selection are byte offsets that always land on UTF-8 boundaries —
+    // stepping by byte would let a caret sit inside a multi-byte character and
+    // Backspace would then produce mojibake rather than delete a letter.
+    bool text_input(const char* id, Rect r, std::string& value, const char* placeholder = nullptr);
+
+    // Clipboard access as a seam. The widget must not know about SDL — a scene wires
+    // these to platform::clipboard_get/set, and a test wires them to a local string.
+    void set_clipboard(std::function<std::string()> get,
+                       std::function<void(const std::string&)> set);
+
+    // A scrolling viewport. Content is clipped to `r` and offset by the wheel; the
+    // caller draws inside using the returned origin. content_h is how tall the
+    // content is, which the caller knows and the UI cannot.
+    Rect begin_scroll(const char* id, Rect r, int content_h);
+    void end_scroll();
+
+    // A row of tabs. Returns the selected index (which may differ from `current`).
+    int tabs(const char* id, Rect r, const char* const* labels, int count, int current);
+
+    // A selectable row: label on the left, optional secondary text and badge right.
+    bool list_item(Rect r, const char* label, bool selected,
+                   const char* secondary = nullptr, const char* badge_text = nullptr,
+                   Tone badge_tone = Tone::Neutral);
+
     // True if the mouse is over any widget/panel this frame (so the game can ignore
     // a click that the UI consumed). Query it AFTER the widgets, BEFORE or after end().
     [[nodiscard]] bool hovering_ui() const { return hovering_; }
@@ -196,6 +222,18 @@ private:
     // captured state that outlives the frame it came from.
     struct Overlay { bool is_toast; Rect anchor; std::string text; Tone tone; };
     std::vector<Overlay> overlays_;
+
+    // Editing state for the ONE field that has focus. Only one can, so this is a
+    // single record rather than a map keyed by id.
+    struct TextState { Id id = 0; std::size_t caret = 0, anchor = 0; int scroll = 0; };
+    TextState text_{};
+    std::function<std::string()>            clip_get_;
+    std::function<void(const std::string&)> clip_set_;
+
+    struct ScrollState { Id id; int offset; };
+    std::vector<ScrollState> scrolls_;
+    int scroll_depth_ = 0;
+    Id  scroll_open_[4]{};
 };
 
 } // namespace ui

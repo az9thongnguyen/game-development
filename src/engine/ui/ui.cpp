@@ -14,7 +14,10 @@
 
 #include <cstdio>
 
+#include <algorithm>
+
 #include "engine/renderer2d.hpp"
+#include "engine/text/utf8.hpp"
 #include "engine/ui/theme.hpp"
 
 namespace ui {
@@ -475,6 +478,258 @@ Confirm Context::confirm(const char* id, const char* title, const char* body,
     pop_id();
     inert_ = was_inert;
     return result;
+}
+
+// ---- text input -------------------------------------------------------------
+namespace {
+
+// Byte offset of the previous / next UTF-8 boundary. Stepping by byte would let the
+// caret sit inside a multi-byte character, and the next Backspace would then chop a
+// letter in half and leave mojibake behind.
+std::size_t prev_boundary(const std::string& s, std::size_t at) {
+    if (at == 0) return 0;
+    --at;
+    while (at > 0 && (static_cast<unsigned char>(s[at]) & 0xC0u) == 0x80u) --at;
+    return at;
+}
+
+std::size_t next_boundary(const std::string& s, std::size_t at) {
+    if (at >= s.size()) return s.size();
+    ++at;
+    while (at < s.size() && (static_cast<unsigned char>(s[at]) & 0xC0u) == 0x80u) ++at;
+    return at;
+}
+
+} // namespace
+
+void Context::set_clipboard(std::function<std::string()> get,
+                            std::function<void(const std::string&)> set) {
+    clip_get_ = std::move(get);
+    clip_set_ = std::move(set);
+}
+
+bool Context::text_input(const char* id_str, Rect r, std::string& value, const char* placeholder) {
+    const Id id = id_of(id_str);
+    if (!inert_) {
+        tab_order_.push_back(id);
+        const bool over = point_in(r);
+        if (over) { hot_ = id; hovering_ = true; }
+        if (over && in_.pressed) focused_ = id;
+    }
+
+    const bool active = (focused_ == id) && !inert_;
+    if (active && text_.id != id) {                 // just gained focus: select all
+        text_ = TextState{id, value.size(), 0, 0};
+    }
+
+    bool changed = false;
+    if (active) {
+        std::size_t& caret  = text_.caret;
+        std::size_t& anchor = text_.anchor;
+        if (caret > value.size())  caret = value.size();
+        if (anchor > value.size()) anchor = value.size();
+
+        const auto sel_lo = [&] { return caret < anchor ? caret : anchor; };
+        const auto sel_hi = [&] { return caret < anchor ? anchor : caret; };
+        const auto has_sel = [&] { return caret != anchor; };
+        const auto erase_sel = [&] {
+            if (!has_sel()) return false;
+            const std::size_t a = sel_lo(), b = sel_hi();
+            value.erase(a, b - a);
+            caret = anchor = a;
+            return true;
+        };
+        // A move collapses the selection unless Shift is held, which extends it.
+        const auto move_to = [&](std::size_t to) {
+            caret = to;
+            if (!in_.keys.shift) anchor = caret;
+        };
+
+        if (in_.keys.select_all)      { anchor = 0; caret = value.size(); }
+        if (in_.keys.home)            move_to(0);
+        if (in_.keys.end)             move_to(value.size());
+        if (in_.keys.left)            move_to(prev_boundary(value, caret));
+        if (in_.keys.right)           move_to(next_boundary(value, caret));
+
+        if (in_.keys.copy || in_.keys.cut) {
+            if (has_sel() && clip_set_) clip_set_(value.substr(sel_lo(), sel_hi() - sel_lo()));
+            if (in_.keys.cut && erase_sel()) changed = true;
+        }
+        if (in_.keys.paste && clip_get_) {
+            const std::string p = clip_get_();
+            if (!p.empty()) {
+                erase_sel();
+                value.insert(caret, p);
+                caret = anchor = caret + p.size();
+                changed = true;
+            }
+        }
+        if (in_.keys.backspace) {
+            if (erase_sel()) changed = true;
+            else if (caret > 0) {
+                const std::size_t a = prev_boundary(value, caret);
+                value.erase(a, caret - a);
+                caret = anchor = a;
+                changed = true;
+            }
+        }
+        if (in_.keys.del) {
+            if (erase_sel()) changed = true;
+            else if (caret < value.size()) {
+                const std::size_t b = next_boundary(value, caret);
+                value.erase(caret, b - caret);
+                changed = true;
+            }
+        }
+        if (in_.text && in_.text_len > 0) {
+            erase_sel();
+            value.insert(caret, in_.text, in_.text_len);
+            caret = anchor = caret + in_.text_len;
+            changed = true;
+        }
+    }
+
+    if (r_) {
+        if (active) focus_ring(r, th::radius_sm);
+        r_->fill_round_rect(r.x, r.y, r.w, r.h, th::radius_sm, th::bg);
+        r_->draw_round_rect(r.x, r.y, r.w, r.h, th::radius_sm,
+                            active ? th::border_strong : th::border);
+        r_->set_font_size(th::sz_body);
+
+        const int pad = th::space_sm;
+        const int ty  = r.y + (r.h - th::sz_body) / 2;
+        // Clip so a long value cannot spill out of the box, and scroll it so the
+        // caret stays visible.
+        r_->push_clip(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+        if (value.empty() && placeholder && !active) {
+            r_->draw_text(r.x + pad, ty, placeholder, th::text_muted);
+        } else {
+            int caret_x = 0;
+            if (active) {
+                const std::string before = value.substr(0, text_.caret);
+                caret_x = r_->text_width(before.c_str());
+                const int inner = r.w - pad * 2;
+                if (caret_x - text_.scroll > inner) text_.scroll = caret_x - inner;
+                if (caret_x - text_.scroll < 0)     text_.scroll = caret_x;
+                if (text_.scroll < 0)               text_.scroll = 0;
+            }
+            const int tx = r.x + pad - (active ? text_.scroll : 0);
+
+            if (active && text_.caret != text_.anchor) {
+                const std::size_t a = std::min(text_.caret, text_.anchor);
+                const std::size_t b = std::max(text_.caret, text_.anchor);
+                const int ax = r_->text_width(value.substr(0, a).c_str());
+                const int bx = r_->text_width(value.substr(0, b).c_str());
+                r_->fill_rect(tx + ax, ty - 2, bx - ax, th::sz_body + 4,
+                              th::mix(th::accent, th::bg, 35));
+            }
+            r_->draw_text(tx, ty, value.c_str(), th::text);
+            if (active) r_->fill_rect(tx + caret_x, ty - 2, 1, th::sz_body + 4, th::text);
+        }
+        r_->pop_clip();
+    }
+    return changed;
+}
+
+// ---- scrolling viewport -----------------------------------------------------
+Rect Context::begin_scroll(const char* id_str, Rect r, int content_h) {
+    const Id id = id_of(id_str);
+    int* off = nullptr;
+    for (auto& s : scrolls_) if (s.id == id) { off = &s.offset; break; }
+    if (!off) { scrolls_.push_back(ScrollState{id, 0}); off = &scrolls_.back().offset; }
+
+    const int max_off = content_h > r.h ? content_h - r.h : 0;
+    if (!inert_ && point_in(r)) {
+        hovering_ = true;
+        *off -= in_.wheel * 40;                    // 40px per tick reads as one "line"
+    }
+    if (*off > max_off) *off = max_off;
+    if (*off < 0)       *off = 0;
+
+    if (scroll_depth_ < 4) scroll_open_[scroll_depth_] = id;
+    ++scroll_depth_;
+    if (r_) {
+        r_->push_clip(r.x, r.y, r.w, r.h);
+        // A scrollbar only when there is something to scroll — a permanent track on
+        // content that fits is noise that says "there is more" when there is not.
+        if (max_off > 0) {
+            const int track_w = 4;
+            const int th_h    = r.h * r.h / (content_h > 0 ? content_h : 1);
+            const int th_y    = r.y + (*off) * (r.h - th_h) / (max_off > 0 ? max_off : 1);
+            r_->fill_round_rect(r.x + r.w - track_w - 2, th_y, track_w,
+                                th_h < 16 ? 16 : th_h, 2, th::border_strong);
+        }
+    }
+    return Rect{r.x, r.y - *off, r.w, content_h};   // where the caller draws content
+}
+
+void Context::end_scroll() {
+    if (scroll_depth_ <= 0) return;
+    --scroll_depth_;
+    if (r_) r_->pop_clip();
+}
+
+// ---- tabs -------------------------------------------------------------------
+int Context::tabs(const char* id_str, Rect r, const char* const* labels, int count, int current) {
+    if (count <= 0) return current;
+    push_id(id_str);
+    int result = current;
+    const int w = r.w / count;
+    for (int i = 0; i < count; ++i) {
+        const Rect tr{r.x + i * w, r.y, w, r.h};
+        push_id(i);
+        const Id   id  = id_of(labels[i]);
+        const bool hit = interact(id, tr, /*enabled*/ true);
+        if (hit) result = i;
+        if (r_) {
+            const bool sel = (i == current);
+            if (focused_ == id) focus_ring(tr, 0);
+            r_->fill_rect(tr.x, tr.y, tr.w, tr.h, sel ? th::elevated : th::bg);
+            // The selected tab is marked by an accent underline rather than a filled
+            // pill: a tab is a place you are, not an action you can take, so it must
+            // not compete with the screen's one primary button.
+            if (sel) r_->fill_rect(tr.x, tr.y + tr.h - 2, tr.w, 2, th::accent);
+            r_->set_font_size(th::sz_label);
+            const int tw = r_->text_width(labels[i]);
+            r_->draw_text(tr.x + (tr.w - tw) / 2, tr.y + (tr.h - th::sz_label) / 2,
+                          labels[i], sel ? th::text : th::text_dim);
+        }
+        pop_id();
+    }
+    pop_id();
+    return result;
+}
+
+// ---- list row ---------------------------------------------------------------
+bool Context::list_item(Rect r, const char* label, bool selected,
+                        const char* secondary, const char* badge_text, Tone badge_tone) {
+    const Id   id  = id_of(label);
+    const bool hit = interact(id, r, /*enabled*/ true);
+
+    if (r_) {
+        if (focused_ == id) focus_ring(r, th::radius_sm);
+        if (selected)        r_->fill_round_rect(r.x, r.y, r.w, r.h, th::radius_sm, th::mix(th::accent, th::bg, 22));
+        else if (hot_ == id) r_->fill_round_rect(r.x, r.y, r.w, r.h, th::radius_sm, th::ctrl);
+
+        r_->set_font_size(th::sz_body);
+        r_->draw_text(r.x + th::space_sm, r.y + (r.h - th::sz_body) / 2, label,
+                      selected ? th::text : th::text_dim);
+
+        int right = r.x + r.w - th::space_sm;
+        if (badge_text) {
+            r_->set_font_size(th::sz_caption);
+            const int bw = r_->text_width(badge_text) + th::space_md;
+            right -= bw;
+            badge(right, r.y + (r.h - (th::sz_caption + th::space_sm)) / 2, badge_text, badge_tone);
+        }
+        if (secondary) {
+            r_->set_font_size(th::sz_caption);
+            const int sw = r_->text_width(secondary);
+            r_->draw_text(right - th::space_sm - sw, r.y + (r.h - th::sz_caption) / 2,
+                          secondary, th::text_muted);
+        }
+    }
+    return hit;
 }
 
 } // namespace ui
