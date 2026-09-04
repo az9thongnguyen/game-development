@@ -177,7 +177,15 @@ Action draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
     {
         // Exactly one primary button per screen — whichever step `next_action` names.
         // Everything else stays neutral, so the accent still means "do this".
-        const int bw = 210, bh = 30, gap = th::space_sm;
+        //
+        // Widths come from the space available, not from a constant: the window is
+        // resizable, and four fixed-width buttons run off the right edge below about
+        // 1000px. They shrink to a floor and no further — past that the labels stop
+        // fitting, and that is the point where this row wants to wrap.
+        // ponytail: wrapping is the layout engine's job (S2), not a special case here.
+        const int bh = 30, gap = th::space_sm, refresh_w = 90;
+        const int avail = area.w - refresh_w - gap * 3;
+        const int bw = avail / 3 < 120 ? 120 : (avail / 3 > 210 ? 210 : avail / 3);
         int bx = x;
         const bool ok = view->shippable;
         if (ui.button(ui::Rect{bx, y, bw, bh}, "Publish → development",
@@ -189,7 +197,7 @@ Action draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
         if (ui.button(ui::Rect{bx, y, bw, bh}, "Promote → production",
                       next == engine::Next::PromoteProduction, ok)) act.promote_production = true;
         bx += bw + gap;
-        if (ui.button(ui::Rect{bx, y, 90, bh}, "Refresh")) act.refresh = true;
+        if (ui.button(ui::Rect{bx, y, refresh_w, bh}, "Refresh")) act.refresh = true;
         y += bh + th::space_md;
     }
 

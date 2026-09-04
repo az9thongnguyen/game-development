@@ -42,9 +42,9 @@ namespace {
 constexpr int LW = 1280, LH = 720, SS = 2;       // the same size --shell runs at
 constexpr int PW = LW * SS, PH = LH * SS;
 
-void dump_ppm(const std::vector<std::uint32_t>& buf, const char* name) {
+void dump_ppm(const std::vector<std::uint32_t>& buf, int pw, int ph, const char* name) {
     if (FILE* f = std::fopen(name, "wb")) {
-        std::fprintf(f, "P6\n%d %d\n255\n", PW, PH);
+        std::fprintf(f, "P6\n%d %d\n255\n", pw, ph);
         for (auto p : buf) {
             const unsigned char rgb[3] = {static_cast<unsigned char>((p >> 16) & 0xFF),
                                           static_cast<unsigned char>((p >> 8) & 0xFF),
@@ -127,7 +127,52 @@ int main() {
         }
         CHECK(accent_rows == 1);
 
-        dump_ppm(buf, (std::string("shell_") + names[section] + ".ppm").c_str());
+        dump_ppm(buf, PW, PH, (std::string("shell_") + names[section] + ".ppm").c_str());
+    }
+
+    // ---------------------------------------------------------------------
+    //  The window is resizable, so the shell must lay out at any size. This is
+    //  the half of resizing that can break in our code; SDL's own resize event
+    //  path is not exercised here (see the chapter's verification note).
+    // ---------------------------------------------------------------------
+    {
+        struct Size { int w, h, ss; };
+        const Size sizes[] = {{1280, 720, 2}, {900, 560, 2}, {1600, 1000, 1}, {700, 420, 1}};
+        for (const Size& sz : sizes) {
+            const int pw = sz.w * sz.ss, ph = sz.h * sz.ss;
+            std::vector<std::uint32_t> b(static_cast<std::size_t>(pw) * ph, 0);
+            platform::Framebuffer f{b.data(), pw, ph, pw};
+            gfx::Renderer2D r(f, sz.ss);
+            const engine::Context c{r, input, 1.0 / 60.0, 0.0, 0.0, font.get()};
+
+            studioshell::StudioShellScene sc(kProject);      // fresh: starts on Hub
+            sc.update(1.0 / 60.0, input);
+            sc.render(c);
+
+            const auto px = [&](int lx, int ly) { return b[(ly * sz.ss) * pw + (lx * sz.ss)]; };
+
+            // The rail spans the FULL height whatever that height is — the bug a
+            // hard-coded panel height produces is a rail that stops short.
+            CHECK(px(60, 2) == th::elevated);
+            CHECK(px(60, sz.h - 3) == th::elevated);
+            CHECK(px(199, sz.h / 2) == th::border);
+
+            // Nothing overflows the right edge. Checking a single corner is not
+            // enough — the button row was running off the side while the corner
+            // stayed clean. Scan the whole last logical column instead.
+            bool right_edge_clean = true;
+            for (int ly = 0; ly < sz.h; ++ly)
+                if (px(sz.w - 1, ly) != th::bg) right_edge_clean = false;
+            CHECK(right_edge_clean);
+
+            // ...and the content area is not EMPTY either. Without this, a layout
+            // that drew everything off-screen would pass every check above.
+            int ink = 0;
+            for (int y = 0; y < ph; ++y)
+                for (int x = 210 * sz.ss; x < pw; ++x)
+                    if (b[static_cast<std::size_t>(y) * pw + x] != th::bg) ++ink;
+            CHECK(ink > 1000);
+        }
     }
 
     if (g_failures == 0) std::printf("shell_golden: all tests passed\n");
