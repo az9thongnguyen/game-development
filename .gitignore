@@ -56,3 +56,6 @@ baas/config.json
 
 # Golden-render dumps from test_shell_golden / test_ui_golden (build artifacts)
 *.ppm
+
+# document test scratch base (temp asset root)
+test_document_tmp/

@@ -126,7 +126,7 @@ add_executable(demo
   src/games/runner/worker.cpp
 )
 target_include_directories(demo PRIVATE src)
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core tilemap_core commands_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core tilemap_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -263,6 +263,24 @@ target_link_libraries(test_shell_golden PRIVATE
   hub_build_core hub_core release_ops_core release_core project_core resource_core
   ui_core text_core engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
+
+# ---- Documents: undo/redo history and autosave+recovery for an edited file -------
+# Named `document`, not `studio`: studio_core is already the Texture Lab.
+add_library(document_core STATIC
+  src/engine/document/command_stack.cpp
+  src/engine/document/document.cpp
+)
+target_include_directories(document_core PUBLIC src)
+target_link_libraries(document_core PRIVATE engine_flags)
+
+add_executable(test_document tests/test_document.cpp
+  src/engine/document/command_stack.cpp
+  src/engine/document/document.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_document PRIVATE src)
+target_link_libraries(test_document PRIVATE engine_flags)
+add_test(NAME document COMMAND test_document)
 
 # ---- Commands: every operation, named once and callable from anywhere ------------
 # The registry itself is pure. release_commands binds the platform-spine ops to ids,
