@@ -1,0 +1,9 @@
+gameproject1
+name Farm
+schema 1
+entry farm
+asset map maps/farm_home.map2
+asset data farm/crops.def
+asset data farm/items.def
+asset data farm/npc/anna.sched
+asset data farm/npc/anna.dlg

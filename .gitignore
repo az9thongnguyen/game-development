@@ -62,3 +62,8 @@ test_document_tmp/
 
 # Offscreen render dumps from the golden tests (PPM is already ignored above).
 shell_*.png
+
+# Runtime save games written by the games themselves.
+assets/saves/
+farm_*.png
+farm_*.ppm

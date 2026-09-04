@@ -72,6 +72,7 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ```sh
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
+./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
 ./build/demo --project-inspect  <proj>        # validate/doctor + resource closure
 ./build/demo --project-package  <proj>        # deterministic package manifest (release-id seed)
 ./build/demo --project-publish  <proj> development "reason"   # atomic publish + audit
@@ -147,6 +148,7 @@ Understand these deliberate patterns before editing the build:
   `render3d_core`, `iso_core`, `ecs_core`, `jobs_core`, `mem_core`, `physics_core`,
   `ui_core`, `text_core`, `viz3d_core`, `colony_core`, plus the platform-spine
   cores `project_core`, `resource_core`, `release_core`, `release_ops_core`,
+  the game cores `farm_core` (day loop, crops, NPC schedules, dialogue — no renderer),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
   `particles_core`, `tween_core`, `light_core`, `audio_core`,
@@ -180,7 +182,9 @@ is the thing most likely to be broken by a careless edit:
 1. **`game.project` manifest** (`project_core`) — a versioned text file that declares
    identity, an `entry` (which game to launch), and its content as `asset <type> <path>`
    lines. `--project` launches from it; `src/main.cpp`'s `launch_entry` seam maps an
-   entry name to a scene, so a new game needs no new CLI flag.
+   entry name to a scene, so a new game needs no new CLI flag. **The farm game is the
+   proof**: `projects/farm.gameproject` added a game with a manifest and a scene, and
+   inspect/package/publish/hub all worked on it unchanged.
 2. **Resource closure** (`resource_core`) — hand-written FNV-1a `content_hash` over each
    declared asset. `--project` **hard-refuses** to launch with a missing dependency.
 3. **Package** (`resource_core::build_package`) — resources sorted by path + a combined

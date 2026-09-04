@@ -25,12 +25,16 @@ struct Vec2f { float x = 0.0f, y = 0.0f; };
 
 class Camera2D {
 public:
-    // Viewport size in world units (= screen pixels at zoom 1).
-    void set_viewport(int w, int h) { vw_ = w; vh_ = h; }
+    // Viewport size in world units (= screen pixels at zoom 1). Re-clamps: the bounds
+    // are a relationship between the world and the VIEW, so a camera that was legal
+    // for the old size is not automatically legal for the new one. Without this a
+    // window resize — or simply setting the size after the first snap_to, which is
+    // when a scene learns how big its framebuffer is — leaves the view off the world.
+    void set_viewport(int w, int h) { vw_ = w; vh_ = h; clamp(); }
 
     // Clamp the camera so the viewport never shows outside [0,w)x[0,h) world units.
     // A world smaller than the viewport is CENTRED rather than clamped to a corner.
-    void set_bounds(float w, float h) { bw_ = w; bh_ = h; has_bounds_ = true; }
+    void set_bounds(float w, float h) { bw_ = w; bh_ = h; has_bounds_ = true; clamp(); }
     void clear_bounds() { has_bounds_ = false; }
 
     // Half-size of the box around the camera centre that the target may move in

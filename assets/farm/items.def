@@ -1,0 +1,9 @@
+# Tools are what you hold; crops and seeds are what you carry.
+item hoe          type=tool tier=1
+item watering_can type=tool tier=1
+item parsnip type=crop sell=35
+item turnip  type=crop sell=15
+item pumpkin type=crop sell=90
+item parsnip_seed type=seed sell=10
+item turnip_seed  type=seed sell=4
+item pumpkin_seed type=seed sell=25
