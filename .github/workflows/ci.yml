@@ -110,3 +110,41 @@ jobs:
             echo "promote with an empty reason was accepted — it must not be" >&2
             exit 1
           fi
+
+  # ---------------------------------------------------------------------------
+  #  Web build — the gate that used to be "it links"
+  # ---------------------------------------------------------------------------
+  #  Every earlier slice reported "web build green", and that only ever meant the
+  #  Emscripten link succeeded. It had never RUN: the first time the page was
+  #  opened it died at SDL_CreateRenderer, and the bundle turned out to be
+  #  shipping the developer's own saves/ and releases/ (chapter 118).
+  #
+  #  Linking is still worth gating. What is added here is the check that costs
+  #  nothing and would have caught the leak: the preload manifest inside demo.js
+  #  must not name a file from a directory that is gitignored as local state.
+  #
+  #  NOTE: written but not run in the authoring environment.
+  web-build:
+    name: web build (emscripten)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.61
+
+      - name: Configure + build (wasm)
+        run: |
+          emcmake cmake -B build-web
+          cmake --build build-web --target demo -j
+
+      - name: The bundle must not contain this machine's state
+        run: |
+          # demo.js carries the preload manifest as filename:"..." entries.
+          if grep -oE 'filename:"[^"]+"' build-web/demo.js \
+             | grep -E '/(saves|releases|channels)/'; then
+            echo "::error::the web bundle preloads local state (see the lines above)"
+            exit 1
+          fi
+          echo "preloaded entries: $(grep -oc 'filename:"' build-web/demo.js || true)"
