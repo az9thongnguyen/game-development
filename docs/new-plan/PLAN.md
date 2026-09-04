@@ -1,7 +1,14 @@
 # PLAN — Cải tổ UI/UX và hoàn thiện game-development
 
 **Ngày:** 2026-09-04 · **Trạng thái gốc:** `main` @ `81d3a81` (282 commits, 61 test suites xanh)
-**Đọc kèm:** `SPEC.md` (spec kỹ thuật từng slice). File này trả lời *làm gì, theo thứ tự nào, xong khi nào*; `SPEC.md` trả lời *làm như thế nào*.
+**Đọc kèm:** `SPEC.md` (spec kỹ thuật từng slice) — **đọc `SPEC.md §0` trước**: nó
+liệt kê mọi chỗ bản gốc đoán sai về code. File này trả lời *làm gì, theo thứ tự nào,
+xong khi nào*; `SPEC.md` trả lời *làm như thế nào*. `PROGRESS.md` giữ trạng thái thực thi.
+
+**Đã đối chiếu code 2026-09-04.** Bản gốc viết trước khi đọc `src/`. Kết luận: hướng
+đi đúng, nhưng **chẩn đoán UI sai về cái gì đã tồn tại** — design system, font AA,
+anti-aliasing, rounded rect, soft shadow và golden test đều đã có từ chương 68–71.
+S1 nhỏ hơn nhiều so với ước lượng gốc; S2 lớn hơn nhiều.
 
 ---
 
@@ -43,9 +50,26 @@ Nếu giả định nào sai, sửa ở đây trước, rồi sửa SPEC.
 
 ---
 
-## 2. Chẩn đoán UI/UX hiện tại (từ screenshot + code layout)
+## 2. Chẩn đoán UI/UX hiện tại `[đã sửa sau khi đọc code — xem SPEC §0.2–0.3]`
 
-Tôi chưa đọc code `ui.cpp`, chỉ suy từ ảnh và brief. Những lỗi/thiếu **nhìn thấy được**:
+> **Cảnh báo:** phần dưới đây là chẩn đoán gốc, suy từ ảnh chụp màn hình. Sau khi
+> đọc code, **3 trong 4 nguyên nhân là sai**. Nguyên nhân thật:
+>
+> 1. **Chữ thô** — `--shell` và `--hub-ui` là hai scene windowed **duy nhất** thiếu
+>    `cfg.supersample = kAA` (15 scene khác đều có). Sửa: 2 dòng.
+> 2. **`???`** — `font.cpp:19-23` ép mọi byte ngoài ASCII thành `'?'`; "→" là 3
+>    byte UTF-8 nên ra đúng 3 dấu `?`. Thiếu **UTF-8 decode**, không phải thiếu glyph.
+> 3. **Nhìn như "in text"** — `studio_shell` và `hub` **không dùng `ui::Context`**
+>    và không include `theme.hpp` (24 và 9 literal màu thô). 9 scene khác thì có.
+>    Thư viện không thiếu widget cơ bản — hai màn đó chỉ không dùng nó.
+> 4. **Shadow** — `drop_shadow()` là soft shadow alpha thật và `ui::panel` gọi đúng;
+>    xem lại sau khi sửa supersample trước khi coi là bug.
+>
+> Cái **thật sự** thiếu ở tầng thư viện: bàn phím/focus/wheel/modifier trong
+> `ui::Input`, id stack, clip/scissor, thứ tự vẽ overlay, layout flex, scroll,
+> text input, clipboard. Đó là nội dung S2.
+
+Chẩn đoán gốc (giữ lại để đối chiếu):
 
 **Studio shell (`--shell`)**
 - Nav rail: chữ "Studio" bị **cắt phần trên** → bug tính baseline/ascent khi vẽ text hoặc clip rect sai.
@@ -61,13 +85,14 @@ Tôi chưa đọc code `ui.cpp`, chỉ suy từ ảnh và brief. Những lỗi/t
 - Status bar là **một câu dài** ghép nhiều lệnh bằng dấu `-`.
 - Actor là hình khối màu — chấp nhận được cho sandbox, nhưng không có outline chọn, không grid, không snap, không zoom/pan.
 
-**Suy ra thiếu ở tầng thư viện `ui`**
-- Không có **draw list phân lớp** (base / overlay / tooltip) → popup không thể đè đúng, shadow vẽ trực tiếp.
-- Không có **layout engine** → mọi widget đặt bằng toạ độ tay → không responsive khi đổi resolution.
-- Không có **id stack** ổn định cho widget stateful (text input, tree open state).
-- Không có **theme/tokens**.
-- Không có **glyph atlas** (mỗi frame rasterize lại? — cần xác minh) và không có type scale.
-- Không có **clipboard, cursor, text-input event** ở platform seam.
+**Suy ra thiếu ở tầng thư viện `ui`** *(đã kiểm — 2 dòng sai, đánh dấu ~~gạch~~)*
+- Không có **thứ tự vẽ overlay** → popup khai báo sớm bị widget sau vẽ đè. ✅ đúng
+- Không có **layout engine** → mọi widget nhận `Rect` tuyệt đối. ✅ đúng
+- Không có **id stack** ổn định cho widget stateful. ✅ đúng (ceiling ghi ở `ui.hpp:50-53`)
+- ~~Không có theme/tokens~~ → **SAI: `theme.hpp` đã có đủ token, scale, radius, shadow.**
+- ~~Không có glyph atlas~~ → **SAI: `font.cpp:39-79` cache per-size, rasterize một lần.**
+- Không có **clipboard, cursor, text-input event** ở platform seam. ✅ đúng
+- *(bổ sung)* Không có **clip/scissor** ở bất kỳ đâu — panel không cắt nội dung tràn.
 
 Đây đúng là gap #4 trong brief: "Studio shell là frame, không phải authoring product".
 
@@ -94,8 +119,8 @@ Quy ước: **[UI]** = nền UI/Studio, **[RT]** = runtime/game, **[WEB]**, **[O
 
 | # | Slice | Loại | Size | Chapter | Phụ thuộc |
 |---|---|---|---|---|---|
-| S1 | Text & font atlas, UTF-8, HiDPI logical size, sửa 4 bug nhìn thấy | UI | M | 108 | — |
-| S2 | `ui` v2: theme tokens, draw list phân lớp, layout engine, bộ widget, id stack, clipboard/cursor/text-input ở platform seam | UI | L | 109 | S1 |
+| S1 | UTF-8 + glyph theo codepoint, độ nét (supersample), Studio/Hub dùng design system sẵn có | UI | **S** | 108 | — |
+| S2 | `ui` v2: **platform seam trước** (bàn phím/wheel/modifier/text-input/clipboard/cursor + `Key` enum), clip stack, hoãn-overlay, id stack, focus, layout engine, bộ widget rút gọn, cửa sổ resizable | UI | **XL** | 109 | S1 |
 | S3 | `tilemap_core` v2 (layers/collision/triggers/autotile) + `camera2d` + migrate Map Lab format | RT | M | 110 | — |
 | S4 | Studio unified shell: workspace model, `commands_core` registry, `CommandStack` undo/redo, autosave/recovery, hấp thụ Sandbox + Map Lab | UI | L | 111–112 | S2, S3 |
 | S5 | **Farm — vertical slice** (đi lại, cuốc/tưới/thu hoạch, ngày-đêm, 1 NPC, save/load, `.gameproject`) | RT | L | 113 | S3 |
@@ -105,7 +130,7 @@ Quy ước: **[UI]** = nền UI/Studio, **[RT]** = runtime/game, **[WEB]**, **[O
 | S9 | Web: `shell.html` redesign, Collection page, touch controls, dashboard BaaS redesign, README/GIF/license audit | WEB | M | 118 | S2 |
 | S10 | **Creature RPG — MVP**: overworld, encounter, battle turn-based, party, catch, save | RT | XL | 119–120 | S3, S4 |
 | S11 | Creature RPG: battle replay → BaaS replays; PvP realtime (deterministic sim, seed share); leaderboard ELO | RT | L | 121 | S10 |
-| S12 | OPS: CI xác minh thật (gh auth), Docker `/healthz` trên amd64 runner, Postgres adapter, TOCTOU purchase dưới một transaction | OPS | M | 122 | — (chèn bất kỳ lúc nào cần "đổi gió") |
+| S12 | OPS: CI xác minh thật (gh auth), Docker `/healthz` trên amd64 runner, **Postgres adapter + `FOR UPDATE` purchase đi CÙNG NHAU** (SPEC §0.4) | OPS | M | 122 | — (chèn bất kỳ lúc nào cần "đổi gió") |
 | S13 | Stretch: Terraria-like world (chunked, noise, jobs lighting, platformer physics); Chess online qua realtime | RT | XL | 123+ | S3, S11 |
 
 **Điểm dừng có thể show được** (milestone demo):
@@ -118,19 +143,32 @@ Quy ước: **[UI]** = nền UI/Studio, **[RT]** = runtime/game, **[WEB]**, **[O
 
 ## 5. Chi tiết từng slice — mục tiêu, deliverable, tiêu chí xong
 
-### S1 — Text & font atlas, HiDPI, sửa bug nhìn thấy `[UI · M · ch.108]`
+### S1 — UTF-8, độ nét, Studio dùng design system `[UI · S · ch.108]` `[đã sửa]`
 
-**Mục tiêu.** Chữ đẹp, đúng, rẻ; Studio có chỗ để bày layout.
+**Mục tiêu.** Chữ đúng (mọi ngôn ngữ) và nét; hai màn lạc lõng nhất về chung ngôn
+ngữ thị giác với 9 màn còn lại — **không xây gì mới, dùng đúng cái đã có**.
 
 **Deliverable**
-- `text_core`: `FontAtlas` cache glyph theo (font, size) — rasterize **một lần** vào atlas 8-bit, blit từ atlas; UTF-8 decoder; glyph range: ASCII, Latin-1, **Latin Extended Additional (tiếng Việt)**, Arrows `U+2190–2199`, fallback tofu.
-- Bundle 2 font OFL: UI (đề xuất *Inter*) và pixel (đề xuất *m5x7* hoặc *monogram*; kiểm tra license trước khi commit). Ghi `assets/fonts/LICENSE-*.txt`.
-- `platform::Config` thêm `logical_w/h`, `scale_mode` (integer | letterbox), resize callback; Studio 1280×720; hi-DPI mac ra 2× sắc nét.
-- Sửa: chữ cắt trên (baseline), `???` (arrow), shadow rect lệch (tạm thay bằng border cho đến S2), palette trống khi Play (tạm hiện read-only).
+- `text_core`: **UTF-8 decoder** + glyph theo **codepoint** (`unordered_map<char32_t,
+  Glyph>` thay mảng `[95]` khoá bằng `char`). ASCII rasterize sẵn như hiện tại,
+  non-ASCII lazy. Tofu = ô rỗng, **không** phải `'?'`. Sửa ở chỗ chung
+  (`Font::glyph` + cả hai đường `draw_text`), không vá call site.
+  *Không* làm atlas 1024×1024 / shelf packer — xem SPEC §0.4.
+- Sửa lệch làm tròn `text_width()` ÷ `ss_` so với `draw_text` (SPEC §0.4).
+- `cfg.supersample = kAA` cho `--shell` và `--hub-ui`; `--shell` lên **1280×720**.
+- `studio_shell` + `hub_scene` vẽ lại bằng `ui::Context` và `theme.hpp` — bỏ 24 + 9
+  literal màu thô. Hub tab: card channel + badge màu + nút, thay ba dòng text.
+- `--bench-ui`: in ms/frame, để S2 có mốc so sánh.
+- Font pixel: **không cần ở S1** (`Inter` + `JetBrainsMono` đã có sẵn kèm OFL).
+  Nó là việc của S8 khi làm HUD game.
 
-**Test.** `test_text`: decode UTF-8 (`→`, `ế`), atlas không rasterize lần 2 cho glyph đã có, đo `measure_text` khớp với vị trí vẽ. Golden: một màn "type specimen" 5 size.
+**Test.** Mở rộng `test_font`: decode `→` (U+2192) ra **một** glyph chứ không ba;
+`ế` (U+1EBF) ra một glyph; byte UTF-8 hỏng → U+FFFD; codepoint chưa có → tofu;
+`text_width` bằng đúng tổng advance đường vẽ ở `ss=1` và `ss=2`; glyph đã cache
+không rasterize lần hai.
 
-**Xong khi.** Studio ở 1280×720 hiện đúng chữ, không `???`, không cắt; fps của Studio không giảm so với trước (đo bằng `--bench-ui` in ra ms/frame).
+**Xong khi.** `--shell` không còn `???`, hiện đúng một dòng tiếng Việt có dấu, nét
+ngang các scene khác; `ctest` xanh; web build xanh.
 
 ---
 
@@ -308,9 +346,19 @@ Quy ước: **[UI]** = nền UI/Studio, **[RT]** = runtime/game, **[WEB]**, **[O
 
 ---
 
-## 8. Việc cần bạn quyết trước khi bắt đầu S1
+## 8. Quyết định
 
-1. Tên hai game (tôi đang dùng placeholder *Farm* / *Creatures*).
-2. Font: *Inter* + *m5x7* OK không, hay bạn thích font khác? (Cần license OFL/CC0.)
-3. Studio 1280×720 hay 1024×576 (nếu máy bạn yếu)?
-4. Có muốn tôi viết ADR-001…006 luôn sau khi bạn duyệt SPEC không?
+**Đã chốt (2026-09-04):**
+- Chạy liên tục theo slice, không hỏi lại giữa chừng; checkpoint bằng
+  commit/merge/push sau mỗi slice; `PROGRESS.md` giữ state.
+- Repo dọn sạch: 23 branch đã merge và 1 worktree treo đã xoá; chỉ còn `main`.
+- Font: **không cần bundle thêm** — `Inter.ttf` + `JetBrainsMono.ttf` đã có sẵn kèm
+  OFL. Font pixel chỉ mua vui ở S8 (HUD game), không phải điều kiện của S1.
+- Studio **1280×720** (máy chạy được; kèm supersample 2 nên nét).
+
+**Còn treo, hỏi khi tới nơi:**
+1. Tên hai game (đang dùng placeholder *Farm* / *Creatures*) — cần ở S5.
+2. Chọn asset pack pixel-art có license mở — cần ở S5.
+3. Xác nhận xoá 10 flag cũ sau khi Studio hấp thụ — cần ở S6.
+4. ADR-001…006: viết dần theo slice thay vì viết trước một lượt (ADR viết trước khi
+   quyết định thật sự được đưa ra thì chỉ là spec trùng lặp).

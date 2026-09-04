@@ -1,7 +1,111 @@
 # SPEC — Đặc tả kỹ thuật chi tiết
 
 **Đi kèm:** `PLAN.md` (thứ tự và tiêu chí xong). Số mục dưới đây được PLAN tham chiếu (vd "SPEC §2.9").
-**Lưu ý trung thực:** tôi chưa đọc `src/`. Mọi tên hàm/struct dưới đây là **đề xuất API**; khi triển khai, giữ tên hiện có nếu đã tồn tại và chỉ mở rộng. Chỗ nào cần xác minh trong code tôi đánh dấu `[verify]`.
+**Trạng thái:** bản gốc được viết **trước khi đọc `src/`**. Ngày 2026-09-04 toàn bộ
+spec đã được đối chiếu với code; §0 dưới đây liệt kê mọi chỗ sai và cách sửa. Các
+đoạn đã kiểm được đánh dấu `[verified]`, các đoạn bị sửa đánh dấu `[corrected]`.
+Tên hàm/struct vẫn là **đề xuất API** — khi triển khai, **giữ tên hiện có** nếu đã
+tồn tại và chỉ mở rộng.
+
+---
+
+## 0. Đối chiếu code — 2026-09-04 `[corrected]`
+
+Spec gốc giả định lớp UI gần như trống. **Không đúng.** Chương 68–71 đã xây font
+AA, anti-aliasing (SSAA + Wu + coverage), design system với token, và golden test.
+Những gì spec đề nghị "xây mới" phần lớn là **mở rộng** cái đang có.
+
+### 0.1 Đã tồn tại — không xây lại
+
+| Spec nói thiếu | Thực tế | Bằng chứng |
+|---|---|---|
+| theme tokens (§2.1) | **có** — surfaces `bg/elevated/titlebar/border`, control-state `ctrl/ctrl_hover/ctrl_press/ctrl_disabled/track`, text `text/text_dim/text_muted/on_accent`, `accent{,_hover,_press}`, `success/warn/danger`, spacing 4·8·12·16·24, type scale 12·14·16·20·28, radius 6/10, `Shadow` | `src/engine/ui/theme.hpp` · ch. 71 |
+| glyph atlas (§2.8) | **có** — cache theo pixel-size, 95 glyph ASCII rasterize một lần rồi tái dùng | `src/engine/text/font.cpp:39-79` |
+| `fill_round_rect`/`stroke_round_rect` (§2.4) | **có** — `fill_round_rect`, `draw_round_rect`, `fill_circle`, `draw_circle`, coverage AA giải tích | `renderer2d.hpp:55-58` |
+| shadow đúng (§2.3) | **có** — `drop_shadow()` nhiều lớp alpha; `ui::panel()` gọi nó | `renderer2d.hpp:64`, `ui.cpp:155` |
+| alpha blend (§2.4 `fill_rect_alpha`) | **có** — `blend_pixel`, `blend_cov`, `gfx::blend()` source-over | `color.hpp:28-37` |
+| blit coverage 8-bit (§2.4) | **có**, nhưng chỉ inline trong `draw_text` — chưa có API chung | `renderer2d.cpp:365` |
+| render ra off-screen (§3.7 `SubFramebuffer`) | **có sẵn** — `Renderer2D` nhận `platform::Framebuffer` bất kỳ, kể cả buffer do caller cấp | `test_ui_golden.cpp:45-49` |
+| font Inter + mono | **có sẵn** `assets/fonts/Inter.ttf`, `JetBrainsMono.ttf` **kèm OFL** | `assets/fonts/` |
+| golden test | **có** `test_ui_golden`; `test_theme` đã kiểm contrast | `tests/` |
+
+**Hệ quả quan trọng nhất — KHÔNG đổi tên token.** §2.1 đề xuất bảng tên mới
+(`bg.base`, `text.primary`, `accent.hover`…). Đổi tên chạm 9 scene đang dùng
+`theme.hpp` mà không thêm giá trị nào. **Giữ nguyên tên hiện có, chỉ THÊM** token
+còn thiếu: `scrim`, `border_strong`, `info`, biến thể `.soft` (@15%), và 3 màu
+channel `chan_dev/chan_preview/chan_prod`.
+
+### 0.2 Thiếu thật — đây mới là việc của S2
+
+- `ui::Input` chỉ `{mx, my, down, pressed, released}` (`ui.hpp:24`) → **không có bàn
+  phím, focus, wheel, modifier**. Tab-navigation và `Ctrl+K` bất khả thi hôm nay.
+- **Không có id stack** — id là hash một lần của label; ceiling ghi rõ tại `ui.hpp:50-53`.
+- **Không có clip/scissor** ở bất kỳ đâu trong `Renderer2D`. Ràng buộc duy nhất là
+  test mép framebuffer trong `blend_cov` (`renderer2d.cpp:43`). Panel **không** cắt
+  nội dung tràn.
+- **Không có layer/draw list** — mọi widget vẽ thẳng, đồng bộ. Không có z-order.
+- **Không có** scroll region, text input widget, clipboard.
+- **Không có UTF-8 decode** — xem §0.3.
+- **Widget hiện có đúng 4**: `button`, `checkbox`, `slider`, `label` (+ `panel`).
+
+### 0.3 Bốn bug trong screenshot — nguyên nhân thật `[corrected]`
+
+Bảng §2.10 đoán sai 3/4.
+
+| Bug | §2.10 đoán | Nguyên nhân thật |
+|---|---|---|
+| Chữ "Studio" thô, như bị cắt | sai baseline / clip | **Bác bỏ bằng số đo.** `Inter.ttf` tại px=20: `ascent≈16px`, `capHeight≈12px` → đỉnh "S" nằm **dưới** mép trên line box 4px; `draw_text` cài đúng hợp đồng "`y` = top của line" (`renderer2d.cpp:347-370`, `base = y*ss + ascent`). Không có đường nào cắt. **Nguyên nhân là nhoè**: `--shell` và `--hub-ui` là **hai scene windowed duy nhất thiếu `cfg.supersample = kAA`** (15 scene khác đều có) → không SSAA, cộng `smooth=true` + HiDPI → SDL nội suy tuyến tính khi upscale. `main.cpp:434-441, 447-454` |
+| `publish???dev` | thiếu glyph U+2192 | **`font.cpp:19-23`** — `index_of(char)` ép **mọi byte ngoài [32,126] thành `'?'`**; `renderer2d.cpp:313-315` làm y hệt cho đường 8x8. "→" là 3 byte UTF-8 (`E2 86 92`) → **đúng ba dấu `?`**. Không phải thiếu glyph — **thiếu UTF-8 decode**. Cũng là lý do tiếng Việt không hiện được. Chuỗi lỗi nằm ở **hai** chỗ: `studio_shell_scene.cpp:137` và `hub_scene.cpp:61`. |
+| Shadow panel lệch | solid rect offset, không alpha | `drop_shadow` là soft shadow nhiều lớp alpha thật, `ui::panel` gọi đúng (`ui.cpp:155`). **Xem lại ở scale đúng sau khi sửa supersample trước khi coi là bug.** |
+| Hub/Studio như "in text ra màn hình" | thiếu widget | **`studio_shell` và `hub` không dùng `ui::Context` chút nào** — gọi thẳng `g.draw_text` với **24 và 9 literal màu thô**, không include `theme.hpp`. 9 scene khác đều dùng `ui::Context`. Đây là lý do hai màn đó lệch hẳn phần còn lại — không phải vì thư viện thiếu widget. |
+
+### 0.4 Đề xuất thừa, sai tên, hoặc mâu thuẫn `[corrected]`
+
+- **Atlas 1024×1024 + shelf packer (§2.8)** — **bỏ**. Đây là CPU blit, không có
+  texture GPU để pack. Chỉ cần đổi khoá cache từ `char` sang codepoint.
+- **Golden test "so byte, tolerance 0" (§9)** — **mâu thuẫn với quyết định đã ghi**
+  tại `test_ui_golden.cpp:9-12`: cố ý *không* hash pixel vì AA làm tròn khác nhau
+  giữa compiler/kiến trúc (native vs web). **Giữ kiểu invariant** (màu vùng đặc
+  khớp token + có pixel AA), không quay lại byte-diff.
+- **`tools/contrast.py` (§2.9 mục 10)** — **bỏ**: `test_theme` đã kiểm contrast, và
+  repo không có toolchain Python.
+- **`OpResult` (§3.3)** — đã tồn tại `engine::OpResult{ok, message}` tại
+  `release/ops.hpp:18-21`. Dùng lại.
+- **`hub_core::model()` mới (§3.6)** — **không cần**. `HubView`/`HubChannel` đã là
+  struct (`hub/hub.hpp:20-36`); `hub_lines(HubView)` chỉ là bộ format. Chỉ cần
+  **thêm trường** vào `HubView` nếu workspace cần.
+- **`.hrt` là "recipe" (§3.9)** — **sai tên**. `.recipe` là sidecar `key=value`
+  (`studio/recipe.cpp:10-25`); `.hrt` là format raster (`HRT1 | BE w | BE h | RGBA8`,
+  `image.hpp:6-9`). Phải viết "**`.recipe` v2**".
+- **"PNG — encoder tự viết, đã có decoder" (§3.9)** — **sai**: repo **không có cả
+  encoder lẫn decoder PNG**; `third_party/` chỉ có `stb_truetype.h`. → Pixel editor
+  dùng `.hrt` (đã có, đã test, `--anim`/`--sandbox` đã tiêu thụ). PNG chỉ làm khi
+  thật sự cần trao đổi ra ngoài, và khi đó là **hai** bài chứ không phải một.
+- **`IStore` (§11)** — **không tồn tại**; service gọi thẳng `drogon::orm::DbClient`
+  (`baas/db/db.h:38-39`).
+- **TOCTOU purchase (§11)** — hôm nay **an toàn** vì SQLite pool = 1; comment
+  `ponytail:` tại `inv_service.cc:127-131` nói rõ nó **chỉ mở lại khi Postgres pool > 1**.
+  → **`FOR UPDATE` phải đi CÙNG slice Postgres**, không phải một mục riêng sau đó.
+- **`App` giữ MỘT Scene** (`app.hpp:28`), không setter, không stack, không sub-scene
+  → §3.7 (Play viewport) và §4.3 (`scene_stack`) đều phải **sửa `App`**, không chỉ thêm lib.
+- **Bug nhỏ chưa ai để ý**: `text_width()` chia nguyên cho `ss_`
+  (`renderer2d.cpp:341-345`) trong khi `draw_text` giữ pixel vật lý → lệch tới
+  `ss_-1` px khi căn giữa. Sửa ở S1.
+- **Ceiling cần ghi**: `Font::sizes` map **không bao giờ evict** — vô hại với type
+  scale cố định, nhưng một slider chỉnh cỡ chữ sẽ làm nó phình vô hạn.
+
+### 0.5 Những chỗ spec đúng — giữ nguyên `[verified]`
+
+Không có `tilemap_core` dùng chung: **hai grid độc lập** — `fps::Map` (uint8 + text
+`fpsmap1`) và `iso::TileMap` (enum `Terrain`, không có text I/O riêng); maplab
+**không có** layer / collision mask / trigger / tileset ảnh / autotile · **không có
+camera 2D** trong `engine/` (`camera.hpp` chỉ 3D; `iso::Camera2D` là pan 2 float,
+iso-specific) · **không có** format `.anim`, **không có** preset particle trên đĩa ·
+manifest **không có** `cover`/`summary` (schema 1) · `release_ops` **không có**
+`status()`/`log()` — chúng chỉ là hàm local trong `main.cpp:260-288`, nên Release
+workspace sẽ phải nâng chúng lên core · SDK **không có** wrapper store/purchase dù
+BaaS có `/v1/store/*` · `kKnownEntries = {"fps"}` · sandbox **không có** undo và
+**không có** zoom/pan (nhưng **đã có** selection + inspector — §2 nói sai chỗ này).
 
 ---
 
@@ -21,7 +125,15 @@
 
 ## 2. `ui` v2 — Design system và thư viện immediate-mode
 
-### 2.1 Tokens màu (dark, mặc định)
+### 2.1 Tokens màu (dark, mặc định) `[corrected — xem §0.1]`
+
+> **KHÔNG áp dụng bảng dưới đây như một bảng thay thế.** `theme.hpp` đã tồn tại và
+> 9 scene đang dùng tên hiện có (`bg`, `elevated`, `ctrl`, `text`, `text_dim`,
+> `accent`, `success`, `warn`, `danger`…). Đổi tên là churn thuần. **Giữ tên cũ,
+> chỉ thêm** những token thật sự còn thiếu: `scrim`, `border_strong`, `info`, biến
+> thể `.soft` (@15%), và `chan_dev`/`chan_preview`/`chan_prod`. Bảng dưới giữ lại
+> làm *tham chiếu giá trị màu*, không phải tham chiếu tên.
+
 
 Đặt trong `src/engine/ui/theme.hpp` dưới dạng `struct Theme` với các trường `Color` (RGBA8). Không hard-code màu ở bất kỳ widget nào.
 
@@ -69,7 +181,12 @@ Mỗi tông `success/warning/danger/info` có biến thể `.soft` (@ 15%) cho n
 
 - Số hash (`c95febd882741b29`) hiển thị **8 ký tự đầu + tooltip full**, font `mono`, kèm nút copy.
 
-### 2.3 Spacing, radius, elevation
+### 2.3 Spacing, radius, elevation `[corrected]`
+
+> Spacing 4·8·12·16·24, radius 6/10, và `drop_shadow()` nhiều lớp alpha **đã tồn
+> tại** (`theme.hpp`, `renderer2d.hpp:64`). Chỉ còn thiếu `scrim` cho modal và
+> quy ước 3 mức elevation. Chiều cao control chuẩn bên dưới là mới, giữ nguyên.
+
 
 - Spacing scale: `1=4, 2=8, 3=12, 4=16, 5=24, 6=32` (px logical). Padding panel = 4 (16px), gap widget = 2 (8px), gap section = 5.
 - Radius: `sm=3` (badge, input), `md=6` (button, card), `lg=10` (modal).
@@ -80,7 +197,18 @@ Mỗi tông `success/warning/danger/info` có biến thể `.soft` (@ 15%) cho n
 - Focus ring: 2px `accent` ngoài viền, radius +2.
 - Chiều cao control chuẩn: button/input 28px; row list 24px; nav item 32px; top bar 40px; status bar 24px.
 
-### 2.4 Kiến trúc render: DrawList phân lớp + clip stack
+### 2.4 Kiến trúc render: DrawList phân lớp + clip stack `[corrected]`
+
+> **Thu hẹp phạm vi.** `fill_round_rect`/`draw_round_rect`/`fill_circle`/
+> `draw_circle`/`drop_shadow`/alpha-blend/blit coverage 8-bit **đã có**
+> (`renderer2d.hpp:47-76`). Hai thứ thật sự thiếu là **clip stack** và **thứ tự
+> vẽ overlay**.
+>
+> **Và không làm DrawList đầy đủ ở S2.** Vấn đề thật là popup/tooltip/modal khai
+> báo sớm bị widget khai báo sau vẽ đè. Bản nhỏ nhất giải đúng nó là **hoãn riêng
+> phần overlay** sang cuối `end()` — không cần biến mọi widget thành `DrawCmd`.
+> Nâng lên draw list phân lớp đầy đủ chỉ khi bản hoãn-overlay chứng minh là hụt.
+
 
 ```cpp
 namespace ui {
@@ -157,7 +285,17 @@ struct Config { ..., int logical_w, logical_h; ScaleMode scale_mode; bool resiza
 
 SDL: `SDL_StartTextInput`, `SDL_SetCursor`, `SDL_GetClipboardText`. Web: clipboard qua `navigator.clipboard` (EM_JS) — fallback no-op nếu bị chặn; cursor qua CSS `canvas.style.cursor`.
 
-### 2.8 `text_core` — FontAtlas
+### 2.8 `text_core` — FontAtlas `[corrected]`
+
+> **Bỏ atlas 1024×1024 + shelf packer.** Đây là CPU blit — không có texture GPU để
+> pack, và cache per-size hiện tại (`font.cpp:39-79`) đã đúng. Việc thật sự cần:
+> (a) **UTF-8 decode**, (b) đổi khoá cache từ `char` sang **codepoint**
+> (`unordered_map<char32_t, Glyph>`), giữ ASCII rasterize sẵn và non-ASCII lazy,
+> (c) tofu = ô rỗng thay vì `'?'`, (d) sửa lệch làm tròn `text_width` ÷ `ss_`.
+>
+> Mục "Fix bug cắt chữ" bên dưới **không cần** — hợp đồng "`y` = top của line box"
+> đã được cài đúng (`renderer2d.cpp:347-370`); xem §0.3.
+
 
 - `FontAtlas{ font, size, bitmap 8-bit (1024×1024, grow ×2), glyphs: map<codepoint, Glyph{x,y,w,h,bearing,advance}> }`.
 - Rasterize lazily khi gặp codepoint mới (`stbtt_MakeCodepointBitmap`), pack bằng shelf packer tự viết.
@@ -178,7 +316,13 @@ SDL: `SDL_StartTextInput`, `SDL_SetCursor`, `SDL_GetClipboardText`. Web: clipboa
 9. Hover có tooltip nếu label < 3 từ hoặc có hotkey.
 10. Contrast text/nền ≥ 4.5:1 (tính bằng script `tools/contrast.py` — bổ sung).
 
-### 2.10 Sửa 4 bug nhìn thấy (S1)
+### 2.10 Sửa 4 bug nhìn thấy (S1) `[corrected — bảng dưới đoán sai 3/4]`
+
+> **Dùng §0.3 thay cho bảng này.** Tóm tắt: bug #1 là thiếu `supersample = kAA`
+> (2 dòng trong `main.cpp`), không phải baseline; bug #2 là thiếu UTF-8 decode,
+> không phải thiếu glyph; bug #3 nhiều khả năng không phải bug; bug #4 là do
+> `studio_shell`/`hub` không dùng `ui::Context`, không phải thiếu widget.
+
 
 | Bug | Nguyên nhân dự đoán | Fix |
 |---|---|---|
@@ -231,7 +375,7 @@ struct Workspace { virtual const char* name() = 0; virtual void update(Ctx&, flo
 
 ```cpp
 struct CommandInfo { const char* id; const char* title; const char* hotkey; const char* workspace; /* null = global */ };
-struct OpResult { bool ok; std::string message; };   // tái dùng OpResult của release_ops_core [verify]
+// `engine::OpResult{ok, message}` ĐÃ TỒN TẠI — release/ops.hpp:18-21. Dùng lại. [verified]
 using Handler = std::function<OpResult(std::span<const std::string> args)>;
 void register_command(CommandInfo, Handler);
 OpResult run(std::string_view id, std::span<const std::string> args);
@@ -261,7 +405,12 @@ Chạy `project_core` doctor + `resource_core` closure khi: mở project, sau m�
 - Nút Primary = `hub_core::recommend()` (vd "Publish to development"). Nút khác là Secondary. Rollback là Danger.
 - Modal xác nhận: title, diff (danh sách file thay đổi giữa source và channel — lấy từ hai package manifest), **text input reason bắt buộc**, checkbox "I understand production is affected" khi promote/rollback production.
 - Audit timeline: bảng `time · op · channel · from → to · reason`, mới nhất trên cùng.
-- Toàn bộ dữ liệu từ `hub_core::hub_lines` (đã có) + một `hub_core::model()` mới trả struct thay vì lines, để `--hub` headless và workspace dùng chung (`hub_lines` gọi `model` bên trong).
+- Toàn bộ dữ liệu từ `hub_core` **đã là struct rồi** `[corrected]`: `HubView` +
+  `HubChannel` (`hub/hub.hpp:20-36`), `hub_lines(HubView)` chỉ là bộ format và
+  `build_hub_view()` là bộ lắp. **Không cần `model()` mới** — chỉ thêm trường vào
+  `HubView` nếu workspace cần. Việc thật sự thiếu: `release_ops` **không có**
+  `status()`/`log()` (chúng là hàm local trong `main.cpp:260-288`) → nâng lên core
+  để workspace và CLI không sinh bản sao thứ hai.
 
 ### 3.7 Play viewport
 
@@ -276,12 +425,18 @@ Map: tool `paint/erase/fill/rect/pick`, layer list (ẩn/khoá), tileset panel (
 
 ### 3.9 Asset tooling (S7)
 
-**Pixel editor** — document `.png` (+ sidecar `.pxd` giữ layer/palette, text versioned).
+**Pixel editor** `[corrected]` — document **`.hrt`** (+ sidecar `.pxd` giữ
+layer/palette, text versioned). **Không dùng PNG**: repo không có encoder *lẫn*
+decoder PNG (`third_party/` chỉ có `stb_truetype.h`); `.hrt` thì đã có codec, đã
+test, và `--anim`/`--sandbox` đã tiêu thụ. PNG là một bài học riêng, làm khi cần
+trao đổi ra ngoài.
 Tools: pencil (size 1–4), eraser, fill (contiguous/global), line, rect (fill/stroke), ellipse, eyedropper (Alt), select rect + move, mirror X/Y, dither pencil (checker 50%). Layer ≤ 8: opacity, visible, lock. Palette panel: import `.hex`/`.gpl`, lock palette (fill quantize về palette gần nhất), tối đa 64 màu. Onion skin ±1 frame khi mở sheet có `.anim`. Export PNG bằng **encoder tự viết** (zlib stored/fixed-Huffman đủ; deflate động là bài học tuỳ chọn).
 
 **Autotile rule editor** — template blob 47 hiện dạng lưới có nhãn bitmask; click ô để gán tile từ tileset; preview map 8×8 vẽ nhanh để thấy kết quả; lưu vào tileset def (`tileset 1` … `autotile <name> <47 ids>`).
 
-**Texture Lab v2** — recipe `.hrt` v2 là danh sách bước: `noise value|perlin|fbm <params>` → `quantize <palette>` → `dither bayer4|bayer8|none` → `outline <color> <thick>` → `emboss <strength>` → `tile <w> <h>`. Mọi bước deterministic theo seed. Export: tile đơn, tileset 4×4 biến thể, sheet anim (nước) như cũ.
+**Texture Lab v2** `[corrected — `.recipe`, không phải `.hrt`]` — `.recipe` hiện
+là `key=value` phẳng (`studio/recipe.cpp:10-25`); `.hrt` là format **raster**
+(`HRT1 | BE w | BE h | RGBA8`). `.recipe` v2 là danh sách bước: `noise value|perlin|fbm <params>` → `quantize <palette>` → `dither bayer4|bayer8|none` → `outline <color> <thick>` → `emboss <strength>` → `tile <w> <h>`. Mọi bước deterministic theo seed. Export: tile đơn, tileset 4×4 biến thể, sheet anim (nước) như cũ.
 
 **Sprite/Anim editor** — `.anim 1`: `sheet <png> <fw> <fh>`, `clip <name> <fps> <loop> <frame ids>`, `pivot <x> <y>`, `hitbox <clip> <frame> <x y w h>`. Preview play, chọn clip, kéo pivot.
 
@@ -451,7 +606,11 @@ Thêm: `Content-Encoding: gzip` nếu có file `.gz` sẵn bên cạnh (pre-comp
 | `test_pixel_editor`, `test_png_encoder` | ops + round-trip |
 | CI | thêm job: build web + upload screenshot golden làm artifact; job Docker amd64 `/healthz` (S12) |
 
-Golden: PNG lưu `tests/golden/<name>.png`, so sánh byte; script `tools/golden-update.sh` khi cố ý đổi.
+Golden `[corrected]`: **không so byte.** `test_ui_golden.cpp:9-12` đã ghi rõ lý do
+cố ý *không* hash pixel — AA làm tròn khác nhau giữa compiler/kiến trúc (native vs
+web), nên hash không portable. Giữ kiểu hiện có: **màu vùng đặc phải khớp token +
+phải tồn tại pixel AA**, cộng dump PPM để soi bằng mắt. Mở rộng theo widget/màn,
+không đổi cơ chế.
 
 ---
 
@@ -470,8 +629,12 @@ Golden: PNG lưu `tests/golden/<name>.png`, so sánh byte; script `tools/golden-
 
 - **CI**: `gh auth login`; chạy workflow; sửa đến xanh; thêm badge vào README. Ghi vào ledger ngày xác minh.
 - **Docker**: job CI `docker build` trên `ubuntu-latest` (amd64) + `curl /healthz`; cache layer. Local arm64 vẫn có thể skip.
-- **Postgres**: interface `IStore` (đã có? `[verify]`) với 2 adapter; `docker-compose` thêm service `postgres`; migration runner chạy cả hai; test `baas_*` chạy 2 lần với env `STORE=sqlite|postgres` (Postgres chỉ trong CI).
-- **TOCTOU purchase**: SQLite `BEGIN IMMEDIATE` + `UPDATE wallet SET balance=balance-? WHERE user=? AND balance>=?` kiểm `changes()==1` rồi grant, cùng transaction; Postgres `SELECT … FOR UPDATE`. Test concurrency: 50 luồng mua cùng lúc với balance đủ cho 10.
+- **Postgres** `[corrected]`: `IStore` **không tồn tại** — service gọi thẳng
+  `drogon::orm::DbClient` (`baas/db/db.h:38-39`), nên phải *tạo* seam trước. 2 adapter; `docker-compose` thêm service `postgres`; migration runner chạy cả hai; test `baas_*` chạy 2 lần với env `STORE=sqlite|postgres` (Postgres chỉ trong CI).
+- **TOCTOU purchase** `[corrected — phải đi CÙNG bước Postgres]`: hôm nay **an
+  toàn** vì SQLite pool = 1 (comment `ponytail:` tại `inv_service.cc:127-131`); lỗ
+  hổng chỉ mở lại khi pool > 1. Nên đây **không phải mục riêng sau Postgres** — nó
+  là điều kiện để bật Postgres. SQLite `BEGIN IMMEDIATE` + `UPDATE wallet SET balance=balance-? WHERE user=? AND balance>=?` kiểm `changes()==1` rồi grant, cùng transaction; Postgres `SELECT … FOR UPDATE`. Test concurrency: 50 luồng mua cùng lúc với balance đủ cho 10.
 
 ---
 
