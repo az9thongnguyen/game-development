@@ -12,6 +12,7 @@
 
 #include "engine/assets.hpp"
 #include "engine/document/document.hpp"
+#include "engine/image.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/ui/theme.hpp"
 
@@ -123,6 +124,20 @@ void FarmScene::load() {
     if (map_.entity("anna")) world_.npcs.push_back(NpcState{"anna", "", 0, 0});
     update_npcs(world_, map_, schedules_);
 
+    // ---- art ----
+    // A theme that does not parse, or a sheet that will not load, is not fatal: the
+    // farm rendered fine as flat colours for two chapters and still does. It IS
+    // reported, because "the art silently did not load" is a bug that looks like a
+    // design choice.
+    if (auto th = parse_theme(read_text("farm/theme.def"))) {
+        theme_ = *th;
+        if (const auto sheet = gfx::load_image(theme_->sheet))
+            tiles_ = tilemap::Tileset::cut(*sheet, theme_->tile);
+        if (tiles_.count() == 0) problem_art_ = "could not load " + theme_->sheet;
+    } else {
+        problem_art_ = "farm/theme.def did not parse";
+    }
+
     read_bookmark();
 
     cam_.set_deadzone(24.0f, 16.0f);
@@ -149,6 +164,25 @@ void FarmScene::load() {
         }
     }
     ready_ = true;
+}
+
+// One tile of art, or false when this id has none. The two callers then fall back to
+// the flat colour they used to draw — which is how a pack with no water tile still
+// themes the grass, rather than the whole map reverting to squares.
+bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int px, int py) const {
+    // No `id == 0` check: `parse_theme` refuses to map id 0 at all, so an empty cell
+    // can never have a line, and index_of returns -1 for it like any other unmapped
+    // id. The invariant lives in the parser; repeating it here was a guard a
+    // mutation could delete with nothing noticing.
+    if (!theme_ || tiles_.count() == 0) return false;
+    const int index = theme_->index_of(layer, static_cast<int>(id));
+    // ONE condition, two reasons: this id has no line in the theme (-1), or the line
+    // names a tile the sheet does not contain. Written as two guards it read better
+    // and was worse — each one masked the other, so a mutation could delete either
+    // and every test still passed.
+    if (index < 0 || static_cast<std::size_t>(index) >= tiles_.count()) return false;
+    g.blit(tiles_.sprite(static_cast<std::size_t>(index)), px, py);
+    return true;
 }
 
 void FarmScene::say(std::string msg, double seconds) {
@@ -608,7 +642,8 @@ void FarmScene::render(const engine::Context& ctx) {
     for (int y = y0; y <= y1; ++y) {
         for (int x = x0; x <= x1; ++x) {
             const int px = ox + x * kTile, py = oy + y * kTile;
-            g.fill_rect(px, py, kTile, kTile, ground_color(map_.at("ground", x, y)));
+            if (!draw_tile(g, "ground", map_.at("ground", x, y), px, py))
+                g.fill_rect(px, py, kTile, kTile, ground_color(map_.at("ground", x, y)));
 
             if (const Soil* s = world_.at(x, y); s && s->tilled) {
                 g.fill_rect(px, py, kTile, kTile, s->watered ? kWet : kTilled);
@@ -624,7 +659,8 @@ void FarmScene::render(const engine::Context& ctx) {
                 }
             }
             if (const std::int32_t d = map_.at("decor", x, y); d != 0)
-                g.fill_rect(px + 1, py + 1, kTile - 2, kTile - 2, decor_color(d));
+                if (!draw_tile(g, "decor", d, px, py))
+                    g.fill_rect(px + 1, py + 1, kTile - 2, kTile - 2, decor_color(d));
         }
     }
 
