@@ -31,10 +31,34 @@ float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : 
 
 } // namespace
 
-std::uint32_t Context::id_of(const char* s) {
-    std::uint32_t h = 2166136261u;                 // FNV-1a
+Id Context::id_of(const char* s) const {
+    Id h = 2166136261u;                             // FNV-1a
     for (; s && *s; ++s) { h ^= static_cast<unsigned char>(*s); h *= 16777619u; }
+    // Mix in the enclosing scope so the SAME label under two different parents gets
+    // two different ids. Without this, "Delete" in row 3 and "Delete" in row 7 are
+    // one widget and clicking either drives whichever drew last.
+    h ^= id_scope_ + 0x9E3779B9u + (h << 6) + (h >> 2);
     return h ? h : 1u;                              // never 0 (0 = "no id")
+}
+
+void Context::push_id(const char* s) {
+    id_stack_.push_back(id_scope_);
+    Id h = id_scope_ ? id_scope_ : 2166136261u;
+    for (; s && *s; ++s) { h ^= static_cast<unsigned char>(*s); h *= 16777619u; }
+    id_scope_ = h ? h : 1u;
+}
+
+void Context::push_id(int i) {
+    id_stack_.push_back(id_scope_);
+    Id h = id_scope_ ? id_scope_ : 2166136261u;
+    for (int b = 0; b < 4; ++b) { h ^= static_cast<Id>((i >> (b * 8)) & 0xFF); h *= 16777619u; }
+    id_scope_ = h ? h : 1u;
+}
+
+void Context::pop_id() {
+    if (id_stack_.empty()) return;                  // unbalanced: ignore, do not corrupt
+    id_scope_ = id_stack_.back();
+    id_stack_.pop_back();
 }
 
 bool Context::point_in(Rect r) const {
@@ -46,29 +70,77 @@ void Context::begin(gfx::Renderer2D* r, const Input& in) {
     in_       = in;
     hot_      = 0;          // recompute hovered widget each frame
     hovering_ = false;
-    // active_ persists across frames (a drag in progress)
+    id_scope_ = 0;
+    id_stack_.clear();
+    tab_order_.clear();     // rebuilt in declaration order as widgets are called
+    // active_ and focused_ persist across frames (a drag / the keyboard's place)
 }
 
 void Context::end() {
     if (!in_.down) active_ = 0;   // safety: nothing can be active with the button up
+
+    // Tab order is declaration order — the order the caller wrote the widgets in,
+    // which is the order a reader sees them. Resolving it at end() rather than
+    // per-widget means focus moves exactly one step per press however many widgets
+    // are declared after the focused one.
+    if (!tab_order_.empty() && (in_.keys.tab || in_.keys.tab_back)) {
+        std::size_t at = 0;
+        bool found = false;
+        for (std::size_t i = 0; i < tab_order_.size(); ++i)
+            if (tab_order_[i] == focused_) { at = i; found = true; break; }
+
+        const std::size_t n = tab_order_.size();
+        if (!found) {
+            focused_ = in_.keys.tab ? tab_order_.front() : tab_order_.back();
+        } else if (in_.keys.tab) {
+            focused_ = tab_order_[(at + 1) % n];
+        } else {
+            focused_ = tab_order_[(at + n - 1) % n];
+        }
+    }
+
+    // A control that stopped being declared cannot keep the keyboard.
+    if (focused_) {
+        bool still_there = false;
+        for (Id id : tab_order_) if (id == focused_) { still_there = true; break; }
+        if (!still_there) focused_ = 0;
+    }
+}
+
+// Shared hover/press/focus bookkeeping. Every focusable widget routes through this,
+// so "how does a control become hot / active / focused" has exactly one answer.
+bool Context::interact(Id id, Rect r, bool enabled) {
+    if (!enabled) return false;
+    tab_order_.push_back(id);
+
+    const bool over = point_in(r);
+    if (over) { hot_ = id; hovering_ = true; }
+
+    bool activated = false;
+    if (active_ == id) {
+        if (in_.released) { activated = over; active_ = 0; }
+    } else if (over && in_.pressed) {
+        active_  = id;
+        focused_ = id;      // clicking a control also gives it the keyboard
+    }
+
+    // Enter/Space on the focused control does the same thing a click does.
+    if (focused_ == id && in_.keys.activate) activated = true;
+    return activated;
+}
+
+void Context::focus_ring(Rect r, int radius) const {
+    if (!r_) return;
+    r_->draw_round_rect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, radius + 2, th::accent);
 }
 
 // ---- explicit-rect widgets --------------------------------------------------
 bool Context::button(Rect r, const char* label, bool primary, bool enabled) {
-    const std::uint32_t id = id_of(label);
-    const bool over = point_in(r);
-
-    bool clicked = false;
-    if (enabled) {
-        if (over) { hot_ = id; hovering_ = true; }
-        if (active_ == id) {
-            if (in_.released) { clicked = over; active_ = 0; }
-        } else if (over && in_.pressed) {
-            active_ = id;
-        }
-    }
+    const Id   id      = id_of(label);
+    const bool clicked = interact(id, r, enabled);
 
     if (r_) {
+        if (enabled && focused_ == id) focus_ring(r, th::radius_sm);
         gfx::Color bg;
         if (!enabled)     bg = th::ctrl_disabled;
         else if (primary) bg = (active_ == id) ? th::accent_press : (hot_ == id ? th::accent_hover : th::accent);
@@ -86,18 +158,12 @@ bool Context::button(Rect r, const char* label, bool primary, bool enabled) {
 }
 
 bool Context::checkbox(Rect r, const char* label, bool& value) {
-    const std::uint32_t id = id_of(label);
-    const bool over = point_in(r);
-    if (over) { hot_ = id; hovering_ = true; }
-
-    bool toggled = false;
-    if (active_ == id) {
-        if (in_.released) { if (over) { value = !value; toggled = true; } active_ = 0; }
-    } else if (over && in_.pressed) {
-        active_ = id;
-    }
+    const Id   id      = id_of(label);
+    const bool toggled = interact(id, r, /*enabled*/ true);
+    if (toggled) value = !value;
 
     if (r_) {
+        if (focused_ == id) focus_ring(Rect{r.x, r.y, r.h, r.h}, th::radius_sm - 2);
         const int s = r.h;
         r_->fill_round_rect(r.x, r.y, s, s, th::radius_sm - 2, (hot_ == id) ? th::ctrl_hover : th::ctrl);
         r_->draw_round_rect(r.x, r.y, s, s, th::radius_sm - 2, th::border);
@@ -109,17 +175,28 @@ bool Context::checkbox(Rect r, const char* label, bool& value) {
 }
 
 bool Context::slider(Rect r, const char* label, float& value, float lo, float hi) {
-    const std::uint32_t id = id_of(label);
+    const Id   id   = id_of(label);
     const bool over = point_in(r);
+    tab_order_.push_back(id);
     if (over) { hot_ = id; hovering_ = true; }
 
+    // A slider drags rather than clicks, so it does not go through interact():
+    // it stays active while the button is HELD, not until release-over.
     if (active_ == id) {
         if (!in_.down) active_ = 0;
     } else if (over && in_.pressed) {
-        active_ = id;
+        active_  = id;
+        focused_ = id;
     }
 
     bool changed = false;
+    // Keyboard: arrows nudge by 1/50 of the range, so a slider is reachable without
+    // a mouse like every other control.
+    if (focused_ == id && (in_.keys.left || in_.keys.right) && hi > lo) {
+        const float step = (hi - lo) / 50.0f;
+        const float nv   = clampf(value + (in_.keys.right ? step : -step), lo, hi);
+        if (nv != value) { value = nv; changed = true; }
+    }
     if (active_ == id && in_.down && r.w > 0) {
         const float t  = clampf(static_cast<float>(in_.mx - r.x) / static_cast<float>(r.w), 0.0f, 1.0f);
         const float nv = lo + t * (hi - lo);
@@ -127,6 +204,7 @@ bool Context::slider(Rect r, const char* label, float& value, float lo, float hi
     }
 
     if (r_) {
+        if (focused_ == id) focus_ring(Rect{r.x, r.y - 2, r.w, r.h + 4}, th::radius_sm);
         const int cy = r.y + r.h / 2;
         r_->fill_round_rect(r.x, cy - 3, r.w, 6, 3, th::track);           // groove
         const float t  = (hi > lo) ? clampf((value - lo) / (hi - lo), 0.0f, 1.0f) : 0.0f;
