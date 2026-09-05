@@ -188,11 +188,7 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
 
     if (nav_click_ >= 0) { section_ = nav_click_; nav_click_ = -1; }
 
-#ifdef __APPLE__
-    const bool cmd = in.mods.super;
-#else
-    const bool cmd = in.mods.ctrl;
-#endif
+    const bool cmd = in.accel();
 
     // The rail moved off the arrow keys: a workspace needs them, and a key that means
     // two things means neither. Cmd+1..5 is what every tabbed application already uses.

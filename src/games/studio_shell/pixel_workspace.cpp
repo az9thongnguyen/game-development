@@ -286,11 +286,7 @@ void PixelWorkspace::update(double dt, const platform::InputState& in, bool inte
         return;
     }
 
-#ifdef __APPLE__
-    const bool cmd = in.mods.super;
-#else
-    const bool cmd = in.mods.ctrl;
-#endif
+    const bool cmd = in.accel();
     if (cmd && in.pressed(platform::Key::S)) message_ = save();
     if (cmd && in.pressed(platform::Key::Z)) {
         const bool ok = in.mods.shift ? stack_.redo() : stack_.undo();
