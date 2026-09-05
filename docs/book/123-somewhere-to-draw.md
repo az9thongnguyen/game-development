@@ -215,6 +215,31 @@ say why.
 Afterwards, in the browser: pressing `R` switches the tool to Rect, and holding `D` in
 the farm walks the player east.
 
+### And behind it, a second one it had been hiding
+
+With keys arriving, `Cmd+Z` still did nothing. Four files carried this:
+
+```cpp
+#ifdef __APPLE__
+    const bool cmd = in.mods.super;
+#else
+    const bool cmd = in.mods.ctrl;
+#endif
+```
+
+On native that is merely written four times. On the web it is **wrong**: that binary is
+compiled once and run on every OS, `__APPLE__` is not defined for it, and a Mac user in
+a browser had to press Ctrl+S while every other shortcut on their machine is Cmd. A
+compile-time answer to a runtime question.
+
+`InputState::accel()` now answers it in one place and accepts **either** modifier on
+every platform. The cost is that Ctrl+S also saves on a Mac, which nobody has ever
+complained about. Measured in the browser afterwards: a stroke changes 220 screen
+pixels, and Cmd+Z takes it back to 28 — the hover cursor, which moved.
+
+This one could only be found after the first was fixed. A bug that makes a whole
+subsystem silent hides every bug inside it.
+
 ### One harness fact, recorded because the next person will hit it
 
 Key edges are **poll-derived** — `backend_sdl` reads `SDL_GetKeyboardState` once a frame
@@ -229,8 +254,9 @@ keyboard and a too-fast test indistinguishable until you check which one you hav
 | gate | result |
 |---|---|
 | `ctest` | 76/76 (two new suites) |
+| ASan + UBSan | 76/76 clean |
 | mutations | 8 run, 8 killed |
-| web build | links; keyboard input works in a browser for the first time (see above) |
+| web build | links; keyboard input works in a browser for the first time, and `Cmd+Z` with it (see above) |
 | golden path | inspect → publish → verify (exit 0) → hub, all green; release id unchanged |
 | command surface | `--cmd` in a terminal lists **no** `pixel.*` — there is no document open in a terminal, and that is the truth rather than an omission |
 | browser | the editor runs in WASM: a drag paints, the status shows `* unsaved`, undo is enabled and labelled `draw`; `R` switches tool; the farm's `D` walks the player |
