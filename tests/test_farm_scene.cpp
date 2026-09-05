@@ -8,6 +8,8 @@
 // =============================================================================
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <string>
@@ -153,6 +155,12 @@ void write_text(const std::string& path, const std::string& text) {
     assets::write_file(path, std::vector<std::uint8_t>(text.begin(), text.end()));
 }
 
+// Straight to disk, bypassing assets::, because the point is to write OUTSIDE the base
+// path that the scene under test is about to be pointed at.
+void write_text_at(const std::filesystem::path& path, const std::string& text) {
+    std::ofstream(path, std::ios::binary) << text;
+}
+
 // A save file for a world that is unmistakably not the default one.
 std::string save_text(int day, int gold) {
     farm::World w;
@@ -263,28 +271,89 @@ int main() {
     dump_ppm(buf, "farm_planted.ppm");
     const double lit = brightness(buf);
 
-    // ---- the art, and the tile that has none --------------------------------
-    // The theme maps grass, path, trees, walls and stones onto Kenney's sheet; the
-    // pond has no line, because Tiny Town has no water tile. So the frame must
-    // contain the flat water colour and NONE of the other flat colours — which is
-    // the per-id fallback stated as pixels rather than as an intention.
+    // ---- the art, from TWO sheets -------------------------------------------
+    // Grass, path, trees, walls and stones come from Kenney's imported sheet; the pond
+    // comes from a 16x16 tile this project generated in the Texture Lab. Nothing in
+    // the map or the renderer knows they have different origins — which is the claim
+    // "support both" actually makes, and it is only worth anything as pixels.
+    //
+    // Last chapter this block asserted the OPPOSITE for the pond: the flat water
+    // colour had to be present, because Tiny Town has no water tile. It is the same
+    // test with one expectation inverted, and that inversion is the slice.
     {
-        CHECK(scene.tile_count() == 132);          // 192x176 of 16px tiles
+        CHECK(scene.tile_count("town")  == 132);   // 192x176 of 16px tiles
+        CHECK(scene.tile_count("water") == 1);     // one tile, one file, one licence
         render(idle);
-        int grass = 0, path = 0, tree = 0, water = 0;
+        int grass = 0, path = 0, tree = 0, flat_water = 0, deep = 0, ripple = 0;
         for (std::uint32_t p : buf) {
             if (p == 0xFF4E7A3Cu) ++grass;         // the flat colours from before art
             if (p == 0xFF9A7B4Fu) ++path;
             if (p == 0xFF23482Au) ++tree;
-            if (p == 0xFF2E6E8Eu) ++water;
+            if (p == 0xFF2E6E8Eu) ++flat_water;
+            if (p == 0xFF2B5CA3u) ++deep;          // the drawn tile's two shades
+            if (p == 0xFF609EDEu) ++ripple;
         }
         CHECK(grass == 0);
         CHECK(path  == 0);
         CHECK(tree  == 0);
-        CHECK(water > 0);                          // ...and the pond is still painted
+        CHECK(flat_water == 0);                    // the last id to still be a rectangle
+        CHECK(deep   > 0);
+        // The highlight is 1/8 of the tile, so it is the half of the art that a
+        // "close enough" tile would lose. Counting only the base colour would pass on
+        // a flat blue square, which is exactly what this replaced.
+        CHECK(ripple > 0);
+        CHECK(deep > ripple);
         dump_ppm(buf, "farm_art.ppm");
     }
 
+
+    // ---- a theme line that points nowhere -----------------------------------
+    // The per-tile fallback is only worth anything if it survives an AUTHORING
+    // mistake, not just a missing licence. A theme is hand-written text: sooner or
+    // later a line names an index the sheet does not contain. Without this test that
+    // case was invisible — the tile drew nothing and left a hole, and every existing
+    // check passed, because nothing in the repo has a wrong index.
+    //
+    // Built on a COPY of the asset tree, not the real one: a test that edits the
+    // project's own theme.def to prove a point is a test that can lose the project.
+    {
+        namespace fs = std::filesystem;
+        const fs::path tmp = fs::temp_directory_path() / "farm_theme_probe";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        for (const char* dir : {"farm", "maps", "textures"})
+            fs::copy(fs::path(ASSET_ROOT) / "assets" / dir, tmp / dir,
+                     fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+
+        // Same sheets, same ids — one index moved past the end of a 132-tile sheet.
+        write_text_at(tmp / "farm" / "theme.def",
+                      "sheet town  textures/town.hrt       16\n"
+                      "sheet water textures/farm_water.hrt 16\n"
+                      "tile ground 1 town  9999\n"      // grass: past the end -> fallback
+                      "tile ground 2 town  40\n"        // path: still real art
+                      "tile ground 3 water 0\n");
+
+        assets::set_base_path(tmp.string());
+        farm::FarmScene probe{farm::FarmScene::default_config(),
+                              std::make_unique<gbaas::OfflineTransport>()};
+        CHECK(probe.ready());
+        CHECK(probe.tile_count("town") == 132);        // the sheet loaded fine...
+        draw(probe, idle);
+
+        int grass = 0, path = 0, deep = 0;
+        for (std::uint32_t p : buf) {
+            if (p == 0xFF4E7A3Cu) ++grass;             // ...but grass fell back to flat
+            if (p == 0xFF9A7B4Fu) ++path;
+            if (p == 0xFF2B5CA3u) ++deep;
+        }
+        CHECK(grass > 0);       // the bad line falls back rather than leaving a hole
+        CHECK(path  == 0);      // ...and only that line: its neighbours keep their art
+        CHECK(deep  > 0);
+        dump_ppm(buf, "farm_theme_probe.ppm");
+
+        assets::set_base_path(ASSET_ROOT "/assets");
+        fs::remove_all(tmp);
+    }
 
     // ---- night falls ----
     // Run the clock to the small hours and the world darkens. The tint is what makes

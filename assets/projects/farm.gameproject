@@ -9,3 +9,4 @@ asset data farm/npc/anna.sched
 asset data farm/npc/anna.dlg
 asset data farm/theme.def
 asset texture textures/town.hrt
+asset texture textures/farm_water.hrt

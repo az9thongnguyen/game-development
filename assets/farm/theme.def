@@ -1,18 +1,24 @@
 # The farm's art: which tile of which sheet each semantic map id wears.
 #
-# The sheet is Kenney's Tiny Town (CC0) imported to .hrt — see assets/ATTRIBUTION.md.
-# Indices run left-to-right, top-to-bottom over a 12 x 11 grid of 16px tiles, so
+# TWO sheets, because they have two different origins and mixing them would lose
+# that. `town` is Kenney's Tiny Town (CC0) imported from PNG; `water` is one tile
+# this project drew in the Studio's Texture Lab. Both arrived as .hrt through their
+# own command (asset.import / asset.texture) and neither knows the other exists —
+# see assets/ATTRIBUTION.md. Compositing our pixel into Kenney's file would have made
+# the result impossible to attribute and would be erased by the next re-import.
+#
+# town indices run left-to-right, top-to-bottom over a 12 x 11 grid of 16px tiles, so
 # index = row * 12 + column. They were read off the sheet, not guessed: the first
 # pass had the stones one tile to the left, which looked like dirt in the field.
 #
 # An id with no line here keeps the flat colour the game drew before there was art.
-# That is why `ground 3` (the pond) is absent — Tiny Town has no water tile. Draw one
-# in the Texture Lab, add a line, and it appears. No rebuild.
-sheet textures/town.hrt 16
+sheet town  textures/town.hrt       16
+sheet water textures/farm_water.hrt 16
 
-tile ground 1 0     # plain grass
-tile ground 2 40    # bare dirt, the worn path
+tile ground 1 town  0      # plain grass
+tile ground 2 town  40     # bare dirt, the worn path
+tile ground 3 water 0      # the pond — the tile the pack did not have
 
-tile decor 1 28     # a small green tree
-tile decor 2 72     # timber wall
-tile decor 3 43     # white stones in the grass
+tile decor 1 town 28       # a small green tree
+tile decor 2 town 72       # timber wall
+tile decor 3 town 43       # white stones in the grass

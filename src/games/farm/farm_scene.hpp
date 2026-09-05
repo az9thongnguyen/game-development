@@ -23,6 +23,7 @@
 #pragma once
 
 #include <memory>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -77,7 +78,11 @@ public:
     // For tests: which way the player is facing, and where the camera put the world.
     // The camera origin is exposed so a test can convert a TILE to a screen point
     // without re-deriving the camera — the inverse arithmetic stays in the test.
-    [[nodiscard]] std::size_t tile_count() const { return tiles_.count(); }
+    // Tiles cut from one named sheet; 0 when the theme never declared that name or
+    // its image would not load. Tests use it to prove the art actually arrived.
+    [[nodiscard]] std::size_t tile_count(const std::string& sheet) const {
+        return sheet_of(sheet).count();
+    }
     [[nodiscard]] int   facing_x() const { return face_x_; }
     [[nodiscard]] int   facing_y() const { return face_y_; }
     [[nodiscard]] float camera_origin_x() const { return cam_.origin().x; }
@@ -110,6 +115,7 @@ private:
     void        load_game();
     void        say(std::string msg, double seconds = 3.0);
     void        facing(int& x, int& y) const;
+    [[nodiscard]] const tilemap::Tileset& sheet_of(const std::string& name) const;
     bool        draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id,
                           int px, int py) const;
 
@@ -120,8 +126,12 @@ private:
     // The art, and the join between the map's semantic ids and it. Both optional:
     // a missing sheet or a missing line falls back to the flat colours the game had
     // before there was any art, which is what lets a pack cover only part of a map.
-    std::optional<Theme> theme_;
-    tilemap::Tileset     tiles_;
+    // A theme that did not parse is an EMPTY theme, not a missing one: find()
+    // then answers nullptr for every id and the whole game falls back to flat
+    // colour on its own. One fewer guard in the draw path, and the guard that
+    // is gone is one a mutation could have deleted unnoticed (chapter 121).
+    Theme                                     theme_;
+    std::map<std::string, tilemap::Tileset>   tiles_;   // sheet name -> cut tiles
     Defs         defs_;
     World        world_;
     std::vector<Schedule> schedules_;

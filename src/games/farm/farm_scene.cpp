@@ -131,9 +131,16 @@ void FarmScene::load() {
     // design choice.
     if (auto th = parse_theme(read_text("farm/theme.def"))) {
         theme_ = *th;
-        if (const auto sheet = gfx::load_image(theme_->sheet))
-            tiles_ = tilemap::Tileset::cut(*sheet, theme_->tile);
-        if (tiles_.count() == 0) problem_art_ = "could not load " + theme_->sheet;
+        // Every declared sheet gets an entry even when its image will not load, so the
+        // draw path has exactly one shape to handle: a sheet that is missing and a
+        // sheet that is empty are the same thing by construction, not by a second
+        // branch that only one of them takes.
+        for (const auto& [name, sh] : theme_.sheets) {
+            tilemap::Tileset& into = tiles_[name];
+            if (const auto img = gfx::load_image(sh.path)) into = tilemap::Tileset::cut(*img, sh.tile);
+            if (into.count() == 0)
+                problem_art_ += (problem_art_.empty() ? "" : "; ") + std::string("could not load ") + sh.path;
+        }
     } else {
         problem_art_ = "farm/theme.def did not parse";
     }
@@ -169,19 +176,30 @@ void FarmScene::load() {
 // One tile of art, or false when this id has none. The two callers then fall back to
 // the flat colour they used to draw — which is how a pack with no water tile still
 // themes the grass, rather than the whole map reverting to squares.
+// A sheet that was never declared and a sheet whose image would not load look the
+// same on purpose: both are a tileset with no tiles. Collapsing them here is what
+// lets draw_tile below keep exactly two guards instead of three.
+const tilemap::Tileset& FarmScene::sheet_of(const std::string& name) const {
+    static const tilemap::Tileset kNone;
+    const auto it = tiles_.find(name);
+    return it == tiles_.end() ? kNone : it->second;
+}
+
 bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int px, int py) const {
     // No `id == 0` check: `parse_theme` refuses to map id 0 at all, so an empty cell
-    // can never have a line, and index_of returns -1 for it like any other unmapped
+    // can never have a line, and find() returns nullptr for it like any other unmapped
     // id. The invariant lives in the parser; repeating it here was a guard a
     // mutation could delete with nothing noticing.
-    if (!theme_ || tiles_.count() == 0) return false;
-    const int index = theme_->index_of(layer, static_cast<int>(id));
-    // ONE condition, two reasons: this id has no line in the theme (-1), or the line
-    // names a tile the sheet does not contain. Written as two guards it read better
-    // and was worse — each one masked the other, so a mutation could delete either
-    // and every test still passed.
-    if (index < 0 || static_cast<std::size_t>(index) >= tiles_.count()) return false;
-    g.blit(tiles_.sprite(static_cast<std::size_t>(index)), px, py);
+    const Theme::Art* a = theme_.find(layer, static_cast<int>(id));
+    if (!a) return false;
+    // ONE condition, three reasons, and none of them re-implemented here: Tileset
+    // already answers "no such tile" with a null sprite, and sheet_of already turns a
+    // sheet that would not load into an empty one. So a sheet nobody declared, a sheet
+    // whose image is missing, and an index past the end of a real sheet all arrive as
+    // the same w == 0 — and the tile falls back to flat colour instead of a hole.
+    const gfx::Sprite s = sheet_of(a->sheet).sprite(static_cast<std::size_t>(a->index));
+    if (s.w == 0) return false;
+    g.blit(s, px, py);
     return true;
 }
 
