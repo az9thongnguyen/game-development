@@ -861,7 +861,7 @@ int main() {
         // content (a theme and a tileset in chapter 121, a second tileset in 122), and
         // it should: the point of the check is that the Studio sees the same list the
         // CLI does.
-        CHECK(farm.inspection().assets.size() == 8);
+        CHECK(farm.inspection().assets.size() == 9);
         // ...and the negative control: the list is what makes the difference, so an
         // ignorant list must still reject it. Otherwise the check above would pass
         // just as happily if known_entries were ignored entirely.

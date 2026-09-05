@@ -21,6 +21,7 @@
 #include "games/farm/defs.hpp"
 #include "games/farm/cloud.hpp"
 #include "games/farm/controls.hpp"
+#include "engine/tilemap/autotile.hpp"
 #include "games/farm/theme.hpp"
 #include "games/studio/recipe.hpp"
 #include "games/studio/texture_gen.hpp"
@@ -678,6 +679,104 @@ static void test_theme() {
     // Two sheets claiming one name: one of them loses, and which one depends on line
     // order. Nothing about that is a decision anybody made.
     CHECK(!parse_theme("sheet s a.hrt\nsheet s b.hrt\n"));
+
+}
+
+// -----------------------------------------------------------------------------
+//  The path sheet: sixteen pieces that have to agree with each other.
+//
+//  A tile set is judged one tile at a time and FAILS between tiles. Every piece here
+//  can be perfect on its own and still show a seam — a dark line down the middle of a
+//  straight run, an arm three pixels off — and no screenshot of a single tile shows
+//  it. So the invariant under test is the RELATIONSHIP: every piece that connects
+//  north presents the same edge, every piece that connects south presents that same
+//  edge back, and a piece that connects nowhere presents nothing.
+//
+//  This is also what makes the `.pix` source safe to edit by hand. Break a seam and
+//  this says so, at the piece, by name.
+// -----------------------------------------------------------------------------
+static void test_path_sheet() {
+    assets::set_base_path(ASSET_ROOT "/assets");
+    const auto img = gfx::load_image("textures/farm_path.hrt");
+    CHECK(img.has_value());
+    if (!img) return;
+
+    constexpr int T = 16;            // pixels per tile
+    CHECK(img->w == T * 4 && img->h == T * 4);
+    if (img->w != T * 4 || img->h != T * 4) return;
+
+    // One pixel of piece `m`, in tile-local coordinates. The sheet is 4 x 4 and the
+    // grid position IS the mask, which is the property everything below leans on.
+    const auto px = [&](int m, int x, int y) {
+        const int ox = (m % 4) * T, oy = (m / 4) * T;
+        return img->pixels[static_cast<std::size_t>(oy + y) * static_cast<std::size_t>(img->w) +
+                           static_cast<std::size_t>(ox + x)];
+    };
+    const auto row = [&](int m, int y) {
+        std::vector<std::uint32_t> r;
+        for (int x = 0; x < T; ++x) r.push_back(px(m, x, y));
+        return r;
+    };
+    const auto col = [&](int m, int x) {
+        std::vector<std::uint32_t> c;
+        for (int y = 0; y < T; ++y) c.push_back(px(m, x, y));
+        return c;
+    };
+    const auto blank = [](const std::vector<std::uint32_t>& v) {
+        for (const std::uint32_t p : v) if ((p >> 24) != 0) return false;
+        return true;
+    };
+
+    // Which SLOT a neighbourhood lands in is `autotile_line_index`, never arithmetic
+    // repeated here. The sheet's whole design is that the grid position is the mask,
+    // and a test that recomputed the mapping would agree with itself instead of with
+    // the code the game runs.
+    const auto slot = [](int n, int e, int sth, int w) {
+        return tilemap::autotile_line_index(static_cast<std::uint8_t>(
+            (n ? tilemap::kN : 0) | (e ? tilemap::kE : 0) |
+            (sth ? tilemap::kS : 0) | (w ? tilemap::kW : 0)));
+    };
+
+    // The seam profiles, taken from the two pieces that MUST have them: the vertical
+    // run (north|south) and the horizontal run (east|west).
+    const std::vector<std::uint32_t> north = row(slot(1, 0, 1, 0), 0);
+    const std::vector<std::uint32_t> south = row(slot(1, 0, 1, 0), T - 1);
+    const std::vector<std::uint32_t> west  = col(slot(0, 1, 0, 1), 0);
+    const std::vector<std::uint32_t> east  = col(slot(0, 1, 0, 1), T - 1);
+
+    // A straight run is CONTINUOUS: the row leaving the top of a tile is the row
+    // arriving at the bottom of the one above. Without this the path grows a dark
+    // rung every sixteen pixels and looks like a ladder.
+    CHECK(north == south);
+    CHECK(west == east);
+    CHECK(!blank(north));                       // ...and it is actually a corridor
+    CHECK(!blank(west));
+
+    // Every neighbourhood a one-wide path can be in, which is exactly sixteen.
+    for (int bits = 0; bits < 16; ++bits) {
+        const int n = bits & 1, e = bits & 2, sth = bits & 4, w = bits & 8;
+        const int m = slot(n, e, sth, w);
+
+        // Connected on a side -> that side's edge is the shared profile. Not connected
+        // -> that side is empty, which is what makes an end cap an end cap.
+        CHECK(n   ? row(m, 0)     == north : blank(row(m, 0)));
+        CHECK(sth ? row(m, T - 1) == south : blank(row(m, T - 1)));
+        CHECK(w   ? col(m, 0)     == west  : blank(col(m, 0)));
+        CHECK(e   ? col(m, T - 1) == east  : blank(col(m, T - 1)));
+
+        // The four outer corners are always grass. An elbow that filled its outside
+        // corner would be a square, and sixteen squares are what this set replaced.
+        for (const auto& c : {std::make_pair(0, 0), std::make_pair(0, T - 3),
+                              std::make_pair(T - 3, 0), std::make_pair(T - 3, T - 3)})
+            for (int y = 0; y < 3; ++y)
+                for (int x = 0; x < 3; ++x)
+                    CHECK((px(m, c.second + x, c.first + y) >> 24) == 0);
+    }
+
+    // The sheet has to hold a WHOLE line set at the base the theme names, or the map
+    // grows holes only at the shapes nobody drew. 4 x 4 == exactly sixteen.
+    CHECK(tilemap::kLinePieces == 16);
+    CHECK((img->w / T) * (img->h / T) == tilemap::kLinePieces);
 }
 
 // -----------------------------------------------------------------------------
@@ -800,6 +899,7 @@ int main() {
     test_defs();
     test_theme();
     test_water_provenance();
+    test_path_sheet();
     test_controls();
     test_the_crop_owns_the_price();
     test_overrides();

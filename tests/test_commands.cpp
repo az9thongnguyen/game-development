@@ -223,17 +223,18 @@ void test_inspect_command() {
 
 
 // -----------------------------------------------------------------------------
-//  The two doors into `.hrt`. `asset.import` brings a picture in from a format we
-//  did not invent; `asset.texture` bakes one this project drew. They matter as a
-//  PAIR: a tile from the CC0 pack and a tile from the Texture Lab are the same kind
-//  of file by the time anything downstream sees them, and that is the only reason
-//  "support both art sources" costs the engine nothing.
+//  The three doors into `.hrt`. `asset.import` brings a picture in from a format we
+//  did not invent; `asset.texture` bakes one this project GENERATED; `asset.pixels`
+//  bakes one a person DREW. They matter as a set: a tile from the CC0 pack, a tile
+//  from the Texture Lab and a tile typed out by hand are the same kind of file by the
+//  time anything downstream sees them, and that is the only reason "support both art
+//  sources" costs the engine nothing.
 // -----------------------------------------------------------------------------
 static void test_asset_commands() {
     assets::set_base_path(ASSET_ROOT "/assets");
     cmd::clear();
     cmd::register_asset_commands();
-    CHECK(cmd::all().size() == 2);   // both doors registered, and only those
+    CHECK(cmd::all().size() == 3);   // every door registered, and only those
 
     // D17: writing commands refuse blank arguments. A destination nobody named is not
     // a default, it is a missing decision — and here it would overwrite something.
@@ -282,6 +283,42 @@ static void test_asset_commands() {
     CHECK(rebaked.has_value());
     if (committed && rebaked) CHECK(*committed == *rebaked);
     std::filesystem::remove(ASSET_ROOT "/assets/textures/_rebake.hrt");
+
+    // ---- the third door ----
+    CHECK(!cmd::run("asset.pixels", {}).ok);
+    CHECK(!cmd::run("asset.pixels", {"a.pix"}).ok);
+    CHECK(!cmd::run("asset.pixels", {"", "b.hrt"}).ok);
+    CHECK(!cmd::run("asset.pixels", {"a.pix", ""}).ok);
+    CHECK(!cmd::run("asset.pixels", {"textures/farm_path.pix", "textures/x.png"}).ok);
+    CHECK(!cmd::run("asset.pixels", {"nosuch.pix", "textures/x.hrt"}).ok);
+
+    // Pointed at a file that is not a sheet it must write NOTHING. Unlike a recipe
+    // this format cannot silently default — but "cannot default" is a claim about the
+    // parser, and the thing worth pinning here is that the FILE on disk is untouched.
+    std::filesystem::remove(ASSET_ROOT "/assets/textures/_junk_pix.hrt");
+    static const char kNotAPix[] = "size 4\ngrid 1 1\npalette . 00000000\ntile 0\n....\n";
+    CHECK(assets::write_file("textures/_not_a.pix",
+                             std::vector<std::uint8_t>(kNotAPix, kNotAPix + std::strlen(kNotAPix))));
+    const engine::OpResult short_tile = cmd::run("asset.pixels", {"textures/_not_a.pix",
+                                                                  "textures/_junk_pix.hrt"});
+    CHECK(!short_tile.ok);
+    CHECK(short_tile.message.find("line ") != std::string::npos);   // and it says WHERE
+    CHECK(!assets::load_file("textures/_junk_pix.hrt"));
+    std::filesystem::remove(ASSET_ROOT "/assets/textures/_not_a.pix");
+
+    // The happy path, against the sheet the farm actually ships: the committed .hrt is
+    // what the committed .pix bakes to. Same rule as the pond's .recipe — art in this
+    // repo is reproducible from a source that can be read and changed, not a binary
+    // somebody once made.
+    const auto committed_path = assets::load_file("textures/farm_path.hrt");
+    CHECK(committed_path.has_value());
+    const engine::OpResult drew = cmd::run("asset.pixels", {"textures/farm_path.pix",
+                                                            "textures/_repix.hrt"});
+    CHECK(drew.ok);
+    const auto redrawn = assets::load_file("textures/_repix.hrt");
+    CHECK(redrawn.has_value());
+    if (committed_path && redrawn) CHECK(*committed_path == *redrawn);
+    std::filesystem::remove(ASSET_ROOT "/assets/textures/_repix.hrt");
 }
 
 int main() {
