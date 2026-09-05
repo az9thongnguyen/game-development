@@ -7,6 +7,7 @@
 // =============================================================================
 #include <cstdint>
 #include <cstdio>
+#include <algorithm>
 #include <vector>
 
 #include "engine/renderer2d.hpp"
@@ -34,6 +35,51 @@ int main() {
         r.fill_rect(2, 3, 2, 1, FG);
         CHECK(buf[3 * W + 2] == FG && buf[3 * W + 3] == FG);
         CHECK(buf[3 * W + 4] == BG && buf[2 * W + 2] == BG);
+    }
+
+
+    // --- a translucent OUTLINE blends, on its straight edges as well as its arcs ---
+    // `draw_round_rect` painted its four edges with an opaque copy and its four corner
+    // arcs with the alpha-respecting sink, so one call produced two different things:
+    // solid straight edges joined by faint curves. It survived eleven chapters because
+    // every outline in the project was opaque until an on-screen d-pad wanted a faint
+    // one, and it is invisible in any screenshot you are not staring at.
+    {
+        constexpr int W = 40, H = 40;
+        constexpr std::uint32_t HALF = 0x80FFFFFF;      // white at 50%
+        std::vector<std::uint32_t> buf(W * H, BG);
+        platform::Framebuffer fb{buf.data(), W, H, W};
+        Renderer2D r(fb, 1);
+        r.draw_round_rect(4, 4, 32, 32, 8, HALF);
+
+        // A pixel in the middle of the top edge, and one in the middle of the left
+        // edge: both are straight segments, and both must be BLENDED, not white.
+        const std::uint32_t top  = buf[4 * W + 20];
+        const std::uint32_t left = buf[20 * W + 4];
+        CHECK(top != BG && top != FG);
+        CHECK(left != BG && left != FG);
+        CHECK(top == left);                              // ...and by the same amount
+
+        // Opaque still lands exactly on the fast path — the fix must not have made
+        // every outline pay for a blend it does not need.
+        std::fill(buf.begin(), buf.end(), BG);
+        r.draw_round_rect(4, 4, 32, 32, 8, FG);
+        CHECK(buf[4 * W + 20] == FG);
+        CHECK(buf[20 * W + 4] == FG);
+
+        // The same claim for the plain rectangle outline, which shares the sink.
+        std::fill(buf.begin(), buf.end(), BG);
+        r.draw_rect(4, 4, 32, 32, HALF);
+        const std::uint32_t edge = buf[4 * W + 20];
+        CHECK(edge != BG && edge != FG);
+        CHECK(edge == top);                              // same colour, same maths
+
+        // And the FILL of the same family, so a future "fast path" here has to be a
+        // decision rather than a slip.
+        std::fill(buf.begin(), buf.end(), BG);
+        r.fill_round_rect(4, 4, 32, 32, 8, HALF);
+        const std::uint32_t middle = buf[20 * W + 20];
+        CHECK(middle != BG && middle != FG);
     }
 
     // --- ss=2: logical size halved; a 1x1 logical fill = a 2x2 physical block ---
