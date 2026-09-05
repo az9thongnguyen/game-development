@@ -680,6 +680,28 @@ static void test_theme() {
     // order. Nothing about that is a decision anybody made.
     CHECK(!parse_theme("sheet s a.hrt\nsheet s b.hrt\n"));
 
+    // ---- `autotile`: the same join, but `index` means a BASE ----
+    const auto a = parse_theme("sheet p path.hrt\nautotile ground 2 p 0\ntile decor 1 p 3\n");
+    CHECK(a.has_value());
+    if (!a) return;
+    const farm::Theme::Art* road = a->find("ground", 2);
+    CHECK(road && road->autotiled && road->index == 0);
+    // ...and an ordinary `tile` is still not autotiled. The flag has to come from the
+    // KEYWORD, not from a default that happens to be right in one file.
+    CHECK(a->find("decor", 1) && !a->find("decor", 1)->autotiled);
+
+    // It obeys every rule `tile` does — same fields, same refusals. Written out
+    // because "it goes through the same branch" is a claim about today's code.
+    CHECK(!parse_theme("sheet s a.hrt\nautotile ground 1 nosuch 0\n"));
+    CHECK(!parse_theme("sheet s a.hrt\nautotile ground 0 s 0\n"));
+    CHECK(!parse_theme("sheet s a.hrt\nautotile ground 1 s -1\n"));
+    CHECK(!parse_theme("sheet s a.hrt\nautotile ground 1 s\n"));
+
+    // Two lines for one id. This one matters more than the duplicate sheet name,
+    // because `tile` and `autotile` disagree about what `index` MEANS: whichever line
+    // lost would change the picture, not just the file it came from.
+    CHECK(!parse_theme("sheet s a.hrt\ntile ground 1 s 0\nautotile ground 1 s 0\n"));
+    CHECK(!parse_theme("sheet s a.hrt\ntile ground 1 s 0\ntile ground 1 s 4\n"));
 }
 
 // -----------------------------------------------------------------------------

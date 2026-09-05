@@ -346,6 +346,45 @@ static void test_camera() {
 // ---------------------------------------------------------------------------
 //  Autotile. The 47 is a RESULT of the canonical rule, not folklore typed in.
 // ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+//  The other rule: a LINE, for a material one tile wide. Chapter 125 needed it
+//  because the 47-piece blob rule is for an AREA — down a one-wide path no diagonal
+//  ever has both its cardinals filled, so only 16 of the 47 are reachable and 31
+//  slots of the sheet could never be drawn.
+// -----------------------------------------------------------------------------
+static void test_autotile_line() {
+    CHECK(kLinePieces == 16);
+
+    // The numbering IS the sheet layout, so it is spelled out rather than derived.
+    // Reordering these bits would silently swap a corner for a T-junction, and every
+    // "the pieces are distinct" style of test would still pass.
+    CHECK(autotile_line_index(0) == 0);
+    CHECK(autotile_line_index(kN) == 1);
+    CHECK(autotile_line_index(kE) == 2);
+    CHECK(autotile_line_index(kS) == 4);
+    CHECK(autotile_line_index(kW) == 8);
+    CHECK(autotile_line_index(kN | kS) == 5);                    // the vertical run
+    CHECK(autotile_line_index(kE | kW) == 10);                   // ...and the horizontal
+    CHECK(autotile_line_index(kN | kE | kS | kW) == 15);         // the crossroads
+
+    // Diagonals are IGNORED, not folded. For a line they carry no information: the
+    // piece is decided entirely by which of the four arms leave the tile.
+    CHECK(autotile_line_index(kN | kNE) == autotile_line_index(kN));
+    CHECK(autotile_line_index(0xFFu) == autotile_line_index(kN | kE | kS | kW));
+    CHECK(autotile_line_index(kNE | kSE | kSW | kNW) == 0);
+
+    // Every index in range, every index reachable, and no two cardinal
+    // neighbourhoods sharing one — a set of pieces where two shapes collide is a set
+    // with a piece nobody can draw.
+    bool hit[16] = {};
+    for (int m = 0; m < 256; ++m) {
+        const int i = autotile_line_index(static_cast<std::uint8_t>(m));
+        CHECK(i >= 0 && i < kLinePieces);
+        hit[i] = true;
+    }
+    for (const bool h : hit) CHECK(h);
+}
+
 static void test_autotile() {
     CHECK(autotile_count() == 47);
 
@@ -461,6 +500,7 @@ int main() {
     test_migrate_real_level();
     test_camera();
     test_autotile();
+    test_autotile_line();
     if (g_failures == 0) std::printf("tilemap: all tests passed\n");
     else                 std::printf("tilemap: %d FAILURE(S)\n", g_failures);
     return g_failures;

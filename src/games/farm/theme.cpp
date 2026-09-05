@@ -31,15 +31,19 @@ std::optional<Theme> parse_theme(const std::string& text) {
             // Two lines claiming one name means one of them silently loses, and which
             // one depends on file order. That is a typo, not a redefinition.
             if (!t.sheets.emplace(name, s).second) return std::nullopt;
-        } else if (kind == "tile") {
+        } else if (kind == "tile" || kind == "autotile") {
             std::string layer;
             int         id = 0;
             Theme::Art  a;
+            a.autotiled = kind == "autotile";
             if (!(ln >> layer >> id >> a.sheet >> a.index)) return std::nullopt;
             // A negative index would be an index; 0 is the first tile of the sheet.
             if (id <= 0 || a.index < 0) return std::nullopt;
             if (t.sheets.find(a.sheet) == t.sheets.end()) return std::nullopt;
-            t.art[{layer, id}] = a;
+            // Two lines for one id is the same typo as two sheets for one name: one of
+            // them wins by file order, and which one is invisible. It matters more
+            // here, because `tile` and `autotile` disagree about what `index` MEANS.
+            if (!t.art.emplace(std::make_pair(layer, id), a).second) return std::nullopt;
         } else {
             return std::nullopt;   // an unknown record here is a typo, not a future field
         }

@@ -123,7 +123,12 @@ private:
     void        say(std::string msg, double seconds = 3.0);
     void        facing(int& x, int& y) const;
     [[nodiscard]] const tilemap::Tileset& sheet_of(const std::string& name) const;
-    bool        draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id,
+    // Which of a line set's sixteen pieces cell (x,y) wears, from its four
+    // neighbours on the same layer. Out of bounds does NOT connect: a path that
+    // stops at the map edge gets an end cap, which is the truth — the alternative
+    // pretends the world continues and draws a road running into nothing.
+    [[nodiscard]] int line_piece(const char* layer, std::int32_t id, int x, int y) const;
+    bool        draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int x, int y,
                           int px, int py) const;
 
     bool         ready_ = false;

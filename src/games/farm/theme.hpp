@@ -41,6 +41,11 @@ struct Theme {
     struct Art {
         std::string sheet;       // a key of `sheets` — parse_theme refuses any other
         int         index = 0;   // into that sheet, cut left-to-right, top-to-bottom
+        // When set, `index` is the FIRST of tilemap::kLinePieces consecutive tiles and
+        // the one actually drawn is chosen per cell from its four neighbours. The map
+        // still stores one id: which corner piece a cell wears is a consequence of the
+        // map, never a thing an author renumbers by hand — that is the whole point.
+        bool autotiled = false;
     };
 
     std::map<std::string, Sheet>              sheets;   // name -> where the pixels are
@@ -52,12 +57,13 @@ struct Theme {
 
 // Parse a theme file:
 //
-//     sheet <name> <path> [tile]        declare where pixels come from
-//     tile  <layer> <id> <sheet> <index>   join a semantic id to one of them
+//     sheet    <name> <path> [tile]           declare where pixels come from
+//     tile     <layer> <id> <sheet> <index>   join a semantic id to one of them
+//     autotile <layer> <id> <sheet> <base>    ...to a 16-piece LINE set at <base>
 //
 // Returns nullopt when the text is unusable: no sheet, a malformed line, an unknown
-// record, a duplicate sheet name, or a `tile` line naming a sheet that was never
-// declared. That last one is the failure this format introduced, and it is the one
+// record, a duplicate sheet name, a second line for an id already mapped, or a
+// `tile`/`autotile` line naming a sheet that was never declared. That last one is the failure this format introduced, and it is the one
 // that must not be silent — a typo in a sheet name would otherwise read exactly like
 // "this tile has no art yet" and quietly lose the art.
 //

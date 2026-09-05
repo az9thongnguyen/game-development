@@ -48,4 +48,28 @@ int autotile_index(std::uint8_t mask);
 // rather than hard-coded as folklore.
 int autotile_count();
 
+// -----------------------------------------------------------------------------
+//  The other rule, for the other kind of material.
+// -----------------------------------------------------------------------------
+//  The 47-piece rule above is for an AREA: a grass patch, a lake, a plateau — a
+//  material that spreads in two dimensions, where the diagonals decide whether a
+//  corner is inside or outside. Chapter 123 went to autotile the farm's dirt path
+//  with it and found the mismatch: a path is a LINE. One tile wide, it never has a
+//  diagonal neighbour whose two cardinals are both filled, so `autotile_canonical`
+//  erases every diagonal and only 16 of the 47 pieces are ever reachable — scattered
+//  across a 47-slot sheet of which 31 slots could never be drawn.
+//
+//  So a line gets its own numbering, and the point of it is the ART: index == the
+//  four-bit cardinal mask, which makes a 4 x 4 sheet where the grid position IS the
+//  piece's meaning. Tile 5 is north|south, the vertical run; tile 15 is the
+//  crossroads. Someone editing that sheet can find the piece they want by looking.
+//
+//  Both rules are here because they are both true, and choosing between them is the
+//  authoring decision: is this material a region or a road?
+enum : int { kLinePieces = 16 };
+
+// Cardinal bits of `mask`, compacted: north=1, east=2, south=4, west=8. Diagonals
+// are IGNORED rather than folded — for a line they carry no information at all.
+int autotile_line_index(std::uint8_t mask);
+
 } // namespace tilemap

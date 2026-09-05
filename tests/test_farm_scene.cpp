@@ -493,6 +493,52 @@ int main() {
         fs::remove_all(tmp);
     }
 
+    // ---- the path autotiles ----
+    // What is under test is that the piece is chosen PER CELL from its neighbours,
+    // and the honest way to check that through a renderer is to compare frames rather
+    // than probe pixels: where any tile lands depends on the camera, so a coordinate
+    // in this test would be testing the camera.
+    //
+    // Two comparisons, each aimed at one specific way this could be fake:
+    //   * against `tile ... 0`  — exactly the picture you get if the `autotiled` flag
+    //     is ignored and the base is drawn everywhere
+    //   * against `tile ... 5`  — the picture you get if the neighbour mask is
+    //     constant and every cell wears the vertical run
+    // Either mutation leaves an L-shaped path drawn out of identical squares, which is
+    // what the sixteen pieces exist to stop.
+    {
+        namespace fs = std::filesystem;
+        const fs::path tmp = fs::temp_directory_path() / "farm_autotile_probe";
+        const auto frame_with = [&](const char* path_line) {
+            fs::remove_all(tmp);
+            fs::create_directories(tmp);
+            for (const char* dir : {"farm", "maps", "textures"})
+                fs::copy(fs::path(ASSET_ROOT) / "assets" / dir, tmp / dir,
+                         fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+            write_text_at(tmp / "farm" / "theme.def",
+                          std::string("sheet town  textures/town.hrt      16\n"
+                                      "sheet path  textures/farm_path.hrt 16\n"
+                                      "tile ground 1 town 0\n") + path_line);
+            assets::set_base_path(tmp.string());
+            farm::FarmScene probe{farm::FarmScene::default_config(),
+                                  std::make_unique<gbaas::OfflineTransport>()};
+            CHECK(probe.ready());
+            CHECK(probe.tile_count("path") == 16);      // the whole line set loaded
+            draw(probe, idle);
+            return fingerprint(buf);
+        };
+
+        const std::uint64_t autotiled = frame_with("autotile ground 2 path 0\n");
+        const std::uint64_t flat_base = frame_with("tile ground 2 path 0\n");
+        const std::uint64_t all_vert  = frame_with("tile ground 2 path 5\n");
+        CHECK(autotiled != flat_base);
+        CHECK(autotiled != all_vert);
+        CHECK(flat_base != all_vert);      // ...and the pieces really are different art
+
+        assets::set_base_path(ASSET_ROOT "/assets");
+        fs::remove_all(tmp);
+    }
+
     // ---- night falls ----
     // Run the clock to the small hours and the world darkens. The tint is what makes
     // the clock a resource rather than a number in the corner.

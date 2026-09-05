@@ -14,10 +14,16 @@
 # An id with no line here keeps the flat colour the game drew before there was art.
 sheet town  textures/town.hrt       16
 sheet water textures/farm_water.hrt 16
+sheet path  textures/farm_path.hrt  16
 
 tile ground 1 town  0      # plain grass
-tile ground 2 town  40     # bare dirt, the worn path
 tile ground 3 water 0      # the pond — the tile the pack did not have
+
+# The path is AUTOTILED, so the map keeps saying "2" and the corner, the T and the
+# two end caps are worked out from the neighbours. `base` is 0 because the sheet's
+# grid position IS the neighbour mask — tile 5 is north|south. Redraw the path in the
+# Map workspace and the pieces follow; nothing in the .map2 file changes.
+autotile ground 2 path 0   # the worn path, sixteen pieces we drew
 
 tile decor 1 town 28       # a small green tree
 tile decor 2 town 72       # timber wall
