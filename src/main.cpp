@@ -48,6 +48,7 @@
 #include "games/audio/audio_scene.hpp"
 #include "games/fx/fx_scene.hpp"
 #include "games/light/light_scene.hpp"
+#include "games/studio_shell/pixel_workspace.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
 #include "games/studio_shell/workspace_host.hpp"
@@ -174,6 +175,14 @@ const std::vector<Entry>& labs() {
             // editor — that is what chapter 116 absorbed, and this is the frame.
             return std::unique_ptr<engine::Scene>(new studioshell::WorkspaceHost(
                 std::make_unique<studioshell::SceneWorkspace>("scenes/demo.scene")));
+        }});
+        v.push_back({"pixel", win("hand-engine — pixel editor", 960, 600, kAA), [] {
+            // The Studio's Pixels tab, full-screen — the SAME object, like `scene`.
+            // Both textures the farm declares, so the editable one is reachable
+            // without editing the imported pack.
+            return std::unique_ptr<engine::Scene>(new studioshell::WorkspaceHost(
+                std::make_unique<studioshell::PixelWorkspace>(
+                    std::vector<std::string>{"textures/farm_water.hrt", "textures/town.hrt"})));
         }});
         v.push_back({"map", win("hand-engine — map lab", 960, 600, kAA), [] {
             // Still writes fpsmap1, still the only place entities/spawns can be

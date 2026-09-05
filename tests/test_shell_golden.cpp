@@ -202,7 +202,13 @@ int main() {
             // click is press THEN release — driving the real control rather than a
             // setter is the point: a tab that stopped being wired would still pass a
             // test that assigned the index directly.
-            const int rail = 200, tx = rail + 24 + (LW - rail - 48) * 3 / 4, ty = 24 + 15;
+            // Tabs split the row evenly, so the centre of tab i of n is at
+            // (2i+1)/2n across it. Written from the COUNT rather than as a fraction
+            // that happened to work: the fraction 3/4 meant "the second of two", and
+            // it silently became "the third of three" the day a workspace was added.
+            const int rail = 200, tabs = 3, want = 1;
+            const int tx = rail + 24 + (LW - rail - 48) * (2 * want + 1) / (2 * tabs);
+            const int ty = 24 + 15;
             platform::InputState down{};
             down.mouse_x = tx; down.mouse_y = ty;
             down.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;

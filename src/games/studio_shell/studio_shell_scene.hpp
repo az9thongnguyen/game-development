@@ -27,6 +27,7 @@
 #include "games/studio_shell/palette.hpp"
 #include "games/studio_shell/play_viewport.hpp"
 #include "games/studio_shell/project_panel.hpp"
+#include "games/studio_shell/pixel_workspace.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/workspace.hpp"
 
@@ -64,6 +65,8 @@ public:
     [[nodiscard]] MapWorkspace&       map_workspace() { return map_; }
     [[nodiscard]] const SceneWorkspace& scene_workspace() const { return scene_; }
     [[nodiscard]] SceneWorkspace&       scene_workspace() { return scene_; }
+    [[nodiscard]] const PixelWorkspace& pixel_workspace() const { return pixels_; }
+    [[nodiscard]] PixelWorkspace&       pixel_workspace() { return pixels_; }
     [[nodiscard]] int open_workspace() const { return ws_; }
 
 private:
@@ -81,6 +84,10 @@ private:
     static std::string asset_of(const std::string& project_path,
                                 const std::vector<std::string>& known_entries,
                                 const char* type);
+    // ...and every asset of that type, for the workspace that edits one of several.
+    static std::vector<std::string> assets_of(const std::string& project_path,
+                                              const std::vector<std::string>& known_entries,
+                                              const char* type);
 
     // One refresh: the hub view and the inspection are two readings of the same
     // files, and letting them go stale independently is how a panel ends up
@@ -110,6 +117,7 @@ private:
     int                            nav_click_ = -1;
     MapWorkspace                   map_;
     SceneWorkspace                 scene_;
+    PixelWorkspace                 pixels_;
     // Concrete members, plus a vector of pointers to drive them through the interface.
     // ponytail: the set is fixed at construction, so no allocation and no ownership
     // question; it becomes unique_ptrs the day a workspace can be opened and closed.
