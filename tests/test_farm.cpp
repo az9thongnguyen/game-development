@@ -20,6 +20,7 @@
 #include "engine/document/save.hpp"
 #include "games/farm/defs.hpp"
 #include "games/farm/cloud.hpp"
+#include "games/farm/controls.hpp"
 #include "games/farm/theme.hpp"
 #include "games/studio/recipe.hpp"
 #include "games/studio/texture_gen.hpp"
@@ -717,10 +718,89 @@ static void test_water_provenance() {
     CHECK(img->w == 16 && img->h == 16);
 }
 
+
+// -----------------------------------------------------------------------------
+//  The on-screen controls. The load-bearing claim is not "a tap moves you" — it is
+//  that ONE layout function answers both the renderer and the hit test, and that the
+//  pointer being over a control STOPS the world from also reading it.
+// -----------------------------------------------------------------------------
+static void test_controls() {
+    const farm::Layout l = farm::layout(1280, 720);
+    CHECK(l.visible());
+
+    // Every control is on screen and none of them overlap. Two buttons sharing a
+    // pixel is a coin toss the player always loses, and it is invisible in a mockup.
+    const farm::Box* all[] = {&l.up, &l.down, &l.left, &l.right, &l.use, &l.seed};
+    for (const farm::Box* a : all) {
+        CHECK(a->x >= 0 && a->y >= 0);
+        CHECK(a->x + a->w <= 1280 && a->y + a->h <= 720);
+        CHECK(a->w >= 44 && a->h >= 44);      // reachable by a thumb, not by aiming
+        for (const farm::Box* b : all) {
+            if (a == b) continue;
+            const bool overlap = a->x < b->x + b->w && b->x < a->x + a->w &&
+                                 a->y < b->y + b->h && b->y < a->y + a->h;
+            CHECK(!overlap);
+        }
+    }
+    // The d-pad is a cross: left is left of right, up is above down, and they share a
+    // column and a row. Written out because "it looked fine" is how a mirrored pad
+    // ships.
+    CHECK(l.left.x < l.right.x);
+    CHECK(l.up.y < l.down.y);
+    CHECK(l.up.x == l.down.x);
+    CHECK(l.left.y == l.right.y);
+    // ...and the actions are on the far side from the d-pad, or one thumb does both.
+    CHECK(l.use.x > l.right.x);
+
+    // Held direction, like an arrow key.
+    const auto at = [](const farm::Box& b, bool down, bool pressed) {
+        return farm::Pointer{b.x + b.w / 2, b.y + b.h / 2, down, pressed};
+    };
+    farm::Action a = farm::read(l, at(l.right, true, true));
+    CHECK(a.dx == 1 && a.dy == 0);
+    CHECK(a.consumed);
+    a = farm::read(l, at(l.up, true, true));
+    CHECK(a.dy == -1 && a.dx == 0);
+
+    // The actions are EDGES. Holding `use` must not fire every frame — that would
+    // hoe a tile sixty times a second and drain a day of energy in one press.
+    a = farm::read(l, at(l.use, true, true));
+    CHECK(a.use);
+    a = farm::read(l, at(l.use, true, false));
+    CHECK(!a.use);
+    CHECK(a.consumed);                        // ...but it still blocks the world
+
+    // Consumed is by POSITION, not by the button being down: a pointer resting over
+    // the pad must not highlight the tile beneath it either.
+    a = farm::read(l, at(l.seed, false, false));
+    CHECK(a.consumed);
+    CHECK(!a.seed && a.dx == 0 && a.dy == 0);
+
+    // Off the controls, and off the screen entirely.
+    a = farm::read(l, farm::Pointer{640, 300, true, true});
+    CHECK(!a.consumed && a.dx == 0 && !a.use);
+    a = farm::read(l, farm::Pointer{-1, -1, true, true});
+    CHECK(!a.consumed);
+
+    // A screen too small to hold the pad AND leave the world visible draws nothing,
+    // and then nothing is consumed — the keyboard is the only honest answer there,
+    // and a control covering what it acts on is worse than one that is absent.
+    const farm::Layout tiny = farm::layout(320, 200);
+    CHECK(!tiny.visible());
+    CHECK(!farm::read(tiny, farm::Pointer{10, 10, true, true}).consumed);
+
+    // The retro 480x270 framebuffer the engine demo uses is deliberately in the "too
+    // small" case; the farm's own 1280x720 is not. Both are pinned so a change to the
+    // threshold has to be a decision.
+    CHECK(!farm::layout(480, 270).visible());
+    CHECK(farm::layout(960, 600).visible());
+}
+
 int main() {
     test_defs();
     test_theme();
     test_water_provenance();
+    test_controls();
     test_the_crop_owns_the_price();
     test_overrides();
     test_sync_decision();

@@ -37,6 +37,7 @@
 #include "games/farm/defs.hpp"
 #include "engine/tilemap/tileset.hpp"
 #include "games/farm/dialogue.hpp"
+#include "games/farm/controls.hpp"
 #include "games/farm/theme.hpp"
 #include "games/farm/world.hpp"
 
@@ -80,9 +81,15 @@ public:
     // without re-deriving the camera — the inverse arithmetic stays in the test.
     // Tiles cut from one named sheet; 0 when the theme never declared that name or
     // its image would not load. Tests use it to prove the art actually arrived.
+    // Where the on-screen controls are, for the frame most recently DRAWN. Exposed so
+    // a test presses the button the player would see rather than a rectangle it
+    // computed for itself — a test that recomputes the layout stops testing it.
+    [[nodiscard]] Layout controls() const { return layout(screen_w_, screen_h_); }
+
     [[nodiscard]] std::size_t tile_count(const std::string& sheet) const {
         return sheet_of(sheet).count();
     }
+    [[nodiscard]] int   seed_index() const { return seed_; }
     [[nodiscard]] int   facing_x() const { return face_x_; }
     [[nodiscard]] int   facing_y() const { return face_y_; }
     [[nodiscard]] float camera_origin_x() const { return cam_.origin().x; }
@@ -130,6 +137,12 @@ private:
     // then answers nullptr for every id and the whole game falls back to flat
     // colour on its own. One fewer guard in the draw path, and the guard that
     // is gone is one a mutation could have deleted unnoticed (chapter 121).
+    // The framebuffer size from the last render. update() runs first and does not know
+    // the viewport; this is the same one-frame borrow the camera origin already makes
+    // for the pointer, and for the same reason — computing it twice means keeping two
+    // copies in agreement.
+    int                                       screen_w_ = 0, screen_h_ = 0;
+    platform::InputState                      in_{};   // the last one update() saw
     Theme                                     theme_;
     std::map<std::string, tilemap::Tileset>   tiles_;   // sheet name -> cut tiles
     Defs         defs_;

@@ -462,6 +462,7 @@ add_test(NAME map_workspace COMMAND test_map_workspace)
 add_library(farm_core STATIC
   src/games/farm/defs.cpp
   src/games/farm/theme.cpp
+  src/games/farm/controls.cpp
   src/games/farm/world.cpp
   src/games/farm/dialogue.cpp
   src/games/farm/cloud.cpp

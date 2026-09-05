@@ -103,6 +103,7 @@ private:
     // logical public methods above convert, then write through these; the AA
     // primitives rasterize in physical space and deposit partial coverage here.
     void fill_phys(int px, int py, int pw, int ph, Color c);           // solid rect
+    void fill_phys_blend(int px, int py, int pw, int ph, Color c);     // ...alpha-respecting
     void blend_cov(int px, int py, Color c, std::uint8_t coverage);    // coverage blend
     void add_cov(int px, int py, Color c, std::uint8_t coverage);      // additive coverage (glow)
 

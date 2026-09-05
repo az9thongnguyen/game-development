@@ -62,6 +62,23 @@ void Renderer2D::fill_phys(int x, int y, int w, int h, Color c) {
 // Blend `c` at one physical pixel with an extra coverage multiplier (0..255)
 // folded into its alpha. This is the shared anti-aliasing sink: font glyphs and
 // the AA primitives (Wu lines, coverage shapes) all deposit partial coverage here.
+// Like fill_phys, but alpha-respecting. Used by the OUTLINE drawers, which have no
+// `_blend` sibling for a caller to reach for: `draw_round_rect` used to paint its four
+// straight edges with fill_phys (opaque) and its four corner arcs with blend_cov
+// (alpha-respecting), so ONE call produced two behaviours — a translucent outline came
+// out as solid straight edges joined by faint arcs. Nothing noticed for eleven
+// chapters because every outline in the project until now was opaque.
+void Renderer2D::fill_phys_blend(int x, int y, int w, int h, Color c) {
+    int x0 = x < clip_.x0 ? clip_.x0 : x;
+    int y0 = y < clip_.y0 ? clip_.y0 : y;
+    int x1 = x + w; if (x1 > clip_.x1)  x1 = clip_.x1;
+    int y1 = y + h; if (y1 > clip_.y1)  y1 = clip_.y1;
+    for (int yy = y0; yy < y1; ++yy) {
+        Color* row = &fb_.pixels[yy * fb_.pitch];
+        for (int xx = x0; xx < x1; ++xx) row[xx] = blend(row[xx], c);
+    }
+}
+
 void Renderer2D::blend_cov(int x, int y, Color c, std::uint8_t coverage) {
     if (coverage == 0) return;
     if (x < clip_.x0 || y < clip_.y0 || x >= clip_.x1 || y >= clip_.y1) return;
@@ -145,10 +162,18 @@ void Renderer2D::fill_v_gradient(int x, int y, int w, int h, Color top, Color bo
 void Renderer2D::draw_rect(int x, int y, int w, int h, Color c) {
     if (w <= 0 || h <= 0) return;
     const int t = ss_;                                 // 1 logical px = ss physical px thick
-    fill_phys(x * ss_,            y * ss_,           w * ss_, t,       c);   // top
-    fill_phys(x * ss_,            (y + h - 1) * ss_, w * ss_, t,       c);   // bottom
-    fill_phys(x * ss_,            y * ss_,           t,       h * ss_, c);   // left
-    fill_phys((x + w - 1) * ss_,  y * ss_,           t,       h * ss_, c);   // right
+    // Opaque stays on the fast path; a translucent outline blends. There is no
+    // `draw_rect_blend` for a caller to choose instead, so choosing here is the only
+    // place the alpha can be honoured at all.
+    const bool solid = a_of(c) == 255;
+    const auto put = [&](int px, int py, int pw, int ph) {
+        if (solid) fill_phys(px, py, pw, ph, c);
+        else       fill_phys_blend(px, py, pw, ph, c);
+    };
+    put(x * ss_,            y * ss_,           w * ss_, t);        // top
+    put(x * ss_,            (y + h - 1) * ss_, w * ss_, t);        // bottom
+    put(x * ss_,            y * ss_,           t,       h * ss_);  // left
+    put((x + w - 1) * ss_,  y * ss_,           t,       h * ss_);  // right
 }
 
 void Renderer2D::draw_line(int x0, int y0, int x1, int y1, Color c) {
@@ -256,10 +281,17 @@ void Renderer2D::draw_round_rect(int x, int y, int w, int h, int radius, Color c
     const int maxr = (pw < ph ? pw : ph) / 2;
     if (pr > maxr) pr = maxr;
 
-    fill_phys(px + pr,      py,          pw - 2 * pr, t,           c);   // top
-    fill_phys(px + pr,      py + ph - t, pw - 2 * pr, t,           c);   // bottom
-    fill_phys(px,           py + pr,     t,           ph - 2 * pr, c);   // left
-    fill_phys(px + pw - t,  py + pr,     t,           ph - 2 * pr, c);   // right
+    // The corner arcs below go through blend_cov, which honours alpha. These four
+    // edges must agree with them or one call paints two different things.
+    const bool solid = a_of(c) == 255;
+    const auto put = [&](int ex, int ey, int ew, int eh) {
+        if (solid) fill_phys(ex, ey, ew, eh, c);
+        else       fill_phys_blend(ex, ey, ew, eh, c);
+    };
+    put(px + pr,      py,          pw - 2 * pr, t);            // top
+    put(px + pr,      py + ph - t, pw - 2 * pr, t);            // bottom
+    put(px,           py + pr,     t,           ph - 2 * pr);  // left
+    put(px + pw - t,  py + pr,     t,           ph - 2 * pr);  // right
 
     Corner cs[4]; corners_of(px, py, pw, ph, pr, cs);
     const float fr = float(pr), ft = float(t);

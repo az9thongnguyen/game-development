@@ -97,6 +97,7 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
+                                              # d-pad + action buttons on screen (touch/mouse);
                                               # resumes saves/farm/slot1.sav; signs in as a guest
                                               # (project pk_demo_farm), takes prices from remote
                                               # config + any live event, and reconciles the cloud

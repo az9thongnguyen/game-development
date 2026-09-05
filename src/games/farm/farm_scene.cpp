@@ -536,6 +536,10 @@ void FarmScene::interact() {
 }
 
 void FarmScene::update(double dt, const platform::InputState& in) {
+    // Kept for render(), which draws the pad's pressed state and has no input of its
+    // own. One frame stale by construction — the same borrow, in the other direction,
+    // that the pointer makes from the camera.
+    in_ = in;
     // Pumped before the ready check and before the dialogue returns early: a response
     // is not less finished because the player is reading a line, and a scene that
     // failed to load still has a connection to answer for.
@@ -576,9 +580,20 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     // ---- clock ----
     if (advance(world_, dt)) sleep_now(/*collapsed*/ true);
 
+    // ---- the on-screen pad ----
+    // Read before movement so a thumb and the arrow keys reach the same code. It uses
+    // the POINTER, because SDL synthesizes a mouse from a finger — one implementation
+    // for a tap, a click and a trackpad, and no new event type at the platform seam.
+    const Layout  pad = layout(screen_w_, screen_h_);
+    const Pointer ptr{in.mouse_x, in.mouse_y,
+                      in.down(platform::MouseButton::Left),
+                      in.pressed(platform::MouseButton::Left)};
+    const Action  act = read(pad, ptr);
+
     // ---- movement ----
     int dx = 0, dy = 0;
-    if (in.down(platform::Key::Left)  || in.down(platform::Key::A)) dx = -1;
+    if (act.dx != 0 || act.dy != 0) { dx = act.dx; dy = act.dy; }
+    else if (in.down(platform::Key::Left)  || in.down(platform::Key::A)) dx = -1;
     else if (in.down(platform::Key::Right) || in.down(platform::Key::D)) dx = 1;
     else if (in.down(platform::Key::Up)    || in.down(platform::Key::W)) dy = -1;
     else if (in.down(platform::Key::Down)  || in.down(platform::Key::S)) dy = 1;
@@ -602,7 +617,10 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     // The camera origin is the one from the last render — update() runs first and does
     // not know the viewport size. One frame of lag on a highlight is invisible; the
     // alternative is computing the camera twice and keeping the copies in agreement.
-    if (in.mouse_x >= 0) {
+    // `act.consumed` is the veto. Without it a tap on the d-pad ALSO tills the tile
+    // underneath it, which is the exact bug that makes an on-screen pad feel broken
+    // rather than absent.
+    if (in.mouse_x >= 0 && !act.consumed) {
         const tilemap::Vec2f o = cam_.origin();
         const int tx = static_cast<int>(std::floor((in.mouse_x + o.x) / kTile));
         const int ty = static_cast<int>(std::floor((in.mouse_y + o.y) / kTile));
@@ -619,9 +637,9 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     if (in.pressed(platform::Key::Num2)) tool_ = Tab::Water;
     if (in.pressed(platform::Key::Num3)) tool_ = Tab::Seed;
     if (in.pressed(platform::Key::Num4)) tool_ = Tab::Harvest;
-    if (in.pressed(platform::Key::Q) && !defs_.crops.empty())
+    if ((in.pressed(platform::Key::Q) || act.seed) && !defs_.crops.empty())
         seed_ = (seed_ + 1) % static_cast<int>(defs_.crops.size());
-    if (in.pressed(platform::Key::Z) || in.pressed(platform::Key::Space)) interact();
+    if (in.pressed(platform::Key::Z) || in.pressed(platform::Key::Space) || act.use) interact();
     if (in.pressed(platform::Key::F5)) save_game();
     if (in.pressed(platform::Key::F9)) load_game();
     // The conflict is OFFERED, never resolved for the player — the same rule the
@@ -640,6 +658,8 @@ void FarmScene::update(double dt, const platform::InputState& in) {
 void FarmScene::render(const engine::Context& ctx) {
     gfx::Renderer2D& g = ctx.gfx;
     const int W = g.width(), H = g.height();
+    screen_w_ = W;
+    screen_h_ = H;
     g.clear(0xFF101418);
     g.set_font(ctx.font, th::sz_body);
 
@@ -775,6 +795,40 @@ void FarmScene::render(const engine::Context& ctx) {
             g.fill_round_rect(th::space_sm - th::space_xs, py, pw + th::space_sm,
                               th::sz_caption + th::space_sm, th::radius_sm, kProblemChip);
             g.draw_text(th::space_sm, py + th::space_xs, config_problem_.c_str(), th::warn);
+        }
+    }
+
+    // ---- on-screen controls ------------------------------------------------------
+    // Drawn from the SAME layout() the hit test uses. A control drawn in one place and
+    // hit in another is a bug that is invisible in a screenshot: the button looks
+    // right and does nothing.
+    //
+    // Always drawn, never auto-hidden. There is no reliable way to ask "is this a
+    // touch device" — SDL hands us a mouse either way, by design — so the choice is
+    // between guessing and showing. It is drawn faint enough to ignore, and a mouse
+    // player gains a second way to walk rather than losing anything.
+    {
+        const Layout pad = layout(W, H);
+        if (pad.visible()) {
+            const bool over = in_.mouse_x >= 0;
+            const auto button = [&](const Box& b, const char* glyph) {
+                const bool hot = over && b.contains(in_.mouse_x, in_.mouse_y) &&
+                                 in_.down(platform::MouseButton::Left);
+                g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
+                                  hot ? 0xB03A4560 : 0x60202838);
+                g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
+                                  hot ? th::accent : 0x50FFFFFF);
+                g.set_font_size(th::sz_body);
+                const int tw = g.text_width(glyph);
+                g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_body) / 2 + 1, glyph,
+                            hot ? th::text : 0xC0FFFFFF);
+            };
+            button(pad.up, "^");
+            button(pad.down, "v");
+            button(pad.left, "<");
+            button(pad.right, ">");
+            button(pad.use, "Z");
+            button(pad.seed, "Q");
         }
     }
 
