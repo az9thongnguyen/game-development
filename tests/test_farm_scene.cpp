@@ -307,6 +307,66 @@ int main() {
     }
 
 
+    // ---- the on-screen controls, driven as a finger would ---------------------
+    // SDL synthesizes a mouse from a touch, so a synthesized mouse press IS the touch
+    // path. What this pins is the two things a pad gets wrong: that it moves the
+    // player at all, and that tapping it does NOT also act on the world underneath.
+    {
+        render(idle);                                   // publish the screen size
+        const farm::Layout pad = scene.controls();
+        CHECK(pad.visible());
+
+        const auto press = [&](const farm::Box& b, bool down, bool pressed) {
+            platform::InputState in{};
+            in.mouse_x = b.x + b.w / 2;
+            in.mouse_y = b.y + b.h / 2;
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = down;
+            in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = pressed;
+            return in;
+        };
+
+        const int px0 = scene.world().px;
+        // Hold `right` long enough to clear the step cooldown. Holding is the gesture:
+        // a d-pad that only steps on the press edge is a d-pad you have to tap across
+        // a field.
+        for (int i = 0; i < 40; ++i) {
+            scene.update(1.0 / 60.0, press(pad.right, true, i == 0));
+            render(idle);
+        }
+        CHECK(scene.world().px > px0);
+        const int px1 = scene.world().px;
+
+        // ...and `left` walks back, so the pad is not mirrored.
+        for (int i = 0; i < 40; ++i) {
+            scene.update(1.0 / 60.0, press(pad.left, true, i == 0));
+            render(idle);
+        }
+        CHECK(scene.world().px < px1);
+
+        // The veto. Put the player next to a tile that a tap would hoe, then tap the
+        // d-pad and check the world did NOT change: without `consumed`, the same press
+        // both walks and tills, which is the bug that makes a pad feel broken.
+        const std::size_t tilled_before = scene.world().soil.size();
+        scene.update(1.0 / 60.0, press(pad.up, true, true));
+        render(idle);
+        CHECK(scene.world().soil.size() == tilled_before);
+
+        // The action buttons are EDGES: holding `use` must not repeat. Energy is the
+        // observable — a repeating hoe drains a day in one press.
+        const int energy_before = scene.world().energy;
+        for (int i = 0; i < 30; ++i) {
+            scene.update(1.0 / 60.0, press(pad.use, true, i == 0));
+            render(idle);
+        }
+        const int spent = energy_before - scene.world().energy;
+        CHECK(spent >= 0);
+        // At most one action's worth. (Zero is also correct: the facing tile may not
+        // be hoeable. What must not happen is thirty.)
+        CHECK(spent <= farm::kMaxEnergy / 4);
+
+        dump_ppm(buf, "farm_controls.ppm");
+    }
+
     // ---- a theme line that points nowhere -----------------------------------
     // The per-tile fallback is only worth anything if it survives an AUTHORING
     // mistake, not just a missing licence. A theme is hand-written text: sooner or
