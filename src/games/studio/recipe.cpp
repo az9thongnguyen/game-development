@@ -24,7 +24,8 @@ std::string to_recipe(const TextureParams& p) {
     return o.str();
 }
 
-TextureParams from_recipe(const std::string& text) {
+TextureParams from_recipe(const std::string& text, int* applied) {
+    int n = 0;
     TextureParams p;                       // start from defaults; override what we parse
     std::istringstream in(text);
     std::string line;
@@ -34,6 +35,7 @@ TextureParams from_recipe(const std::string& text) {
         const std::string key = line.substr(0, eq);
         const std::string val = line.substr(eq + 1);
         try {
+            ++n;   // decremented below if nothing matched, so the count follows the chain
             if      (key == "seed")       p.seed       = std::uint32_t(std::stoul(val));
             else if (key == "size")       p.size       = std::stoi(val);
             else if (key == "base")       p.base       = TextureParams::Base(std::stoi(val));
@@ -46,8 +48,10 @@ TextureParams from_recipe(const std::string& text) {
             else if (key == "hi")         p.hi         = gfx::Color(std::stoul(val));
             else if (key == "op")         p.op         = TextureParams::Op(std::stoi(val));
             else if (key == "op_amount")  p.op_amount  = std::stod(val);
-        } catch (...) { /* malformed value -> keep the default for that key */ }
+            else                          --n;          // an unknown key is tolerated, not counted
+        } catch (...) { --n; /* malformed value -> keep the default for that key */ }
     }
+    if (applied) *applied = n;
     return p;
 }
 

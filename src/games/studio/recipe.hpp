@@ -12,7 +12,13 @@
 
 namespace studio {
 
-std::string   to_recipe(const TextureParams& p);       // deterministic key=value dump
-TextureParams from_recipe(const std::string& text);    // missing/unknown keys -> defaults
+std::string to_recipe(const TextureParams& p);          // deterministic key=value dump
+
+// Missing and unknown keys keep their default, which is what makes the format
+// forward-compatible. But that same tolerance means ANY text parses — an empty file,
+// a PNG, last week's shopping list all yield the default texture. `applied` (optional)
+// receives the number of keys that were actually recognised, so a caller that is about
+// to WRITE something can refuse a file that turned out not to be a recipe at all.
+TextureParams from_recipe(const std::string& text, int* applied = nullptr);
 
 } // namespace studio
