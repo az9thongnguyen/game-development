@@ -1,0 +1,28 @@
+# The farm pond, drawn in the Studio's Texture Lab.
+#
+# Tiny Town (CC0) has no water tile, so this is the first tile in the project that
+# the project itself made. It is baked with `demo --cmd asset.texture` — see
+# assets/ATTRIBUTION.md — so the .hrt next to this file is reproducible, not a claim.
+#
+# Value-basis FBM at one octave, thresholded high: most of the tile stays flat blue
+# and about a quarter of it lifts to a lighter blue, which reads as short ripple
+# dashes. Kenney's tiles are FLAT colour, so a smooth gradient looked wrong beside
+# them; the threshold is what makes procedural noise sit next to hand-drawn pixels.
+# seed 7 and 0.76 were chosen by rendering a sweep as a pond ringed with the pack's
+# grass and looking at it, not by taste in the abstract.
+#
+# Lines without an equals sign are ignored by from_recipe, which is why this comment
+# survives. Re-saving from the Lab's own Save button will NOT: to_recipe writes only
+# the twelve keys.
+seed=7
+size=16
+base=0
+basis=0
+frequency=4
+octaves=1
+gain=0.5
+lacunarity=2
+lo=4281031843
+hi=4284522206
+op=1
+op_amount=0.76

@@ -8,7 +8,12 @@
 //  Determinism is asserted rather than assumed: the same seed and the same actions
 //  produce the same world hash, and a different seed produces a different one.
 // =============================================================================
+#include <set>
 #include <cstdio>
+
+#ifndef ASSET_ROOT
+#define ASSET_ROOT "."
+#endif
 #include <string>
 #include <vector>
 
@@ -16,6 +21,10 @@
 #include "games/farm/defs.hpp"
 #include "games/farm/cloud.hpp"
 #include "games/farm/theme.hpp"
+#include "games/studio/recipe.hpp"
+#include "games/studio/texture_gen.hpp"
+#include "engine/assets.hpp"
+#include "engine/image.hpp"
 #include "games/farm/dialogue.hpp"
 #include "games/farm/world.hpp"
 
@@ -608,43 +617,110 @@ static void test_the_crop_owns_the_price() {
 static void test_theme() {
     const auto t = parse_theme(
         "# a comment\n"
-        "sheet textures/town.hrt 16\n"
+        "sheet town  textures/town.hrt       16\n"
+        "sheet water textures/farm_water.hrt 16\n"
         "\n"
-        "tile ground 1 0     # grass\n"
-        "tile ground 2 40\n"
-        "tile decor 1 28\n");
+        "tile ground 1 town  0     # grass\n"
+        "tile ground 2 town  40\n"
+        "tile ground 3 water 0\n"
+        "tile decor 1 town 28\n");
     CHECK(t.has_value());
     if (!t) return;
-    CHECK(t->sheet == "textures/town.hrt");
-    CHECK(t->tile == 16);
-    CHECK(t->index_of("ground", 1) == 0);      // index 0 is a TILE, not "absent"
-    CHECK(t->index_of("ground", 2) == 40);
-    CHECK(t->index_of("decor", 1) == 28);
+    CHECK(t->sheets.size() == 2);
+    CHECK(t->sheets.at("town").path == "textures/town.hrt");
+    CHECK(t->sheets.at("town").tile == 16);
+    CHECK(t->sheets.at("water").path == "textures/farm_water.hrt");
+
+    // The join, and the reason there are two sheets at all: two ids in the SAME layer
+    // resolve to different files. Grass comes from the imported pack, the pond from a
+    // tile this project drew, and the map does not know or care which.
+    const farm::Theme::Art* grass = t->find("ground", 1);
+    const farm::Theme::Art* pond  = t->find("ground", 3);
+    CHECK(grass && grass->sheet == "town"  && grass->index == 0);   // index 0 is a TILE
+    CHECK(pond  && pond->sheet  == "water" && pond->index  == 0);   // ...in a different file
+    CHECK(t->find("ground", 2)->index == 40);
+    CHECK(t->find("decor", 1)->index == 28);
 
     // Unmapped: a different id, a different layer, an id nobody listed.
-    CHECK(t->index_of("ground", 3) == -1);
-    CHECK(t->index_of("decor", 2) == -1);
-    CHECK(t->index_of("nosuch", 1) == -1);
+    CHECK(t->find("ground", 4) == nullptr);
+    CHECK(t->find("decor", 2) == nullptr);
+    CHECK(t->find("nosuch", 1) == nullptr);
 
     // The tile size defaults rather than failing, because 16 is what every pack in
     // sight uses and a missing number is not a missing decision.
-    const auto d = parse_theme("sheet a.hrt\ntile ground 1 0\n");
-    CHECK(d && d->tile == 16);
+    const auto d = parse_theme("sheet s a.hrt\ntile ground 1 s 0\n");
+    CHECK(d && d->sheets.at("s").tile == 16);
+
+    // A theme that declares a sheet and maps nothing is legal: it means "no art yet",
+    // which is a real state a project passes through.
+    CHECK(parse_theme("sheet s a.hrt\n").has_value());
 
     // Refusals. A theme is small and hand-written; a typo here is a typo, not a
     // future field, so unlike a defs FILE an unknown record is an error.
-    CHECK(!parse_theme(""));                          // no sheet
-    CHECK(!parse_theme("tile ground 1 0\n"));         // ...even with tiles
-    CHECK(!parse_theme("sheet a.hrt\nwibble 1 2\n"));
-    CHECK(!parse_theme("sheet a.hrt\ntile ground\n"));
-    CHECK(!parse_theme("sheet a.hrt\ntile ground 0 5\n"));    // id 0 is "empty"
-    CHECK(!parse_theme("sheet a.hrt\ntile ground 1 -2\n"));
-    CHECK(!parse_theme("sheet a.hrt 0\n"));
+    CHECK(!parse_theme(""));                                    // no sheet
+    CHECK(!parse_theme("tile ground 1 s 0\n"));                 // ...even with tiles
+    CHECK(!parse_theme("sheet s a.hrt\nwibble 1 2\n"));
+    CHECK(!parse_theme("sheet s a.hrt\ntile ground\n"));
+    CHECK(!parse_theme("sheet s a.hrt\ntile ground 1 s\n"));    // no index
+    CHECK(!parse_theme("sheet s a.hrt\ntile ground 0 s 5\n"));  // id 0 is "empty"
+    CHECK(!parse_theme("sheet s a.hrt\ntile ground 1 s -2\n"));
+    CHECK(!parse_theme("sheet s a.hrt 0\n"));
+    CHECK(!parse_theme("sheet s\n"));                           // a name and no path
+
+    // The two refusals this format introduced, and the reason they are refusals.
+    //
+    // A `tile` line naming a sheet nobody declared is a typo that would otherwise be
+    // INDISTINGUISHABLE from "this id has no art yet" — the tile would silently keep
+    // its flat colour and the file would look correct.
+    CHECK(!parse_theme("sheet town a.hrt\ntile ground 1 twon 0\n"));
+
+    // Two sheets claiming one name: one of them loses, and which one depends on line
+    // order. Nothing about that is a decision anybody made.
+    CHECK(!parse_theme("sheet s a.hrt\nsheet s b.hrt\n"));
+}
+
+// -----------------------------------------------------------------------------
+//  Provenance: the pond tile in the repo is what its recipe says it is.
+//
+//  The Texture Lab writes a `.recipe` beside every `.hrt` so a texture can be
+//  RE-EDITED. That sidecar is also evidence — but only if something checks it.
+//  Until this test, "drawn in the Studio" was a sentence in a comment; the bytes
+//  could have come from anywhere and nobody would know.
+// -----------------------------------------------------------------------------
+static void test_water_provenance() {
+    assets::set_base_path(ASSET_ROOT "/assets");
+
+    const auto recipe = assets::load_file("textures/farm_water.recipe");
+    const auto baked  = assets::load_file("textures/farm_water.hrt");
+    CHECK(recipe && baked);
+    if (!recipe || !baked) return;
+
+    int applied = 0;
+    const studio::TextureParams p =
+        studio::from_recipe(std::string(recipe->begin(), recipe->end()), &applied);
+    CHECK(applied == 12);            // every key the format has, so nothing defaulted silently
+    CHECK(p.size == 16);             // one tile, the size the theme cuts at
+
+    // Byte-for-byte. The generator is documented as deterministic and pure; if that
+    // ever stops being true this is where it is found, and a texture that cannot be
+    // regenerated is a texture that cannot be edited.
+    CHECK(gfx::encode_hrt(studio::generate(p)) == *baked);
+
+    // Two colours and no more. Kenney's tiles are FLAT colour, and a smooth gradient
+    // beside them looked like a different game — the threshold is the whole reason
+    // procedural noise can sit next to hand-drawn pixel art.
+    const auto img = gfx::decode_hrt(*baked);
+    CHECK(img.has_value());
+    if (!img) return;
+    std::set<gfx::Color> shades(img->pixels.begin(), img->pixels.end());
+    CHECK(shades.size() == 2);
+    CHECK(img->w == 16 && img->h == 16);
 }
 
 int main() {
     test_defs();
     test_theme();
+    test_water_provenance();
     test_the_crop_owns_the_price();
     test_overrides();
     test_sync_decision();

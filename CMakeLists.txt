@@ -353,7 +353,7 @@ add_library(commands_core STATIC
   src/engine/commands/release_commands.cpp
 )
 target_include_directories(commands_core PUBLIC src)
-target_link_libraries(commands_core PUBLIC release_ops_core png_core PRIVATE engine_flags)
+target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core PRIVATE engine_flags)
 
 # Compiles the spine sources directly (like test_release_ops) so the test binary owns
 # a complete assets:: implementation without linking a window or a backend.
@@ -366,10 +366,12 @@ add_executable(test_commands tests/test_commands.cpp
   src/engine/project/project.cpp
   src/engine/resource/resource.cpp
   src/engine/assets.cpp
+  src/engine/commands/asset_commands.cpp
+  src/engine/image.cpp
 )
 target_include_directories(test_commands PRIVATE src)
 target_compile_definitions(test_commands PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
-target_link_libraries(test_commands PRIVATE engine_flags)
+target_link_libraries(test_commands PRIVATE png_core studio_core engine_flags)
 add_test(NAME commands COMMAND test_commands)
 
 # ---- Tilemap: the shared 2D map format, follow camera and autotile rule -----------
@@ -431,9 +433,16 @@ add_library(farm_core STATIC
 target_include_directories(farm_core PUBLIC src)
 target_link_libraries(farm_core PUBLIC tilemap_core document_core PRIVATE engine_flags)
 
-add_executable(test_farm tests/test_farm.cpp)
+# Also compiles image.cpp + assets.cpp and links studio_core: the theme test now has a
+# PROVENANCE half that regenerates the pond tile from its committed .recipe and compares
+# bytes, which needs the generator, the .hrt encoder and the asset root.
+add_executable(test_farm tests/test_farm.cpp
+  src/engine/image.cpp
+  src/engine/assets.cpp
+)
 target_include_directories(test_farm PRIVATE src)
-target_link_libraries(test_farm PRIVATE farm_core engine_flags)
+target_compile_definitions(test_farm PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_farm PRIVATE farm_core studio_core engine_flags)
 add_test(NAME farm COMMAND test_farm)
 
 # The farm PLAYED, with no window: press the keys, check the world changed, and check

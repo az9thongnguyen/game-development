@@ -739,23 +739,59 @@ tileset riêng nhưng **chưa dùng** · **cái ao vẫn là hình chữ nhật 
 Quyết định 2 đã làm xong ở **chương 121**. Kenney Tiny Town (CC0) đã tải về, import và
 commit; đường đọc art dùng chung cho cả pack ngoài lẫn `.hrt` vẽ trong Studio.
 
+## S13 — vẽ trong Studio cái mà pack không có (chương 122) — XONG 2026-09-05
+
+Commit: `9bed544` (cửa thứ hai vào `.hrt`) · `dcc4ce6` (farm mặc hai sheet) ·
+chương 122 + docs. Merge `--no-ff` vào `main`.
+
+**Đã CHẠY, không chỉ viết:**
+
+- `--cmd asset.texture <src.recipe> <dst.hrt>` — bake recipe của Texture Lab thành
+  `.hrt`, offline, headless. Đối xứng với `asset.import`.
+- `theme.def` có **sheet đặt tên, nhiều sheet**. `tile ground 1 town 0` và
+  `tile ground 3 water 0` — cùng layer, hai file, hai nguồn gốc.
+- Cái ao **có art**: `assets/textures/farm_water.{recipe,hrt}`, 16×16, hai sắc xanh.
+- `test_farm` **sinh lại tile từ recipe và so từng byte** — provenance kiểm được.
+- 74/74 test · 11 mutation, **giết hết** (2 cái phải viết test mới giết được) ·
+  web build xanh · golden path xanh · release id → `184db301032118f2`.
+
+**Bài học ghi lại:** một guard **không bao giờ được chạm tới** thì mutation sống sót,
+và câu trả lời đúng là **viết test**, không phải xoá guard. Guard "index vượt sheet"
+chưa từng chạy vì không file nào trong repo có index sai — sửa bằng một scene dựng
+trên **bản sao** cây asset (không phải cây thật: test sửa `theme.def` của chính dự án
+là test có thể làm hỏng dự án).
+
+**Chưa xác minh / trần:** không autotile · một tile lặp, không biến thể · nước không
+động · Texture Lab **không vẽ được hình có hình dạng** → nửa "clone vẽ lại" mới đúng
+cho texture · `.recipe` không nằm trong manifest · chưa đo frame cost.
+
 ## Việc kế tiếp
 
-**S13 — vẽ trong Studio cái mà pack không có**: tile nước cho cái ao, bằng Texture Lab
-(`--lab texture`), xuất `.hrt`, thêm một dòng vào `theme.def`. Đây là **nửa sau** của
-quyết định 2 — chứng minh "clone vẽ lại trong Studio" đi đúng cùng một đường.
+**S14 — autotile, hoặc pixel editor.** Hai hướng, chọn một:
+
+- **Autotile** (rẻ hơn, thấy ngay): `autotile_index` có từ chương 110 và **chưa ai
+  dùng** — một core không người tiêu thụ, đúng cái D15 cấm. Cái ao giờ là hình chữ
+  nhật cạnh cứng, cỏ giáp đất cũng vậy. Kenney Tiny Town **có** tile chuyển tiếp.
+- **Pixel editor** (đắt hơn, mở khoá nhiều hơn): workspace thứ ba trong Studio, sửa
+  từng pixel của một `.hrt`. Texture Lab **sinh** được texture nhưng **không vẽ được
+  hình có hình dạng** (cái xô, cọc rào, khuôn mặt) — nên nửa "clone vẽ lại trong
+  Studio" mới chỉ đúng cho texture. Đây mới là câu trả lời đầy đủ.
 
 Sau đó (chưa xếp thứ tự):
 
 - **Touch + điều khiển cảm ứng** cho farm — điều kiện để chơi được trên điện thoại.
-- **Hấp thụ Map Lab** (`--lab map` → workspace thứ ba, bỏ `fpsmap1`, có UI cho
+- **Hấp thụ Map Lab** (`--lab map` → workspace thứ ba/tư, bỏ `fpsmap1`, có UI cho
   entity/spawn) — sau đó mới xoá được nó.
 - **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`.
+- **Nước động**: `studio::make_sheet` biến texture tileable thành sheet N frame miễn
+  phí; đường vẽ của farm chưa biết gì về frame. Nâng cấp rẻ nhất còn lại.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
-- **Map Lab** → workspace thứ ba; `--maplab` vẫn ghi `fpsmap1`.
+- **Map Lab** → workspace riêng; `--lab map` vẫn ghi `fpsmap1`.
 - **Pan/zoom, multi-select, copy/paste, grid/snap** trong Scene canvas.
 - **Inspector cho Spawner/OnOverlap** — round-trip được, không sửa được trong UI.
-- **Chuột vào Play viewport** — `draw()` trả `shown` đúng cho phép biến đổi toạ độ.
 - Filter/paging cho audit log · cache hash theo mtime/size trong `inspect()`.
+- **`.recipe` không nằm trong manifest** — nó là *source*, giống file PNG import. Nên
+  package ship pixel mà không ship cách sinh lại pixel.
+- **Chưa đo chi phí frame** của farm; `--bench-ui` vẫn không chạy farm.
