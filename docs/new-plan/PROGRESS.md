@@ -765,33 +765,60 @@ là test có thể làm hỏng dự án).
 động · Texture Lab **không vẽ được hình có hình dạng** → nửa "clone vẽ lại" mới đúng
 cho texture · `.recipe` không nằm trong manifest · chưa đo frame cost.
 
+## S14 — chỗ để vẽ (chương 123) — XONG 2026-09-05
+
+Commit: `badd58e` (paint_core) · `bd783c2` (Pixel workspace) · `bcaabd0` (sửa bàn
+phím web) · chương 123 + docs. Merge `--no-ff` vào `main`.
+
+**Chương này bắt đầu bằng việc ĐỊNH LÀM AUTOTILE và phát hiện KHÔNG LÀM ĐƯỢC.**
+Tiny Town có 9 mảnh đất-trên-cỏ, không phải 47; 9 mảnh không vẽ được dải rộng 1 ô;
+đường đi của farm rộng đúng 1 ô. **Chặn ở ART, không ở code** — và Texture Lab không
+sinh được hình có hình dạng. Phải có người cầm con trỏ, mà trong dự án chưa có chỗ.
+
+**Đã CHẠY, không chỉ viết:**
+
+- `paint_core` — sửa pixel dưới dạng `doc::Command`, cùng hình dạng với `map_edit`.
+  Thêm `touch_line` (Bresenham) vì ở zoom 8 con trỏ đi vài pixel mỗi frame.
+- `PixelWorkspace` — workspace **thứ ba**, `--lab pixel` và tab trong Studio.
+  Pencil/Rect/Fill/Pick, undo chung stack, autosave + recovery trên file **nhị phân**,
+  palette **lấy từ chính ảnh**.
+- 76/76 test · 8 mutation, giết hết · golden path xanh · **đã chạy trong Chrome thật**.
+
+**Bug lớn tìm được nhờ chạy trong trình duyệt:** **web build CHƯA BAO GIỜ có input
+bàn phím**, từ chương 118 tới giờ. SDL2 nghe phím trên **canvas**, mà trang không bao
+giờ focus nó → mọi keydown vào `body`. Không WASD trong farm, không F5/F9, không
+phím tắt Studio. Ba chương "đã xác minh trong trình duyệt" đều **chỉ dùng chuột**.
+Sửa: `tabindex="0"` + `focus()`. Đã xác minh lại: `R` đổi tool, `D` làm nhân vật đi.
+
+**Bài học ghi lại:** cạnh phím là **poll-derived** — nhấn-thả trong cùng một frame
+16ms là vô hình. Ba lần thử đầu thất bại **giống hệt** cái bug đang truy.
+
 ## Việc kế tiếp
 
-**S14 — autotile, hoặc pixel editor.** Hai hướng, chọn một:
+**S15 — vẽ những mảnh mà pack không có, rồi autotile.** Giờ mới làm được, và theo
+đúng thứ tự đã tìm ra ở chương 123: **art trước, luật sau**.
 
-- **Autotile** (rẻ hơn, thấy ngay): `autotile_index` có từ chương 110 và **chưa ai
-  dùng** — một core không người tiêu thụ, đúng cái D15 cấm. Cái ao giờ là hình chữ
-  nhật cạnh cứng, cỏ giáp đất cũng vậy. Kenney Tiny Town **có** tile chuyển tiếp.
-- **Pixel editor** (đắt hơn, mở khoá nhiều hơn): workspace thứ ba trong Studio, sửa
-  từng pixel của một `.hrt`. Texture Lab **sinh** được texture nhưng **không vẽ được
-  hình có hình dạng** (cái xô, cọc rào, khuôn mặt) — nên nửa "clone vẽ lại trong
-  Studio" mới chỉ đúng cho texture. Đây mới là câu trả lời đầy đủ.
+1. Vẽ trong Pixel workspace các mảnh đường đi **rộng 1 ô** (dọc, ngang, 4 góc, 4 đầu
+   mút) vào một sheet **của mình**, không phải sheet Kenney.
+2. Rồi mới nối `autotile_index` (hoặc luật 9-slice, tuỳ số mảnh vẽ được) vào farm.
+   Đây là lần đầu `autotile_*` có người tiêu thụ kể từ chương 110.
 
 Sau đó (chưa xếp thứ tự):
 
+- **Colour picker** trong Pixel workspace — hiện chỉ tô được màu ảnh đã có. Vẽ mới
+  từ đầu thì không đủ; đây là thứ đầu tiên cần thêm.
 - **Touch + điều khiển cảm ứng** cho farm — điều kiện để chơi được trên điện thoại.
-- **Hấp thụ Map Lab** (`--lab map` → workspace thứ ba/tư, bỏ `fpsmap1`, có UI cho
-  entity/spawn) — sau đó mới xoá được nó.
+- **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`, có UI cho entity/spawn).
 - **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`.
 - **Nước động**: `studio::make_sheet` biến texture tileable thành sheet N frame miễn
-  phí; đường vẽ của farm chưa biết gì về frame. Nâng cấp rẻ nhất còn lại.
+  phí; đường vẽ của farm chưa biết gì về frame.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
-- **Map Lab** → workspace riêng; `--lab map` vẫn ghi `fpsmap1`.
 - **Pan/zoom, multi-select, copy/paste, grid/snap** trong Scene canvas.
 - **Inspector cho Spawner/OnOverlap** — round-trip được, không sửa được trong UI.
 - Filter/paging cho audit log · cache hash theo mtime/size trong `inspect()`.
-- **`.recipe` không nằm trong manifest** — nó là *source*, giống file PNG import. Nên
-  package ship pixel mà không ship cách sinh lại pixel.
+- **`.recipe` không nằm trong manifest** — nó là *source*, giống PNG import.
 - **Chưa đo chi phí frame** của farm; `--bench-ui` vẫn không chạy farm.
+- **Pixel workspace**: một layer, không selection/move/copy, không đổi kích thước
+  canvas, không tạo file mới, guide cố định 16px, autosave ghi lại cả ảnh.
