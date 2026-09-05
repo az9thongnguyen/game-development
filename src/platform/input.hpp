@@ -86,6 +86,15 @@ struct InputState {
     bool repeated(Key k) const { return key_pressed[static_cast<int>(k)] ||
                                         key_repeat[static_cast<int>(k)]; }
 
+    // The "command" modifier — Cmd on a Mac, Ctrl everywhere else — and it accepts
+    // EITHER, on every platform, on purpose. A compile-time `#ifdef __APPLE__` cannot
+    // be right for the web build: that binary is compiled once and run on every OS, so
+    // a Mac user in a browser presses Cmd and a Windows user presses Ctrl and the same
+    // wasm has to serve both. (Before chapter 123 this did not matter, because the web
+    // build received no keys at all.) The cost of accepting both is that Ctrl+S also
+    // saves on a Mac, which nobody has ever complained about.
+    bool accel() const { return mods.super || mods.ctrl; }
+
     bool down(MouseButton b)     const { return mouse_down[static_cast<int>(b)]; }
     bool pressed(MouseButton b)  const { return mouse_pressed[static_cast<int>(b)]; }
     bool released(MouseButton b) const { return mouse_released[static_cast<int>(b)]; }

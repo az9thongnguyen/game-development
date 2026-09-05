@@ -27,13 +27,10 @@ inline Input from_platform(const platform::InputState& p) {
     in.text     = p.text;
     in.text_len = p.text_len;
 
-    // The command modifier: Cmd on macOS, Ctrl everywhere else. Getting this wrong
-    // is the single most common way a hand-written UI feels foreign on a Mac.
-#ifdef __APPLE__
-    const bool cmd = p.mods.super;
-#else
-    const bool cmd = p.mods.ctrl;
-#endif
+    // The command modifier. One definition, on the input struct — it used to be an
+    // `#ifdef __APPLE__` here and in three other files, which is four chances to
+    // disagree and, on the web, four chances to be wrong at once.
+    const bool cmd = p.accel();
 
     Keys& k = in.keys;
     // Shift+Tab is "focus backwards", so the two are mutually exclusive.

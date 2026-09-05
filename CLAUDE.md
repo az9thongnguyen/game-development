@@ -69,6 +69,7 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 ./build/demo --lab      # list the labs; --lab <id> runs one
 #   scene    the Studio's Scene workspace, full-screen (the SAME object as its Scene tab)
 #   map      tile-grid level editor -> maps/level_NN.map (still fpsmap1; not yet absorbed)
+#   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt)
 #   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
 #   editor   immediate-mode GUI + physics sandbox
 #   fx light audio anim     particles / 2D lights / mixer / flipbook
@@ -77,7 +78,7 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 #   colony   engine-core integration game (also the BaaS/SDK client)
 
 ./build/demo --shell [proj]     # the Studio (1280x720, resizable)
-                                # Edit section: TABS of workspaces (Map | Scene), Cmd+Z undo,
+                                # Edit section: TABS of workspaces (Map | Scene | Pixels), Cmd+Z undo,
                                 # Cmd+S save, Cmd+K palette, Cmd+1..7 sections. Autosaves;
                                 # offers recovery on open.
                                 # Project section = asset browser + validation verdict (the
@@ -194,7 +195,8 @@ Understand these deliberate patterns before editing the build:
   `inflate_core` (hand-written DEFLATE) and `png_core` (decode only, offline),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
-  `particles_core`, `tween_core`, `light_core`, `audio_core`,
+  `particles_core`, `tween_core`, `light_core`, `audio_core`, `paint_core` (pixel
+  edits as undoable commands — the third client of `doc::CommandStack`),
   `runner_core`). Each has a matching `test_*` target so simulation/logic is
   unit-tested with no window.
 - **`-DENGINE_BUILD_DESKTOP=OFF`** builds everything except the SDL2 `demo` target —

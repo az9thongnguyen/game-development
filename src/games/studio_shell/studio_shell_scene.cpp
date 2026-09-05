@@ -95,14 +95,29 @@ std::string StudioShellScene::asset_of(const std::string& project_path,
     return {};
 }
 
+// The plural of the above, for the workspace that edits one of SEVERAL. A project has
+// one map and one scene today and always has more than one texture, so this returns a
+// list rather than the first — picking the first for the user would mean the imported
+// pack is the only sheet the editor can reach, which is the one file our own pixels
+// must never end up in (chapter 122).
+std::vector<std::string> StudioShellScene::assets_of(const std::string& project_path,
+                                                     const std::vector<std::string>& known_entries,
+                                                     const char* type) {
+    std::vector<std::string> out;
+    for (const engine::InspectedAsset& a : engine::inspect(project_path, known_entries).assets)
+        if (a.type == type && a.present) out.push_back(a.path);
+    return out;
+}
+
 StudioShellScene::StudioShellScene(std::string project_path,
                                    std::vector<std::string> known_entries)
     : project_path_(std::move(project_path)),
       known_entries_(std::move(known_entries)),
       map_(asset_of(project_path_, known_entries_, "map")),
-      scene_(asset_of(project_path_, known_entries_, "scene")) {
+      scene_(asset_of(project_path_, known_entries_, "scene")),
+      pixels_(assets_of(project_path_, known_entries_, "texture")) {
     rebuild();
-    workspaces_ = {&map_, &scene_};
+    workspaces_ = {&map_, &scene_, &pixels_};
     // Each workspace binds its own ids here, so the palette lists exactly what THIS
     // process can do. --cmd in a terminal sees the release commands and not these,
     // which is the truth: there is no document open in a terminal.
@@ -173,11 +188,7 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
 
     if (nav_click_ >= 0) { section_ = nav_click_; nav_click_ = -1; }
 
-#ifdef __APPLE__
-    const bool cmd = in.mods.super;
-#else
-    const bool cmd = in.mods.ctrl;
-#endif
+    const bool cmd = in.accel();
 
     // The rail moved off the arrow keys: a workspace needs them, and a key that means
     // two things means neither. Cmd+1..5 is what every tabbed application already uses.

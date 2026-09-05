@@ -37,7 +37,7 @@
   <div class="wrap">
     <h1>hand-written C++ game engine → WebAssembly</h1>
     <div id="status">loading WASM…</div>
-    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
     <div id="log"></div>
   </div>
   <script>
@@ -70,6 +70,11 @@
     // modes used to sit here, one per flag, and they went stale the moment main.cpp
     // changed — the page should not be a second copy of the lab table.
     if (mode.indexOf('lab-') === 0) argsByMode[mode] = ['--lab', mode.slice(4)];
+    var canvasEl = document.getElementById('canvas');
+    // Clicking the game must also return focus to it: clicking the page chrome (the
+    // log, the heading) moves focus away, and the keyboard would go quiet again with
+    // nothing on screen to say why.
+    canvasEl.addEventListener('mousedown', function () { canvasEl.focus(); });
     var Module = {
       arguments: argsByMode[mode] || argsByMode.gui,
       // The preloaded asset tree is MEMFS: it lives in this tab and dies with it. That
@@ -96,11 +101,21 @@
           statusEl.textContent = 'running (saves will not persist)';
         }
       }],
-      canvas: document.getElementById('canvas'),
+      canvas: canvasEl,
       setStatus: function (t) { statusEl.textContent = t; },
       print:    function (t) { logEl.textContent += t + "\n"; logEl.scrollTop = logEl.scrollHeight; },
       printErr: function (t) { logEl.textContent += t + "\n"; },
-      onRuntimeInitialized: function () { statusEl.textContent = 'running'; }
+      onRuntimeInitialized: function () {
+        statusEl.textContent = 'running';
+        // FOCUS THE CANVAS. SDL2's Emscripten backend listens for key events on the
+        // canvas element, so with focus anywhere else (the body, by default) the build
+        // receives no keyboard input AT ALL — no WASD, no Cmd+S, no tool shortcuts.
+        // That was true of every web build from chapter 118 until chapter 123, and it
+        // went unnoticed because every browser check so far had used the mouse.
+        // tabindex="0" above is the other half: an element that cannot be focused
+        // cannot be given focus.
+        canvasEl.focus();
+      }
     };
   </script>
   {{{ SCRIPT }}}
