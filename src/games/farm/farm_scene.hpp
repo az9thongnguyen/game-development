@@ -89,6 +89,7 @@ public:
     [[nodiscard]] std::size_t tile_count(const std::string& sheet) const {
         return sheet_of(sheet).count();
     }
+    [[nodiscard]] int   seed_index() const { return seed_; }
     [[nodiscard]] int   facing_x() const { return face_x_; }
     [[nodiscard]] int   facing_y() const { return face_y_; }
     [[nodiscard]] float camera_origin_x() const { return cam_.origin().x; }

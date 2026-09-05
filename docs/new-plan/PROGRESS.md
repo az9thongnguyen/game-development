@@ -793,25 +793,48 @@ Sửa: `tabindex="0"` + `focus()`. Đã xác minh lại: `R` đổi tool, `D` l�
 **Bài học ghi lại:** cạnh phím là **poll-derived** — nhấn-thả trong cùng một frame
 16ms là vô hình. Ba lần thử đầu thất bại **giống hệt** cái bug đang truy.
 
+## S15 — chơi được bằng tay (chương 124) — XONG 2026-09-05
+
+Commit: `ba03c64` (sửa renderer) · `cc48216` (điều khiển màn hình) · chương 124 + docs.
+Merge `--no-ff` vào `main`.
+
+**Đã CHẠY, không chỉ viết:**
+
+- D-pad + 2 nút hành động cho farm. **Đọc CON TRỎ, không phải sự kiện chạm** — SDL tự
+  tổng hợp chuột từ ngón tay, nên platform seam **không cần thêm gì**, và toàn bộ
+  Studio (vốn chỉ đọc chuột) vẫn dùng được trên thiết bị cảm ứng.
+- **MỘT `layout()`** cho cả renderer lẫn hit test.
+- `consumed` chặn thế giới đọc con trỏ khi nó nằm trên nút.
+- Vừa hay quyết bằng **TỈ LỆ**, không phải ngưỡng pixel.
+- 76/76 · ASan sạch · 7 mutation giết hết · golden path xanh ·
+  **đã chạy bằng CHẠM THẬT** trong viewport 390×844.
+
+**Bug renderer lộ ra:** `draw_round_rect` vẽ cạnh thẳng **đục** và cung góc **có
+alpha** — một lời gọi, hai hành vi, ẩn từ chương 69 vì mọi viền đều đục.
+
+**Bài học ghi lại:** một mutation sống sót **hai lần** vì test *trông như* có phủ.
+Lần một: viewport để bản đồ letterbox nên nút không bao giờ nằm cạnh người chơi.
+Lần hai: bấm `W` để quay mặt **cũng đi một bước**, làm ô dưới nút không còn kề bên.
+**Đặt người chơi bằng file save, và đặt SAU khi quay mặt.**
+
 ## Việc kế tiếp
 
-**S15 — vẽ những mảnh mà pack không có, rồi autotile.** Giờ mới làm được, và theo
-đúng thứ tự đã tìm ra ở chương 123: **art trước, luật sau**.
+**S16 — vẽ những mảnh mà pack không có, rồi autotile.** Vẫn là việc kế tiếp đúng
+thứ tự đã tìm ra ở chương 123: **art trước, luật sau**.
 
 1. Vẽ trong Pixel workspace các mảnh đường đi **rộng 1 ô** (dọc, ngang, 4 góc, 4 đầu
    mút) vào một sheet **của mình**, không phải sheet Kenney.
-2. Rồi mới nối `autotile_index` (hoặc luật 9-slice, tuỳ số mảnh vẽ được) vào farm.
-   Đây là lần đầu `autotile_*` có người tiêu thụ kể từ chương 110.
+2. Rồi mới nối `autotile_index` vào farm. Lần đầu nó có người tiêu thụ kể từ ch.110.
 
 Sau đó (chưa xếp thứ tự):
 
-- **Colour picker** trong Pixel workspace — hiện chỉ tô được màu ảnh đã có. Vẽ mới
-  từ đầu thì không đủ; đây là thứ đầu tiên cần thêm.
-- **Touch + điều khiển cảm ứng** cho farm — điều kiện để chơi được trên điện thoại.
-- **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`, có UI cho entity/spawn).
+- **Colour picker** trong Pixel workspace — hiện chỉ tô được màu ảnh đã có.
+- **Nút cho tool (1–4) và save** trên màn hình — người chơi điện thoại hiện chỉ đi
+  được, dùng được, đổi hạt được, hết.
+- **Đa chạm thật** ở platform seam — điều kiện để vừa giữ hướng vừa bấm hành động.
+- **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`).
 - **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`.
-- **Nước động**: `studio::make_sheet` biến texture tileable thành sheet N frame miễn
-  phí; đường vẽ của farm chưa biết gì về frame.
+- **Nước động**: `studio::make_sheet` làm được miễn phí; farm chưa biết gì về frame.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
@@ -821,4 +844,5 @@ Sau đó (chưa xếp thứ tự):
 - **`.recipe` không nằm trong manifest** — nó là *source*, giống PNG import.
 - **Chưa đo chi phí frame** của farm; `--bench-ui` vẫn không chạy farm.
 - **Pixel workspace**: một layer, không selection/move/copy, không đổi kích thước
-  canvas, không tạo file mới, guide cố định 16px, autosave ghi lại cả ảnh.
+  canvas, không tạo file mới, guide cố định 16px.
+- **Điều khiển màn hình**: chỉ farm có; luôn hiện, không tự ẩn trên desktop.

@@ -69,7 +69,10 @@ Action read(const Layout& l, const Pointer& p) {
     const Box* boxes[] = {&l.up, &l.down, &l.left, &l.right, &l.use, &l.seed};
     for (const Box* b : boxes)
         if (b->contains(p.x, p.y)) { a.consumed = true; break; }
-    if (!a.consumed) return a;
+    // No `if (!consumed) return` here. It read as a fast path and was a REDUNDANT
+    // guard: every branch below already tests `contains`, so deleting it changed
+    // nothing and no test could tell — which is exactly the shape a mutation survives
+    // in (chapter 121, and again in 122).
 
     // Direction is HELD, like an arrow key: the player holds a thumb on `right` and
     // walks. The actions are EDGES, like Z and Q: holding them must not repeat.

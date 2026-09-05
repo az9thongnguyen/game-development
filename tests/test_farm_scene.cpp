@@ -43,9 +43,11 @@ namespace {
 constexpr int LW = 640, LH = 360, SS = 2;
 constexpr int PW = LW * SS, PH = LH * SS;
 
-void dump_ppm(const std::vector<std::uint32_t>& buf, const char* name) {
+void dump_ppm(const std::vector<std::uint32_t>& buf, const char* name,
+              int w = PW, int h = PH) {
+    (void)h;
     if (FILE* f = std::fopen(name, "wb")) {
-        std::fprintf(f, "P6\n%d %d\n255\n", PW, PH);
+        std::fprintf(f, "P6\n%d %d\n255\n", w, static_cast<int>(buf.size()) / w);
         for (auto p : buf) {
             const unsigned char rgb[3] = {static_cast<unsigned char>((p >> 16) & 0xFF),
                                           static_cast<unsigned char>((p >> 8) & 0xFF),
@@ -162,12 +164,16 @@ void write_text_at(const std::filesystem::path& path, const std::string& text) {
 }
 
 // A save file for a world that is unmistakably not the default one.
-std::string save_text(int day, int gold) {
+std::string save_text(int day, int gold, int px = -1, int py = -1) {
     farm::World w;
     w.seed   = 4242;
     w.day    = day;
     w.gold   = gold;
     w.minute = farm::kDayStartMin + 120;
+    // Placing the player is how a test reaches a screen position it cannot walk to:
+    // the map is smaller than most viewports, so the camera clamps and the corners
+    // are wherever the bounds put them.
+    if (px >= 0) { w.px = px; w.py = py; }
     return doc::to_text(farm::to_save(w));
 }
 
@@ -365,6 +371,78 @@ int main() {
         CHECK(spent <= farm::kMaxEnergy / 4);
 
         dump_ppm(buf, "farm_controls.ppm");
+    }
+
+    // ---- the veto, where it is actually reachable -----------------------------
+    // On the 640x360 viewport above, the 24x18 map is letterboxed in the middle and no
+    // control ever covers a tile the player can stand beside — so removing
+    // `!act.consumed` from the scene changed nothing and every test still passed. That
+    // is a hole in the test, not a redundant guard: on a viewport where the map reaches
+    // the controls, a tap on a button ALSO points the player at whatever tile is under
+    // it, and a tool then fires in a direction nobody chose.
+    //
+    // The player is PLACED rather than walked. The map is smaller than the viewport, so
+    // the camera clamps against its bounds and the corners are wherever those bounds
+    // put them — walking cannot reach a chosen pixel, and a save can.
+    //
+    // `seed` is the button to press because it cycles the seed and does NOT interact,
+    // so facing is the only thing the missing veto could change.
+    {
+        constexpr int SW = 500, SH = 380;
+        std::vector<std::uint32_t> sbuf(static_cast<std::size_t>(SW) * SH, 0);
+        platform::Framebuffer      sfb{sbuf.data(), SW, SH, SW};
+        const auto srender = [&] {
+            for (auto& p : sbuf) p = 0;
+            gfx::Renderer2D r(sfb, 1);
+            const engine::Context c{r, idle, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            scene.render(c);
+        };
+
+        srender();                       // publish the size and settle the camera
+        const farm::Layout pad = scene.controls();
+        CHECK(pad.visible());
+
+        const int cx = pad.seed.x + pad.seed.w / 2, cy = pad.seed.y + pad.seed.h / 2;
+        const int tx = static_cast<int>(std::floor((cx + scene.camera_origin_x()) / 16.0f));
+        const int ty = static_cast<int>(std::floor((cy + scene.camera_origin_y()) / 16.0f));
+
+        // Face north FIRST. This also walks a step — facing and moving are the same
+        // key — which is why the placement has to come after it: the first version
+        // placed the player and then pressed W, and the step left the button two tiles
+        // away, so the world path had nothing to do and the mutation survived a test
+        // that looked like it covered it.
+        platform::InputState up{};
+        up.key_down[static_cast<int>(platform::Key::W)] = true;
+        scene.update(1.0 / 60.0, up);
+        const int fx = scene.facing_x(), fy = scene.facing_y();
+        CHECK(fx == 0 && fy == -1);
+
+        // Now stand the player one tile ABOVE the button's tile, so the button covers
+        // the square directly SOUTH of them — the opposite of where they are looking.
+        write_text("saves/farm/slot1.sav", save_text(1, 0, tx, ty - 1));
+        platform::InputState f9{};
+        f9.key_pressed[static_cast<int>(platform::Key::F9)] = true;
+        scene.update(1.0 / 60.0, f9);
+        srender();
+        CHECK(scene.world().px == tx && scene.world().py == ty - 1);
+        CHECK(scene.facing_x() == fx && scene.facing_y() == fy);   // loading did not turn them
+        CHECK(std::abs(tx - scene.world().px) + std::abs(ty - scene.world().py) == 1);
+
+        platform::InputState tap{};
+        tap.mouse_x = cx;
+        tap.mouse_y = cy;
+        tap.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+        tap.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+        const int seed_before = scene.seed_index();
+        scene.update(1.0 / 60.0, tap);
+        // Facing unchanged: the button swallowed the pointer before the world saw it.
+        CHECK(scene.facing_x() == fx && scene.facing_y() == fy);
+        // ...and the button still did its own job, so this is a veto and not a freeze.
+        CHECK(scene.seed_index() != seed_before);
+
+        srender();
+        dump_ppm(sbuf, "farm_controls_small.ppm", SW, SH);
+        clear_file("saves/farm/slot1.sav");
     }
 
     // ---- a theme line that points nowhere -----------------------------------
