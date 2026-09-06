@@ -10,6 +10,7 @@
 #include "engine/commands/registry.hpp"
 #include "engine/document/document.hpp"
 #include "engine/renderer2d.hpp"
+#include "engine/tilemap/autotile.hpp"
 #include "engine/ui/theme.hpp"
 
 namespace studioshell {
@@ -231,6 +232,7 @@ void MapWorkspace::update(double dt, const platform::InputState& in, bool intera
     if (want_layer_ >= 0) { layer_ = want_layer_; want_layer_ = -1; }
     if (want_tool_  >= 0) { tool_  = static_cast<Tool>(want_tool_); want_tool_ = -1; }
     if (want_brush_ >= 0) { brush_ = want_brush_; want_brush_ = -1; }
+    if (want_rule_)       { want_rule_ = false; message_ = cycle_rule(); }
     if (want_entity_ >= 0) {
         const auto names = entity_names();
         if (want_entity_ < static_cast<int>(names.size())) entity_ = names[want_entity_];
@@ -388,6 +390,27 @@ engine::OpResult MapWorkspace::place_selected(int tx, int ty) {
     return {true, entity_ + " -> " + std::to_string(tx) + "," + std::to_string(ty)};
 }
 
+engine::OpResult MapWorkspace::cycle_rule() {
+    const std::string layer = layer_name();
+    if (layer.empty()) return {false, "no layer"};
+    if (brush_ == 0)   return {false, "0 is empty — it is not a material"};
+
+    // none -> line -> blob -> none. A cycle rather than a menu because there are three
+    // answers and one of them is "no"; a dropdown for three values is more UI than the
+    // question deserves.
+    const tilemap::RuleKind now  = map_.rule_for(layer, brush_);
+    const tilemap::RuleKind next = now == tilemap::RuleKind::None ? tilemap::RuleKind::Line
+                                 : now == tilemap::RuleKind::Line ? tilemap::RuleKind::Blob
+                                                                  : tilemap::RuleKind::None;
+    auto cmd = mapedit::set_rule(map_, layer, brush_, next);
+    if (!cmd) return {false, "rule unchanged"};
+    stack_.push_apply(std::move(*cmd));
+    const char* const kn = next == tilemap::RuleKind::Line ? "line"
+                         : next == tilemap::RuleKind::Blob ? "blob"
+                                                           : "none";
+    return {true, "tile " + std::to_string(brush_) + " on " + layer + ": " + kn};
+}
+
 engine::OpResult MapWorkspace::cycle_facing() {
     if (!loaded_) return {false, "no map open"};
     const tilemap::Entity* e = map_.entity(entity_);
@@ -445,8 +468,34 @@ void MapWorkspace::draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect are
                 if (px + tile < area.x || px > area.x + area.w) continue;
                 // A mask draws as a translucent wash over the tiles rather than as a
                 // colour of its own: it says "this is blocked", not "this looks like".
-                if (mask) g.fill_rect_blend(px, py, tile, tile, 0x70E5657A);
-                else      g.fill_rect(px, py, tile, tile, tile_color(id));
+                if (mask) { g.fill_rect_blend(px, py, tile, tile, 0x70E5657A); continue; }
+                g.fill_rect(px, py, tile, tile, tile_color(id));
+                // A ruled material is not a tile id — it is a road or a region, and
+                // which of its pieces this cell wears depends on its neighbours. The
+                // editor has no tileset renderer, so it draws the CONNECTIONS instead
+                // of the artwork: a stub toward every neighbour that continues, and a
+                // pip in a corner the region actually turns. That is the piece the
+                // game will pick, shown in the only vocabulary this canvas has.
+                const tilemap::RuleKind rk = L.rule_for(id);
+                if (rk == tilemap::RuleKind::None) continue;
+                const std::uint8_t nm = tilemap::neighbour_mask(map_, L.name, x, y);
+                const int c = tile / 2, t2 = std::max(1, tile / 8), arm = tile / 2;
+                const gfx::Color ink = th::bg;
+                g.fill_rect(px + c - t2 / 2, py + c - t2 / 2, t2 + 1, t2 + 1, ink);   // hub
+                if (nm & tilemap::kN) g.fill_rect(px + c - t2 / 2, py,           t2, arm, ink);
+                if (nm & tilemap::kS) g.fill_rect(px + c - t2 / 2, py + c,       t2, arm, ink);
+                if (nm & tilemap::kW) g.fill_rect(px,              py + c - t2 / 2, arm, t2, ink);
+                if (nm & tilemap::kE) g.fill_rect(px + c,          py + c - t2 / 2, arm, t2, ink);
+                if (rk != tilemap::RuleKind::Blob) continue;
+                // Only the diagonals autotile_canonical KEEPS are drawn: one that its
+                // two cardinals do not back cannot change the piece, so showing it
+                // would promise a difference the renderer will not make.
+                const std::uint8_t keep = tilemap::autotile_canonical(nm);
+                const int          d    = std::max(1, tile / 6);
+                if (keep & tilemap::kNW) g.fill_rect(px,             py,             d, d, ink);
+                if (keep & tilemap::kNE) g.fill_rect(px + tile - d,  py,             d, d, ink);
+                if (keep & tilemap::kSW) g.fill_rect(px,             py + tile - d,  d, d, ink);
+                if (keep & tilemap::kSE) g.fill_rect(px + tile - d,  py + tile - d,  d, d, ink);
             }
         }
     }
@@ -585,6 +634,21 @@ void MapWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect 
                 g.draw_round_rect(r.x, r.y, r.w, r.h, th::radius_sm, th::text_dim);
         }
         ui.pop_id();
+    }
+    // ---- the brush's RULE ----
+    // Next to the brush because it is a fact about THIS material: 2 is a road, 5 is a
+    // lake. Id 0 is empty and cannot have one, so the button says so rather than
+    // going quiet — a disabled control with no reason reads as a bug.
+    {
+        const tilemap::RuleKind rk = map_.rule_for(layer_name(), brush_);
+        const char* const       kn = rk == tilemap::RuleKind::Line ? "line"
+                                   : rk == tilemap::RuleKind::Blob ? "blob"
+                                                                   : "none";
+        char label[48];
+        std::snprintf(label, sizeof label, "Rule  %s", brush_ == 0 ? "-  (0 is empty)" : kn);
+        rule_rect_ = ui.slot(28);
+        if (ui.button(rule_rect_, label, false, brush_ != 0 && !layer_name().empty()))
+            want_rule_ = true;
     }
     ui.skip();
 
