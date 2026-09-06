@@ -36,12 +36,16 @@ regression, not a shortcut:
 - **All file I/O goes through `assets::` (`src/engine/assets.*`)**, never scattered
   `fopen`. The web build uses a virtual filesystem.
 - **`.hrt` is the only raster format the engine READS at runtime** (`HRT1|w|h|RGBA8`).
-  PNG is decoded by hand (`inflate_core` + `png_core`, no third party) but only by the
-  offline `--cmd asset.import`. The Texture Lab's `.recipe` bakes to `.hrt` through the
-  other offline door, `--cmd asset.texture`, so art from an open-licence pack and art
-  this project drew arrive downstream as the same kind of file. **Both** must gain a line
-  in **`assets/ATTRIBUTION.md`** in the same change — imported art because of the
-  licence, our own art because a file that is ours should be provably ours.
+  It has exactly **three offline doors**, one per origin, so art from a pack and art
+  this project made arrive downstream as the same kind of file:
+  `--cmd asset.import` (a PNG, decoded by hand via `inflate_core` + `png_core`, no third
+  party), `--cmd asset.texture` (the Texture Lab's `.recipe` — art we *generated*), and
+  `--cmd asset.pixels` (a `.pix` ASCII sheet — art we *drew*; text because a tile SET is
+  one design cut N ways and its seams are a relationship you review, not sixteen
+  canvases you click through). **All three** must gain a line in
+  **`assets/ATTRIBUTION.md`** in the same change — imported art because of the licence,
+  our own art because a file that is ours should be provably ours. A `.recipe`/`.pix` is
+  a *source*: it stays out of the manifest, and a test re-bakes it and compares bytes.
 - **Web-portability is baked in from the start.** The same engine/game code compiles
   native and WASM; only the platform `run()` loop is `#ifdef`'d.
 
@@ -93,7 +97,8 @@ them working). Paths are relative to the asset root — see `assets::` below:
 
 ```sh
 ./build/demo --cmd asset.import  <src.png>    <dst.hrt>  # bring foreign art in (offline)
-./build/demo --cmd asset.texture <src.recipe> <dst.hrt>  # bake Texture-Lab art (offline)
+./build/demo --cmd asset.texture <src.recipe> <dst.hrt>  # bake GENERATED art (offline)
+./build/demo --cmd asset.pixels  <src.pix>    <dst.hrt>  # bake DRAWN art, an ASCII sheet
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
@@ -191,13 +196,15 @@ Understand these deliberate patterns before editing the build:
   cores `project_core`, `inspect_core` (one read+validate+hash, shared by launch,
   package, publish and the Studio), `resource_core`, `release_core`, `release_ops_core`,
   the game cores `farm_core` (day loop, crops, NPC schedules, dialogue, the pure
-  cloud-save verdict `decide_sync`, and the art `theme` — NAMED sheets, so imported
-  and self-drawn art never share a file — no renderer, no SDK),
+  cloud-save verdict `decide_sync`, the art `theme` — NAMED sheets, so imported
+  and self-drawn art never share a file, plus `line_piece`, which picks one of a
+  16-piece autotile LINE set from a cell's four neighbours — no renderer, no SDK),
   `inflate_core` (hand-written DEFLATE) and `png_core` (decode only, offline),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
   `particles_core`, `tween_core`, `light_core`, `audio_core`, `paint_core` (pixel
-  edits as undoable commands — the third client of `doc::CommandStack`),
+  edits as undoable commands — the third client of `doc::CommandStack` — plus
+  `pixel_source`, the `.pix` -> `Image` bake),
   `runner_core`). Each has a matching `test_*` target so simulation/logic is
   unit-tested with no window.
 - **`-DENGINE_BUILD_DESKTOP=OFF`** builds everything except the SDL2 `demo` target —

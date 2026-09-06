@@ -817,24 +817,58 @@ Lần một: viewport để bản đồ letterbox nên nút không bao giờ n�
 Lần hai: bấm `W` để quay mặt **cũng đi một bước**, làm ô dưới nút không còn kề bên.
 **Đặt người chơi bằng file save, và đặt SAU khi quay mặt.**
 
+## S16 — những mảnh mà pack không có (chương 125) — XONG 2026-09-06
+
+Commit: `be11013` (cửa thứ ba + 16 mảnh art) · `2849d3f` (luật LINE + theme + farm).
+Merge `--no-ff` vào `main`.
+
+**Đã CHẠY, không chỉ viết:**
+
+- **`--cmd asset.pixels <src.pix> <dst.hrt>`** — cửa thứ ba và cuối cùng vào `.hrt`.
+  Ba nguồn gốc, một format: **nhập về / sinh ra / vẽ tay**.
+- **Nguồn là TEXT, không phải Pixel workspace** — và lý do rất cụ thể: một bộ autotile
+  16 mảnh **không phải 16 bức vẽ**, nó là **một profile hành lang cắt 16 kiểu**, thứ
+  phải đúng là **quan hệ giữa các mảnh**, mà quan hệ thì đọc/diff/review chứ không bấm
+  qua 16 canvas.
+- **`assets/textures/farm_path.{pix,hrt}`** — 64×64, đúng 16 mảnh Tiny Town không có
+  (pack chỉ có **mảng 9 mảnh** để lấp *vùng*; đường rộng 1 ô là **đường thẳng**).
+  Màu lấy từ `town.hrt` ô 40 để nằm **trong** bảng màu của pack — ghi vào ATTRIBUTION.
+- **`autotile ground 2 path 0`** — một dòng theme. Bản đồ vẫn ghi id 2 khắp nơi.
+- **`autotile_index` (47) vẫn chưa có người dùng, và giờ đã GIẢI THÍCH được**: luật 47
+  dành cho *vùng*; đường 1 ô không đường chéo nào đủ hai cạnh → chỉ 16/47 với tới được,
+  rải trong sheet có 31 ô không vẽ nổi. Nên có `autotile_line_index`, **chỉ số CHÍNH LÀ
+  mặt nạ 4 bit** → vị trí trong lưới 4×4 là nghĩa của mảnh.
+- 76/76 · ASan sạch · **12 mutation giết hết** · golden path xanh · web build xanh ·
+  **đã render và NHÌN**: sheet, và bản đồ farm — con đường liền một dải, có đầu mút hai
+  đầu và một khúc cua thật.
+
+**Bài học ghi lại:** **hai mutation sống sót vì test so *cả khung hình*.** So khung
+chứng minh "mảnh **thay đổi** theo ô" chứ **không** chứng minh "mảnh **đúng**" — cả hai
+mutation vẫn cho ảnh biến thiên, chỉ là sai. Sửa **không** phải bằng thêm assert lên
+ảnh, mà bằng cách nhận ra bộ chọn mảnh đang là **method private của Scene** — đúng cái
+hình dạng không kiểm được nếu không có renderer. Đưa ra thành hàm thuần
+`farm::line_piece` trong `farm_core` (đúng luật D của spine), rồi kiểm **cả 16** vùng
+lân cận + 5 ô mốc trên bản đồ thật. **Guard thừa thứ tư** liên tiếp (121, 122, 123, 125).
+
 ## Việc kế tiếp
 
-**S16 — vẽ những mảnh mà pack không có, rồi autotile.** Vẫn là việc kế tiếp đúng
-thứ tự đã tìm ra ở chương 123: **art trước, luật sau**.
+**S17 — chưa chốt.** Ba ứng viên, theo thứ tự tôi thấy đáng làm:
 
-1. Vẽ trong Pixel workspace các mảnh đường đi **rộng 1 ô** (dọc, ngang, 4 góc, 4 đầu
-   mút) vào một sheet **của mình**, không phải sheet Kenney.
-2. Rồi mới nối `autotile_index` vào farm. Lần đầu nó có người tiêu thụ kể từ ch.110.
+1. **Nút tool (1–4) + save trên màn hình.** Người chơi điện thoại hiện chỉ đi được, dùng
+   được, đổi hạt được. Đây là khoảng cách rõ nhất giữa "chạy được trên điện thoại" và
+   "chơi được trên điện thoại", và nó nhỏ.
+2. **Colour picker trong Pixel workspace.** Hiện chỉ tô được màu ảnh đã có, nên workspace
+   không sửa nổi `farm_path.hrt` theo hướng mới. Cùng với "không tạo được file mới", đây
+   là hai trần khiến chương 125 phải đi cửa `.pix`.
+3. **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`) — và nó là chỗ *đầu tiên*
+   thấy được autotile chạy khi vẽ: sửa đường trong editor, mảnh tự đổi theo.
 
 Sau đó (chưa xếp thứ tự):
 
-- **Colour picker** trong Pixel workspace — hiện chỉ tô được màu ảnh đã có.
-- **Nút cho tool (1–4) và save** trên màn hình — người chơi điện thoại hiện chỉ đi
-  được, dùng được, đổi hạt được, hết.
 - **Đa chạm thật** ở platform seam — điều kiện để vừa giữ hướng vừa bấm hành động.
-- **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`).
 - **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`.
 - **Nước động**: `studio::make_sheet` làm được miễn phí; farm chưa biết gì về frame.
+- **Vật liệu autotile thứ hai** — hiện chỉ con đường; chưa có gì dùng chung giữa hai bộ.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
@@ -844,5 +878,7 @@ Sau đó (chưa xếp thứ tự):
 - **`.recipe` không nằm trong manifest** — nó là *source*, giống PNG import.
 - **Chưa đo chi phí frame** của farm; `--bench-ui` vẫn không chạy farm.
 - **Pixel workspace**: một layer, không selection/move/copy, không đổi kích thước
-  canvas, không tạo file mới, guide cố định 16px.
+  canvas, **không tạo file mới**, **không chọn được màu ngoài ảnh**, guide cố định 16px.
+- **`.pix` và `.hrt` có thể lệch nhau** — giống `.recipe`: test bắt được, không chặn được.
+- **`autotile_index` (47-blob) vẫn không có art** — Tiny Town chỉ có mảng 9 mảnh.
 - **Điều khiển màn hình**: chỉ farm có; luôn hiện, không tự ẩn trên desktop.
