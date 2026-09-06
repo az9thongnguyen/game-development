@@ -10,12 +10,14 @@
 //  An editor whose undo is approximately right is worse than one with no undo: the
 //  first teaches you to trust it.
 // =============================================================================
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
 
 #include "engine/document/command_stack.hpp"
 #include "engine/image.hpp"
+#include "engine/paint/colour.hpp"
 #include "engine/paint/paint.hpp"
 #include "engine/paint/pixel_source.hpp"
 
@@ -336,6 +338,125 @@ static void test_pixels_layout() {
     CHECK(img->pixels[6] == gfx::rgba(1, 2, 3, 255));   // tile 1 row 1
 }
 
+// ---------------------------------------------------------------------------
+//  HSV: the round trip has to be EXACT, not close.
+//
+//  A mixer reads the colour into sliders and writes it back every time one moves. If
+//  the trip loses a count, a colour drifts a shade every time it is touched and
+//  nothing on screen says so — the file is the only place the drift is visible, and
+//  by then the sheet is inconsistent. So the claim here is equality, not tolerance.
+//
+//  This sweep is a slice of the cube (every value of r and g, with b stirred so all
+//  256 of its values appear against varied partners). The FULL 16,777,216-colour
+//  sweep was run once while writing chapter 127 and reported zero mismatches; it
+//  takes 76 s in a debug build, which is a minute and a quarter every CI run to
+//  re-derive a fact that only changes if this file changes.
+// ---------------------------------------------------------------------------
+void test_hsv_round_trip() {
+    int bad = 0, out_of_range = 0;
+    for (int r = 0; r < 256; ++r)
+        for (int g = 0; g < 256; ++g) {
+            const int        b = (r * 7 + g * 13) % 256;
+            const gfx::Color c = gfx::rgb(static_cast<std::uint8_t>(r),
+                                          static_cast<std::uint8_t>(g),
+                                          static_cast<std::uint8_t>(b));
+            const paint::Hsv h = paint::to_hsv(c);
+            if (paint::from_hsv(h, 255) != c) ++bad;
+            // The header says [0,360). Nothing else was checking it, because from_hsv
+            // normalises whatever it is handed — so a to_hsv returning -30 for a
+            // red-magenta round-trips perfectly and still parks the hue SLIDER, whose
+            // range is 0..360, hard against its left end while the colour is at 330.
+            // A mutation removing the wrap survived every other assertion in this file.
+            if (h.h < 0.0f || h.h >= 360.0f) ++out_of_range;
+        }
+    CHECK(bad == 0);
+    CHECK(out_of_range == 0);
+    CHECK(std::abs(paint::to_hsv(0xFFFF0080u).h - 330.0f) < 0.5f);   // the negative case
+
+    // Alpha is carried, not converted: it must come back exactly whatever the hue is.
+    for (int a = 0; a < 256; a += 17) {
+        const gfx::Color c = gfx::rgba(200, 120, 40, static_cast<std::uint8_t>(a));
+        CHECK(paint::from_hsv(paint::to_hsv(c), gfx::a_of(c)) == c);
+    }
+
+    // The landmarks, so a wrong sextant cannot hide inside a passing sweep.
+    CHECK(std::abs(paint::to_hsv(0xFFFF0000u).h -   0.0f) < 0.01f);   // red
+    CHECK(std::abs(paint::to_hsv(0xFF00FF00u).h - 120.0f) < 0.01f);   // green
+    CHECK(std::abs(paint::to_hsv(0xFF0000FFu).h - 240.0f) < 0.01f);   // blue
+    CHECK(std::abs(paint::to_hsv(0xFFFFFF00u).h -  60.0f) < 0.01f);   // yellow
+    CHECK(paint::to_hsv(0xFF808080u).s == 0.0f);                      // grey has no hue
+    CHECK(paint::to_hsv(0xFF000000u).v == 0.0f);
+
+    // Out-of-range coordinates are wrapped and clamped rather than rejected: a slider
+    // that reaches 360.0 exactly must not produce a different colour from 0.0.
+    CHECK(paint::from_hsv({360.0f, 1.0f, 1.0f}) == paint::from_hsv({0.0f, 1.0f, 1.0f}));
+    CHECK(paint::from_hsv({-60.0f, 1.0f, 1.0f}) == paint::from_hsv({300.0f, 1.0f, 1.0f}));
+    CHECK(paint::from_hsv({0.0f, 2.0f, 5.0f}) == 0xFFFF0000u);
+    // More than one turn in either direction. `% 6` on the sextant already handles a
+    // positive hue and one `+= 360` handles a single negative turn, so ONLY a hue
+    // past -360 tells the fmod apart from nothing at all — which is why a mutation
+    // deleting it survived the two assertions above.
+    CHECK(paint::from_hsv({-400.0f, 1.0f, 1.0f}) == paint::from_hsv({320.0f, 1.0f, 1.0f}));
+    CHECK(paint::from_hsv({725.0f, 1.0f, 1.0f}) == paint::from_hsv({5.0f, 1.0f, 1.0f}));
+}
+
+// ---------------------------------------------------------------------------
+//  Why the mixer holds coordinates and not a colour.
+//
+//  This is the bug the Hsv type exists to prevent, written as a test: drag value to
+//  the bottom and back up. If the workspace re-derived h and s from the colour each
+//  frame, the trip through black would forget both and the colour would come back
+//  grey — the drag would be one-way, which is not what a slider means.
+// ---------------------------------------------------------------------------
+void test_hsv_is_not_derivable() {
+    const gfx::Color orange = 0xFFE08020u;
+    paint::Hsv       mix    = paint::to_hsv(orange);
+
+    // The lossy way round: black is black, whatever hue it was made from.
+    const gfx::Color black = paint::from_hsv({mix.h, mix.s, 0.0f});
+    CHECK(black == 0xFF000000u);
+    CHECK(paint::to_hsv(black).h == 0.0f);
+    CHECK(paint::to_hsv(black).s == 0.0f);
+
+    // Keeping the coordinates, the same trip is reversible.
+    mix.v = 0.0f;
+    CHECK(paint::from_hsv(mix) == 0xFF000000u);
+    mix.v = paint::to_hsv(orange).v;
+    CHECK(paint::from_hsv(mix) == orange);
+}
+
+// ---------------------------------------------------------------------------
+//  Hex: the door for a colour that was written down somewhere else.
+// ---------------------------------------------------------------------------
+void test_hex() {
+    CHECK(paint::to_hex(0xFF8B5A2Bu) == "#FF8B5A2B");
+    CHECK(paint::to_hex(0x00000000u) == "#00000000");
+
+    // Everything to_hex prints must parse back to the same colour, or the field the
+    // user is looking at is not the field they can retype.
+    for (int i = 0; i < 4096; ++i) {
+        const gfx::Color c = static_cast<gfx::Color>(i * 4093u + 7u);
+        const auto       back = paint::parse_hex(paint::to_hex(c));
+        CHECK(back && *back == c);
+    }
+
+    CHECK(*paint::parse_hex("#F00") == 0xFFFF0000u);       // shorthand doubles digits
+    CHECK(*paint::parse_hex("#fff") == 0xFFFFFFFFu);
+    CHECK(*paint::parse_hex("8B5A2B") == 0xFF8B5A2Bu);     // no '#', opaque by default
+    CHECK(*paint::parse_hex("  #80ff0000  ") == 0x80FF0000u);  // spaces, lower case
+
+    // Half-typed and wrong input is nullopt, NOT a guess. The caller is a field being
+    // typed into: "#8B5" must leave the current colour alone rather than jump to a
+    // shorthand the user is halfway past.
+    CHECK(!paint::parse_hex(""));
+    CHECK(!paint::parse_hex("#"));
+    CHECK(!paint::parse_hex("#8B5A"));
+    CHECK(!paint::parse_hex("#8B5A2"));
+    CHECK(!paint::parse_hex("#8B5A2BB"));
+    CHECK(!paint::parse_hex("#12345678 9"));
+    CHECK(!paint::parse_hex("#GGGGGG"));
+    CHECK(!paint::parse_hex("#12 34 56"));
+}
 } // namespace
 
 int main() {
@@ -347,6 +468,9 @@ int main() {
     test_pixels_good();
     test_pixels_refusals();
     test_pixels_layout();
+    test_hsv_round_trip();
+    test_hsv_is_not_derivable();
+    test_hex();
     if (g_failures == 0) std::printf("paint: all tests passed\n");
     else std::printf("paint: %d FAILURE(S)\n", g_failures);
     return g_failures == 0 ? 0 : 1;

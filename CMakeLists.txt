@@ -382,6 +382,7 @@ add_test(NAME commands COMMAND test_commands)
 # instead of mutating and hoping somebody records it.
 # PURE: an Image in, commands out. No renderer, no I/O, no UI.
 add_library(paint_core STATIC
+  src/engine/paint/colour.cpp
   src/engine/paint/paint.cpp
   src/engine/paint/pixel_source.cpp
 )
