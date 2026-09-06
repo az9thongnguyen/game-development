@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "engine/rand.hpp"
 #include "engine/document/save.hpp"
 #include "engine/tilemap/map2.hpp"
 #include "games/farm/defs.hpp"
@@ -33,17 +34,10 @@ inline constexpr int kCollapseMin  = 26 * 60;   // 02:00 the following morning
 inline constexpr int kMaxEnergy    = 100;
 inline constexpr double kSecondsPerGameMinute = 0.6;   // 12 real minutes per day
 
-// xorshift64*. Small, deterministic, and identical on every platform — std::mt19937
-// is portable but std::uniform_int_distribution is NOT, and a save that replays
-// differently on the web build than on the desktop is not a save.
-class Rng {
-public:
-    explicit Rng(std::uint64_t seed) : s_(seed ? seed : 0x9E3779B97F4A7C15ull) {}
-    std::uint64_t next();
-    int range(int lo, int hi);            // inclusive; lo > hi returns lo
-private:
-    std::uint64_t s_;
-};
+// The one deterministic RNG lives in engine/rand.hpp. The reason it had to be
+// hand-written rather than std::mt19937 is written there; this game was the first
+// place that reason bit, and chapter 136 gave it a second one.
+using Rng = engine::Rng;
 
 enum class Tool { Hoe, Water, Seed, Harvest };
 

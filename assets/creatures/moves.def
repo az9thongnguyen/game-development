@@ -1,0 +1,33 @@
+# =============================================================================
+#  assets/creatures/moves.def  —  seventeen moves
+# =============================================================================
+#  Three shapes per type: a cheap reliable one, a mid one, and an expensive one with
+#  five PP that decides a long fight. `effect=name:percent` is the only branch; a
+#  move with `power=0` is a status move and never rolls damage.
+#
+#  `pri=1` appears exactly once (aquajet). A priority system with no move that uses
+#  it is a feature nobody can see and nobody tests — one consumer is the minimum
+#  that makes the rule real.
+# =============================================================================
+move tackle      type=normal   power=40 acc=100 pp=35
+move bite        type=normal   power=55 acc=100 pp=25
+move bodyslam    type=normal   power=75 acc=95  pp=15
+move lullaby     type=normal   power=0  acc=75  pp=10 effect=sleep:100
+
+move ember       type=fire     power=40 acc=100 pp=25 effect=burn:10
+move flamewheel  type=fire     power=60 acc=95  pp=15 effect=burn:10
+move inferno     type=fire     power=95 acc=85  pp=5  effect=burn:30
+
+move bubble      type=water    power=40 acc=100 pp=25
+move aquajet     type=water    power=55 acc=100 pp=20 pri=1
+move surge       type=water    power=90 acc=85  pp=5
+
+move vinewhip    type=grass    power=45 acc=100 pp=25
+move razorleaf   type=grass    power=60 acc=95  pp=20
+move solarbeam   type=grass    power=95 acc=85  pp=5
+
+move spark       type=electric power=45 acc=100 pp=25 effect=paralyze:20
+move thunderbolt type=electric power=80 acc=100 pp=10 effect=paralyze:10
+
+move rockthrow   type=rock     power=50 acc=90  pp=20
+move rockslide   type=rock     power=80 acc=90  pp=10

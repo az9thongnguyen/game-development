@@ -25,21 +25,6 @@ void hash_mix(std::uint64_t& h, std::uint64_t v) {
 
 } // namespace
 
-// ---- Rng ---------------------------------------------------------------------
-
-std::uint64_t Rng::next() {
-    s_ ^= s_ >> 12;
-    s_ ^= s_ << 25;
-    s_ ^= s_ >> 27;
-    return s_ * 0x2545F4914F6CDD1Dull;
-}
-
-int Rng::range(int lo, int hi) {
-    if (lo >= hi) return lo;
-    const std::uint64_t span = static_cast<std::uint64_t>(hi - lo) + 1;
-    return lo + static_cast<int>(next() % span);
-}
-
 // ---- keys and queries ----------------------------------------------------------
 
 long long soil_key(int x, int y) {

@@ -1,0 +1,43 @@
+# =============================================================================
+#  assets/creatures/types.def  —  six types, and only what is NOT neutral
+# =============================================================================
+#  Written as exceptions rather than as a 6x6 grid on purpose. Thirty-six numbers
+#  is thirty-six chances to put a 200 where a 50 belongs, and — worse — a reader
+#  cannot tell a deliberate 100 from a forgotten one. Listed this way the file reads
+#  as the design: fire beats grass, water beats fire and rock, rock grounds
+#  electricity. Everything unsaid is neutral, and saying nothing is unambiguous.
+#
+#  Percent, not a multiplier, because the whole battle is integer arithmetic. See
+#  the header of games/creatures/battle.hpp for why that is not an aesthetic choice.
+# =============================================================================
+type normal
+type fire
+type water
+type grass
+type electric
+type rock
+
+eff normal   rock      50
+
+eff fire     fire      50
+eff fire     water     50
+eff fire     grass    200
+eff fire     rock      50
+
+eff water    fire     200
+eff water    water     50
+eff water    grass     50
+eff water    rock     200
+
+eff grass    fire      50
+eff grass    water    200
+eff grass    grass     50
+eff grass    rock     200
+
+eff electric water    200
+eff electric grass     50
+eff electric electric  50
+
+eff rock     fire     200
+eff rock     electric 200
+eff rock     rock      50
