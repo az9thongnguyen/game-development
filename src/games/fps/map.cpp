@@ -33,46 +33,6 @@ Map default_map() {
     return m;
 }
 
-std::string to_text(const Map& m) {
-    std::string s = "fpsmap1\nsize " + std::to_string(m.w) + " " + std::to_string(m.h) + "\n";
-    for (int y = 0; y < m.h; ++y) {
-        s += "row";
-        for (int x = 0; x < m.w; ++x)
-            s += " " + std::to_string(int(m.cells[static_cast<size_t>(y) * m.w + x]));
-        s += "\n";
-    }
-    if (m.spawn_cx >= 0 && m.spawn_cy >= 0)              // optional; omitted when unset
-        s += "spawn " + std::to_string(m.spawn_cx) + " " + std::to_string(m.spawn_cy)
-           + " " + std::to_string(m.spawn_dir) + "\n";
-    return s;
-}
-
-std::optional<Map> from_text(const std::string& s) {
-    std::istringstream in(s);
-    std::string tok;
-    if (!(in >> tok) || tok != "fpsmap1") return std::nullopt;
-    if (!(in >> tok) || tok != "size")    return std::nullopt;
-    Map m;
-    if (!(in >> m.w >> m.h) || m.w <= 0 || m.h <= 0) return std::nullopt;
-    m.cells.assign(static_cast<size_t>(m.w) * m.h, 0);
-    for (int y = 0; y < m.h; ++y) {
-        if (!(in >> tok) || tok != "row") return std::nullopt;
-        for (int x = 0; x < m.w; ++x) {
-            int v;
-            if (!(in >> v) || v < 0 || v > 255) return std::nullopt;
-            m.cells[static_cast<size_t>(y) * m.w + x] = static_cast<uint8_t>(v);
-        }
-    }
-    // Optional trailing spawn line (older files without it stay unset → default start).
-    if (in >> tok && tok == "spawn") {
-        int cx, cy; float dir;
-        if ((in >> cx >> cy >> dir) && cx >= 0 && cy >= 0 && cx < m.w && cy < m.h) {
-            m.spawn_cx = cx; m.spawn_cy = cy; m.spawn_dir = dir;
-        }
-    }
-    return m;
-}
-
 std::optional<Map> from_shared_text(const std::string& s) {
     auto tm = tilemap::load(s);
     if (!tm) return std::nullopt;

@@ -1173,6 +1173,57 @@ hứa**, 20 file vẫn không bake lại được từ gì cả · ledger **bake
 không có ledger · **không có trình nhập `.pack`**: không tải, không giải nén, không kiểm
 checksum · **bốn nút tool vẫn chưa từng bị bấm** trong test (chưa publish rect).
 
+## S23 — một định dạng map, một trình sửa (chương 132) — XONG 2026-09-06
+
+Merge `feat/s23-one-map`. Ròng **−306 dòng**.
+
+**Món nợ, và lý do nó không trả được sớm hơn** — chính `main.cpp` ghi:
+*"Still writes fpsmap1, still the only place entities/spawns can be edited."*
+Vẽ tile chuyển sang Map workspace từ ch.112. **Đặt spawn thì không.** Nên 285 dòng scene
++ một thư viện edit song song + một định dạng file song song sống thêm mười chương vì
+**một động từ** chưa chuyển. Bài học rẻ nhất về migration: **5% cuối giữ 100% cái cũ sống.**
+
+| Commit | Việc |
+|---|---|
+| `3672e78` | `place_entity` / `set_entity_prop` → `doc::Command`. Undo một lần TẠO thì **xoá** entity; kéo thì gộp, tạo thì không. |
+| `3a87b8e` | Entity tool: kéo đặt, nút Facing, vẽ marker trên canvas. Canvas + inspector + palette gọi **một** hàm. |
+| *(tiếp)* | `--cmd map.migrate`, `level_00.map` → `.map2`, xoá Map Lab + `fps::to_text/from_text`. |
+
+**Lỗi tự mình vừa tạo, do bước 3 phát hiện ra ở bước 2:** nút Facing ghi `facing=E`
+(chữ); raycaster đọc `dir` (radian). **Game sẽ bỏ qua mọi hướng editor đặt.** Mọi
+assertion đều xanh vì tất cả dừng ở *"thuộc tính đã đổi"*. Đây là lần thứ **ba** lỗi nằm
+đúng ở **bước nhảy cuối** — bàn phím ch.123 nối vào canvas không ai focus, nút Play
+ch.130 có href đúng mà không mở gì. Test giờ đi hết: lưu file rồi đọc lại bằng
+`fps::from_shared_text` và so `spawn_dir`.
+
+**Bằng chứng sống lâu hơn file.** `test_fps` nhúng đúng những byte `level_00.map` mang
+suốt 120 chương và khẳng định chúng migrate ra **đúng từng byte** file map2 đang commit —
+mạnh hơn bài test cũ, vốn chỉ so hai trình đọc trên cùng một file còn sống.
+
+**Xoá writer, không phải deprecate nó.** `tilemap::load` đã migrate fpsmap1 từ ch.110 —
+đủ để **đọc** file cũ và không hề đủ để ngừng **tạo** file cũ. Giờ: `maplab/` xoá,
+`fps::to_text/from_text` xoá, chỉ còn `tilemap::from_fpsmap1` là cửa một chiều. **Một
+định dạng không ai ghi được thì không quay lại được.**
+
+**Bốn test đỏ đúng như phải đỏ:** migrate map làm `collection.json` cũ (package hash đi
+theo nội dung), làm hỏng hai đường dẫn hard-code, làm lệch số lệnh. Cả bốn là guard của
+các chương trước bắn đúng lúc — bằng chứng duy nhất rằng chúng hoạt động.
+
+**Ảnh chụp lại tìm ra lỗi — chương thứ NĂM liên tiếp**, và lần này là lỗi tôi vừa tạo 60
+giây trước: mục ENTITY đẩy inspector quá đáy panel, nơi `slot()` clamp về rect cao 0 —
+nút Save vẽ ở đâu không ai biết và bấm ở đâu cũng không được. `inspector_clipped()` giờ
+có ở đây như Pixels đã có từ ch.127, và status nói ra.
+
+**Số liệu:** 77/77 ctest (78 trừ `test_maplab` đã nghỉ) · golden path xanh, 0 rò `.tmp`,
+release id **đổi đúng như phải đổi** (`cd1c2864` → `eac0e534`: nội dung map đã đổi) ·
+web build xanh · một khung hình đã render và **đã nhìn**, hai lần.
+
+**Chưa xác minh / trần:** **trigger vẫn không sửa được** trong UI (map2 có từ ch.110) ·
+chỉ sửa được thuộc tính `dir`, mọi prop khác round-trip nhưng không với tới · **không xoá
+được entity** (chỉ undo) · danh sách entity = những cái đã có + `spawn_player`, không có
+catalogue loại · `--lab map` hard-code một đường dẫn (lab không có manifest) · `fps::Map`
+vẫn là lưới `uint8` riêng, id > 255 bị clamp.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1185,7 +1236,7 @@ làm chín T6).
 | ~~S20~~ | ~~CI chạy 28 test BaaS~~ — **XONG**, chương 129 (27/28; cái thứ 28 là một trần) | S |
 | ~~S21~~ | ~~Collection page + `cover`/`summary` + README template~~ — **XONG**, chương 130 | S/M |
 | ~~S22~~ | ~~Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card~~ — **XONG**, chương 131 | M |
-| S23 | Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1` | L |
+| ~~S23~~ | ~~Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1`~~ — **XONG**, chương 132 | L |
 | S24 | Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene | M |
 | S25 | IntGrid + rule autotile trong Map workspace | L |
 | S26 | Mixer workspace (cửa **thứ tư** vào `.hrt` — phải sửa `CLAUDE.md` có chủ ý) | L |

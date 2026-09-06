@@ -219,9 +219,11 @@ static void test_migration() {
 }
 
 // The REAL authored level, read from the repo — so this cannot pass against a
-// fixture that has drifted away from what --fps actually loads.
+// fixture that has drifted away from what --fps actually loads. It is map2 now
+// (chapter 132); `load` is still the one entry point, which is the property being
+// checked here — the caller does not know or care which era the file came from.
 static void test_migrate_real_level() {
-    std::ifstream f(std::string(ASSET_ROOT) + "/assets/maps/level_00.map");
+    std::ifstream f(std::string(ASSET_ROOT) + "/assets/maps/level_00.map2");
     CHECK(f.good());
     if (!f.good()) return;
     std::stringstream ss;

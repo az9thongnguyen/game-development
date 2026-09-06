@@ -985,7 +985,7 @@ int main() {
     {
         studioshell::StudioShellScene sc(kProject, kKnownEntries);        // opens on Map
         CHECK(sc.map_workspace().loaded());
-        CHECK(sc.map_workspace().path() == "maps/level_00.map");
+        CHECK(sc.map_workspace().path() == "maps/level_00.map2");
         CHECK(!sc.map_workspace().dirty());                // opening is not editing
 
         std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);

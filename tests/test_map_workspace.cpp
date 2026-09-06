@@ -11,6 +11,8 @@
 // =============================================================================
 #include <cstdint>
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -371,18 +373,32 @@ static void test_entity_tool() {
 
     // ---- facing, the guard's other direction ----
     CHECK(cmd::run("map.entity.facing").ok);
-    const auto facing_of = [&ws] {
-        std::string v;
-        if (auto* e = ws.map().entity("spawn_player"))
-            for (const auto& p : e->props)
-                if (p.key == "facing") v = p.value;
-        return v;
+    // Stored as `dir`, in RADIANS — the property `fps::from_shared_text` reads into
+    // spawn_dir, and the one the fpsmap1 migration writes. A prettier `facing E`
+    // would have been a control that changed a value nothing downstream reads.
+    const auto dir_of = [&ws] {
+        const tilemap::Entity* e = ws.map().entity("spawn_player");
+        return e ? std::strtod(tilemap::prop(e->props, "dir", "-1").c_str(), nullptr) : -1.0;
     };
-    CHECK(facing_of() == "E");
+    const double kHalfPi = 1.5707963267948966;
+    CHECK(std::abs(dir_of() - 0.0) < 1e-9);                    // E
     CHECK(cmd::run("map.entity.facing").ok);
-    CHECK(facing_of() == "S");
+    CHECK(std::abs(dir_of() - kHalfPi) < 1e-6);                // S
     for (int i = 0; i < 3; ++i) CHECK(cmd::run("map.entity.facing").ok);
-    CHECK(facing_of() == "E");                    // four steps is a full turn
+    CHECK(std::abs(dir_of() - 0.0) < 1e-9);                    // four steps is a full turn
+
+    // ...and the GAME sees it. This is the assertion the first version would have
+    // failed: the editor wrote `facing`, the raycaster reads `dir`, and every check
+    // that stopped at "the property changed" was green.
+    CHECK(cmd::run("map.entity.facing").ok);                   // -> S
+    CHECK(ws.save().ok);
+    const auto seen = fps::from_shared_text(read_text(kPath));
+    CHECK(seen.has_value());
+    if (seen) {
+        CHECK(seen->spawn_cx == 7 && seen->spawn_cy == 1);
+        CHECK(std::abs(seen->spawn_dir - static_cast<float>(kHalfPi)) < 1e-4f);
+    }
+    for (int i = 0; i < 3; ++i) CHECK(cmd::run("map.entity.facing").ok);   // back to E
 
     // A frame to look at: the marker on the map, its facing stub, and the ENTITY
     // section that says where the spawn is without anyone picking the tool.
@@ -419,10 +435,8 @@ static void test_entity_tool() {
         CHECK(e != nullptr);
         if (e) {
             CHECK(e->x == 7 && e->y == 1);
-            bool saw = false;
-            for (const auto& p : e->props)
-                if (p.key == "facing" && p.value == "E") saw = true;
-            CHECK(saw);
+            CHECK(std::abs(std::strtod(tilemap::prop(e->props, "dir", "-1").c_str(),
+                                       nullptr)) < 1e-9);      // E survived the file
         }
     }
     cmd::clear();

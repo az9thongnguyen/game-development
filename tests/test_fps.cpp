@@ -4,6 +4,7 @@
 //  Verifies the grid + the DDA ray cast: distances, which wall/side is hit, and
 //  the fractional hit position — the math the whole FPS view depends on.
 // =============================================================================
+#include "engine/tilemap/map2.hpp"
 #include "games/fps/map.hpp"
 #include "games/fps/raycast.hpp"
 
@@ -102,65 +103,87 @@ static void test_perp_floor() {
     CHECK(h.wall == 2);
 }
 
-static void test_map_serialize() {
-    // round-trip a hand-built grid through the shared fpsmap1 text form
-    Map m; m.w = 3; m.h = 2; m.cells = {1, 1, 1, 1, 0, 2};
-    const std::string s = to_text(m);
-    auto r = from_text(s);
-    CHECK(r && r->w == 3 && r->h == 2 && r->cells == m.cells);
-    CHECK(to_text(*r) == s);                                  // stable round-trip
-    // fail closed on malformed input
-    CHECK(!from_text("garbage"));                             // bad header
-    CHECK(!from_text("fpsmap1\nsize 3 2\nrow 1 1 1\n"));      // too few rows
-    CHECK(!from_text("fpsmap1\nsize 3 2\nrow 1 1\nrow 1 1\n")); // short row
-    CHECK(!from_text("fpsmap1\nsize 0 0\n"));                 // empty grid
-
-    // spawn: unset by default, round-trips when set, and old (spawn-less) files parse.
-    CHECK(r->spawn_cx == -1);                                 // no spawn line → unset
-    Map ms = m; ms.spawn_cx = 2; ms.spawn_cy = 1; ms.spawn_dir = 1.5f;
-    const std::string ss = to_text(ms);
-    CHECK(ss.find("spawn 2 1") != std::string::npos);         // token emitted
-    auto rs = from_text(ss);
-    CHECK(rs && rs->spawn_cx == 2 && rs->spawn_cy == 1 && rs->spawn_dir == 1.5f);
-    CHECK(to_text(*rs) == ss);                                // stable round-trip with spawn
-    // an out-of-range spawn is rejected (grid stays valid, spawn stays unset)
-    auto rbad = from_text("fpsmap1\nsize 3 2\nrow 1 1 1\nrow 1 0 2\nspawn 9 9 0\n");
-    CHECK(rbad && rbad->spawn_cx == -1);
-}
-
-
 // ---------------------------------------------------------------------------
-//  The raycaster now loads through the shared tilemap format, which migrates the
-//  old fpsmap1 on the way in. This is the check that the migration changed
-//  NOTHING: the real authored level, read both ways, must be identical grid for
-//  grid and spawn for spawn. Without it, a subtly wrong migration would ship and
-//  only show up as a level that looks slightly wrong.
+//  fpsmap1 is gone from disk (chapter 132): `assets/maps/level_00.map2` replaced it,
+//  Map Lab that wrote it is retired, and `fps::to_text`/`from_text` went with them.
+//  What is left is ONE reader for old files, `tilemap::from_fpsmap1`, and the claim
+//  that matters is that it changes nothing.
+//
+//  So the evidence stays even though the file does not: the exact bytes level_00 held
+//  for 120 chapters, embedded here, must migrate to exactly the map2 that is
+//  committed. That is a byte comparison — the same relationship `.hrt` has to its
+//  `.recipe` — and it is a stronger check than the old one, which only compared two
+//  readers of the same living file.
 // ---------------------------------------------------------------------------
-static void test_shared_load_matches_legacy() {
-    std::ifstream f(std::string(ASSET_ROOT) + "/assets/maps/level_00.map");
+static const char kLegacyLevel00[] =
+    "fpsmap1\n"
+    "size 16 16\n"
+    "row 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1\n"
+    "row 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 2 2 2 2 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 0 0 0 2 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 2 0 0 2 0 1\n"
+    "row 1 0 0 0 0 3 0 0 2 0 2 2 2 2 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 0 0 0 3 0 1\n"
+    "row 1 0 0 0 0 3 0 0 2 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 3 0 2 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 0 0 2 0 0 0 0 0 0 1\n"
+    "row 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1\n"
+    "row 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1\n"
+    "spawn 3 8 0.000000\n";
+
+static void test_the_migration_changed_nothing() {
+    auto migrated = tilemap::from_fpsmap1(kLegacyLevel00);
+    CHECK(migrated.has_value());
+    if (!migrated) return;
+
+    std::ifstream f(std::string(ASSET_ROOT) + "/assets/maps/level_00.map2");
     CHECK(f.good());
     if (!f.good()) return;
     std::stringstream ss;
     ss << f.rdbuf();
-    const std::string text = ss.str();
+    const std::string committed = ss.str();
 
-    auto legacy = from_text(text);
-    auto shared = from_shared_text(text);
-    CHECK(legacy.has_value());
-    CHECK(shared.has_value());
-    if (!legacy || !shared) return;
+    CHECK(tilemap::to_text(*migrated) == committed);
+    if (tilemap::to_text(*migrated) != committed)
+        std::printf("      maps/level_00.map2 is not what the old level migrates to:\n"
+                    "      ./build/demo --cmd map.migrate <the old file> maps/level_00.map2\n");
 
-    CHECK(shared->w == legacy->w);
-    CHECK(shared->h == legacy->h);
-    CHECK(shared->cells == legacy->cells);
-    CHECK(shared->spawn_cx == legacy->spawn_cx);
-    CHECK(shared->spawn_cy == legacy->spawn_cy);
-    CHECK(shared->spawn_dir == legacy->spawn_dir);
+    // ...and the GAME sees the same level either way, which is the thing a player
+    // would notice. Grid for grid and spawn for spawn.
+    auto legacy = from_shared_text(kLegacyLevel00);
+    auto now    = from_shared_text(committed);
+    CHECK(legacy.has_value() && now.has_value());
+    if (legacy && now) {
+        CHECK(now->w == legacy->w && now->h == legacy->h);
+        CHECK(now->cells == legacy->cells);
+        CHECK(now->spawn_cx == legacy->spawn_cx);
+        CHECK(now->spawn_cy == legacy->spawn_cy);
+        CHECK(now->spawn_dir == legacy->spawn_dir);
+    }
+}
 
-    // ...and the same for a hand-built level, so the check does not depend on one
-    // asset happening to be simple.
+static void test_shared_load() {
+    // A hand-built level, so the check above does not depend on one asset happening
+    // to be simple. It goes out through the shared writer now — the fpsmap1 writer
+    // no longer exists, which is the point of this chapter.
     const Map d = default_map();
-    auto via_shared = from_shared_text(to_text(d));
+    tilemap::Map tm;
+    tm.name = "d"; tm.w = d.w; tm.h = d.h; tm.tile = 16;
+    tilemap::Layer wall;
+    wall.name = "wall"; wall.kind = tilemap::LayerKind::Tiles;
+    wall.cells.assign(d.cells.begin(), d.cells.end());
+    tm.layers.push_back(std::move(wall));
+    tilemap::Entity sp;
+    sp.name = "spawn_player"; sp.x = d.spawn_cx; sp.y = d.spawn_cy;
+    sp.props.push_back(tilemap::Property{"dir", std::to_string(d.spawn_dir)});
+    tm.entities.push_back(std::move(sp));
+
+    auto via_shared = from_shared_text(tilemap::to_text(tm));
     CHECK(via_shared.has_value());
     if (via_shared) {
         CHECK(via_shared->cells == d.cells);
@@ -168,8 +191,6 @@ static void test_shared_load_matches_legacy() {
         CHECK(via_shared->spawn_cy == d.spawn_cy);
     }
 
-    // A map2 file is readable by the raycaster too, which is the point of the
-    // shared format: the Lab can start writing map2 without touching --fps.
     auto native = from_shared_text(
         "map2 1\nname n\nsize 2 2\ntile 16\n"
         "layer wall tiles w\nrow 1 0\nrow 0 2\n"
@@ -182,17 +203,23 @@ static void test_shared_load_matches_legacy() {
     }
 
     CHECK(!from_shared_text("garbage").has_value());
+    // A map2 with no spawn leaves the raycaster's own default in place rather than
+    // dropping the player at 0,0 inside a wall.
+    auto no_spawn = from_shared_text("map2 1\nname n\nsize 2 2\ntile 16\n"
+                                     "layer wall tiles w\nrow 1 0\nrow 0 2\n");
+    CHECK(no_spawn.has_value());
+    if (no_spawn) CHECK(no_spawn->spawn_cx == -1);
 }
 
 int main() {
-    test_shared_load_matches_legacy();
+    test_the_migration_changed_nothing();
+    test_shared_load();
     test_map();
     test_cast_east();
     test_cast_south();
     test_no_fisheye();
     test_project_sprite();
     test_perp_floor();
-    test_map_serialize();
 
     if (g_failures == 0) std::printf("fps: all tests passed\n");
     else                 std::printf("fps: %d FAILURE(S)\n", g_failures);

@@ -12,6 +12,7 @@
 #include "engine/image_png.hpp"
 #include "engine/paint/pixel_source.hpp"
 #include "engine/project/project.hpp"
+#include "engine/tilemap/map2.hpp"
 #include "games/studio/recipe.hpp"
 #include "games/studio/texture_gen.hpp"
 
@@ -184,6 +185,35 @@ void register_asset_commands() {
                 for (const auto& p : l.problems) msg += "\n  problem: " + p;
             }
             return {l.ok(), msg};
+        });
+
+    // The one-way door out of `fpsmap1`. The shared reader has migrated it on the way
+    // in since chapter 110, which was enough to READ old files and not enough to stop
+    // making new ones — Map Lab kept writing the old format for ten more chapters. A
+    // verb makes the conversion a thing you DO once to a file, after which the old
+    // format has no producers and no committed consumers left.
+    register_command(
+        {"map.migrate", "Convert an fpsmap1 level to map2", "", "<src.map> <dst.map2>"},
+        [](const std::vector<std::string>& args) -> engine::OpResult {
+            if (args.size() < 2 || args[0].empty() || args[1].empty())
+                return {false, "usage: map.migrate <src.map> <dst.map2>"};
+            const auto bytes = assets::load_file(args[0]);
+            if (!bytes) return {false, "cannot read " + args[0]};
+            const std::string text(bytes->begin(), bytes->end());
+
+            // from_fpsmap1, not load(): pointed at a map2 file, `load` would succeed
+            // and this would report a migration that did not happen. Refusing names
+            // the situation instead.
+            auto m = tilemap::from_fpsmap1(text);
+            if (!m) return {false, args[0] + " is not an fpsmap1 level (already map2?)"};
+
+            const std::string out = tilemap::to_text(*m);
+            if (!assets::write_file(args[1], bytes_of(out)))
+                return {false, "cannot write " + args[1]};
+            return {true, "migrated " + args[0] + " -> " + args[1] + "  (" +
+                              std::to_string(m->w) + "x" + std::to_string(m->h) + ", " +
+                              std::to_string(m->layers.size()) + " layers, " +
+                              std::to_string(m->entities.size()) + " entities)"};
         });
 
     // Bringing an asset INTO EXISTENCE, which until now happened in a text editor.

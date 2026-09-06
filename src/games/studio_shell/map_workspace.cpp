@@ -4,6 +4,7 @@
 #include "games/studio_shell/map_workspace.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <utility>
 
 #include "engine/commands/registry.hpp"
@@ -23,10 +24,26 @@ constexpr double kAutosaveSeconds = 10.0;
 
 constexpr const char* kToolNames[] = {"Paint", "Rect", "Fill", "Entity"};
 constexpr int         kToolCount   = 4;
-// The four compass points as they are written into a `facing` property. A string and
-// not a number because a map file is read by people, and `facing E` says what `0` does
-// not — the raycaster turns it back into radians on load.
+// A facing is stored as `dir`, in RADIANS, because that is the property the game
+// reads (`fps::from_shared_text` -> `spawn_dir`) and the one the fpsmap1 migration
+// writes. The compass letter is presentation and lives only in this file.
+//
+// Writing a prettier `facing E` alongside it was the first attempt and was wrong in
+// the way that matters: the editor would have had a control that changed a value
+// nothing downstream read — drawn, clickable, and dead. One property, one reader.
 constexpr const char* kFacings[] = {"E", "S", "W", "N"};
+constexpr double      kHalfPi    = 1.5707963267948966;
+
+// `dir` -> the nearest of the four, so a hand-authored angle still shows a letter
+// rather than a blank, and cycling from it lands somewhere predictable.
+int facing_index(const std::string& dir_value) {
+    if (dir_value.empty()) return -1;
+    const double r = std::strtod(dir_value.c_str(), nullptr);
+    const double q = r / kHalfPi;
+    int          i = static_cast<int>(q < 0 ? q - 0.5 : q + 0.5) % 4;
+    if (i < 0) i += 4;
+    return i;
+}
 
 // Ten stable, distinguishable colours. Deliberately not an evenly spaced hue ramp at
 // one lightness — that is hard to separate for a large minority of people, and these
@@ -378,13 +395,13 @@ engine::OpResult MapWorkspace::cycle_facing() {
     // is not on the map is a value with no position, and nothing would show it.
     if (e == nullptr) return {false, "place " + entity_ + " first"};
 
-    std::string cur;
-    for (const auto& p : e->props)
-        if (p.key == "facing") cur = p.value;
-    int next = 0;
-    for (int i = 0; i < 4; ++i)
-        if (cur == kFacings[i]) next = (i + 1) % 4;
-    auto cmd = mapedit::set_entity_prop(map_, entity_, "facing", kFacings[next]);
+    const int  cur  = facing_index(tilemap::prop(e->props, "dir"));
+    const int  next = (cur < 0) ? 0 : (cur + 1) % 4;
+    // std::to_string on a double, to match exactly what the fpsmap1 migration writes:
+    // two spellings of the same angle would make a re-migrated file differ from a
+    // re-saved one, and a byte comparison is how this project checks such things.
+    auto cmd = mapedit::set_entity_prop(map_, entity_, "dir",
+                                        std::to_string(next * kHalfPi));
     if (!cmd) return {false, "facing unchanged"};
     stack_.push_apply(*cmd);
     return {true, entity_ + " facing " + kFacings[next]};
@@ -457,15 +474,13 @@ void MapWorkspace::draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect are
 
         // The facing as a stub toward the edge it points at. A compass letter would
         // be unreadable at zoom 1; a direction is legible at any size.
-        std::string facing;
-        for (const auto& p : e.props)
-            if (p.key == "facing") facing = p.value;
-        if (!facing.empty()) {
+        const int fi = facing_index(tilemap::prop(e.props, "dir"));
+        if (fi >= 0) {
             const int m = std::max(2, tile / 4), c2 = tile / 2;
-            if      (facing == "E") g.fill_rect(px + tile - m, py + c2 - 1, m, 2, th::accent);
-            else if (facing == "W") g.fill_rect(px, py + c2 - 1, m, 2, th::accent);
-            else if (facing == "S") g.fill_rect(px + c2 - 1, py + tile - m, 2, m, th::accent);
-            else if (facing == "N") g.fill_rect(px + c2 - 1, py, 2, m, th::accent);
+            if      (fi == 0) g.fill_rect(px + tile - m, py + c2 - 1, m, 2, th::accent);   // E
+            else if (fi == 1) g.fill_rect(px + c2 - 1, py + tile - m, 2, m, th::accent);   // S
+            else if (fi == 2) g.fill_rect(px, py + c2 - 1, m, 2, th::accent);              // W
+            else              g.fill_rect(px + c2 - 1, py, 2, m, th::accent);              // N
         }
         if (tile >= 24) {
             g.set_font_size(th::sz_caption);
@@ -596,11 +611,9 @@ void MapWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect 
         // The facing button says what it WOULD set, and is disabled when there is
         // nothing to set it on — the state cycle_facing() refuses.
         const tilemap::Entity* sel = map_.entity(entity_);
-        std::string            cur = "-";
-        if (sel)
-            for (const auto& p : sel->props)
-                if (p.key == "facing") cur = p.value;
-        const std::string label = "Facing  " + cur;
+        const int              fi  = sel ? facing_index(tilemap::prop(sel->props, "dir")) : -1;
+        const std::string      label =
+            std::string("Facing  ") + (fi < 0 ? "-" : kFacings[fi]);
         if (ui.button(ui.slot(28), label.c_str(), false, sel != nullptr)) want_facing_ = true;
         ui.pop_id();
     }

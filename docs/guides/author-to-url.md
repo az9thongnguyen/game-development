@@ -75,6 +75,29 @@ with no source and no `.pack` line, the command exits non-zero, the table says
 stated and never enforced — by the time it was checked, twenty of twenty-three files had
 slipped past it.
 
+## Editing the level (chapter 132)
+
+There is one map format and one map editor now. The Studio's Edit section holds the Map
+workspace; `--lab map` is the same object full-screen:
+
+```sh
+./build/demo --lab map            # or --shell <manifest>, Edit > Map
+#   B / R / G  paint, rect, flood      E  the Entity tool
+#   drag with E to place or nudge the selected entity; Facing cycles E/S/W/N
+```
+
+A level written before chapter 132 is `fpsmap1`. Nothing writes that format any more —
+Map Lab, its only producer, is retired — so convert it once and keep the result:
+
+```sh
+./build/demo --cmd map.migrate maps/old_level.map maps/old_level.map2
+# migrated maps/old_level.map -> maps/old_level.map2  (16x16, 2 layers, 1 entities)
+```
+
+It refuses a file that is already `map2` rather than reporting a migration that did not
+happen. Remember to point the manifest at the new path: the release id moves with the
+content, which is the store noticing that the game changed.
+
 ## Why the loop has the shape it does
 
 - **Create validates before writing.** A scaffold that can't launch is a bug handed to a

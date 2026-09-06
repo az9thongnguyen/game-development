@@ -27,7 +27,7 @@ namespace {
 // its unit test. The raycaster's own grid is unchanged: it is a DDA over a dense
 // uint8 array, and there is no reason to make it something else.
 Map load_level() {
-    if (auto bytes = assets::load_file("maps/level_00.map")) {
+    if (auto bytes = assets::load_file("maps/level_00.map2")) {
         if (auto m = from_shared_text(std::string(bytes->begin(), bytes->end()))) return *m;
     }
     return default_map();

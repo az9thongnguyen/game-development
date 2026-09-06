@@ -236,7 +236,7 @@ static void test_asset_commands() {
     assets::set_base_path(ASSET_ROOT "/assets");
     cmd::clear();
     cmd::register_asset_commands();
-    CHECK(cmd::all().size() == 5);   // three doors, the ledger, and the way in
+    CHECK(cmd::all().size() == 6);   // three doors, the ledger, the way in, the way out
 
     // D17: writing commands refuse blank arguments. A destination nobody named is not
     // a default, it is a missing decision — and here it would overwrite something.

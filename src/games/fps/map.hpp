@@ -34,13 +34,13 @@ struct Map {
 
 Map default_map();  // a small hand-built level
 
-// Text form (the "fpsmap1" format): shared by the Map/Level Lab editor and the
-// raycaster so both sides speak one format. Pure — no IO — the caller reads/writes.
-std::string        to_text(const Map& m);
-std::optional<Map> from_text(const std::string& s);  // nullopt if malformed
-
 // Read a level through the shared tilemap format, which accepts BOTH `map2` and the
-// old `fpsmap1` and migrates the latter. The raycaster keeps its own dense uint8
+// old `fpsmap1` and migrates the latter.
+//
+// There is no writer here any more, and that is the point of chapter 132: fpsmap1 had
+// one producer (Map Lab), it is retired, and the only committed level is map2. What
+// remains is a one-way door — `tilemap::from_fpsmap1` reads an old file, and
+// `--cmd map.migrate` converts one. A format nothing can write cannot come back. The raycaster keeps its own dense uint8
 // grid — it is a DDA over an array and there is no reason for it to be anything
 // else — so this narrows a tilemap::Map down to what the DDA needs: the `wall` layer
 // and the `spawn_player` entity. Ids above 255 clamp, which is the price of the

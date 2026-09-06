@@ -43,11 +43,11 @@
 #include "games/editor/editor_scene.hpp"
 #include "games/colony/colony_scene.hpp"
 #include "games/studio/studio_scene.hpp"
-#include "games/maplab/maplab_scene.hpp"
 #include "games/anim/anim_scene.hpp"
 #include "games/audio/audio_scene.hpp"
 #include "games/fx/fx_scene.hpp"
 #include "games/light/light_scene.hpp"
+#include "games/studio_shell/map_workspace.hpp"
 #include "games/studio_shell/pixel_workspace.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
@@ -185,10 +185,13 @@ const std::vector<Entry>& labs() {
                     std::vector<std::string>{"textures/farm_water.hrt", "textures/town.hrt"},
                     "projects/farm.gameproject")));
         }});
-        v.push_back({"map", win("hand-engine — map lab", 960, 600, kAA), [] {
-            // Still writes fpsmap1, still the only place entities/spawns can be
-            // edited. It stays until the Map workspace can do that.
-            return std::unique_ptr<engine::Scene>(new maplab::MaplabScene());
+        v.push_back({"map", win("hand-engine — map editor", 960, 600, kAA), [] {
+            // The SAME object as the Studio's Map tab, full-screen — like `scene` and
+            // `pixel`. The door keeps its name; what is behind it changed. Chapter 132
+            // retired the separate Map Lab that used to be here, which wrote the older
+            // fpsmap1 and was the only place a spawn could be authored.
+            return std::unique_ptr<engine::Scene>(new studioshell::WorkspaceHost(
+                std::make_unique<studioshell::MapWorkspace>("maps/level_00.map2")));
         }});
         v.push_back({"texture", win("hand-engine — texture lab", 960, 600, kAA), [] {
             return std::unique_ptr<engine::Scene>(new studio::StudioScene());
@@ -255,8 +258,11 @@ int usage(const std::string& unknown) {
         "    --bench-ui [frames] [manifest]  --runner <base_url> <api_key>\n"
         "\n  retired (chapter 120)\n"
         "    --hub-ui   -> --shell, Hub section\n"
-        "    --sandbox  -> --lab scene        --maplab -> --lab map\n"
-        "    --studio   -> --lab texture      --editor -> --lab editor\n"
+        "    --sandbox  -> --lab scene        --editor -> --lab editor\n"
+        "    --studio   -> --lab texture\n"
+        "\n  retired (chapter 132)\n"
+        "    --maplab -> --lab map, which is now the Studio's Map workspace. The old\n"
+        "               lab wrote fpsmap1; convert a level with --cmd map.migrate\n"
         "    --3d --viz3d --iso --colony --fx --light --audio --anim -> --lab <same name>\n"
         "\n  no mode at all runs the M0 engine demo.\n");
     return unknown.empty() ? 0 : 2;
