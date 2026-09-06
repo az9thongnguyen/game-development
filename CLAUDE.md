@@ -41,6 +41,17 @@ regression, not a shortcut:
   retired along with `fps::to_text`/`from_text`. Convert an old file with
   `--cmd map.migrate <src.map> <dst.map2>`. A format nothing can write cannot come
   back, which is the whole point of deleting the writer rather than deprecating it.
+  **`map2` is written at the LOWEST version that can express the file** (chapter 134):
+  v2 added per-layer autotile `rule` lines, so a map with no rules is still written as
+  `map2 1` and its bytes — and its release id — do not move for a feature it does not
+  use. The version guard is what makes that safe: a file from the future is refused,
+  never half-read.
+- **Whether a material is a road or a region lives in the MAP, not in a game's art
+  file** (chapter 134). `rule <value> line|blob` under a layer; `tilemap::rule_piece`
+  is the ONE neighbour scan (it answers 0 for an unruled value, so a renderer writes
+  `base + rule_piece(...)` with no branch). `farm::line_piece` and the theme's
+  `autotile` record are gone — a copy of that decision inside one game is why the Map
+  workspace drew a flat square for a road it had no idea was a road.
 - **`.hrt` is the only raster format the engine READS at runtime** (`HRT1|w|h|RGBA8`).
   It has exactly **three offline doors**, one per origin, so art from a pack and art
   this project made arrive downstream as the same kind of file:
@@ -94,7 +105,10 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 #            is destroyed, and a Flipbook for an animated sheet. Chapter 133 folded the
 #            four effect labs into these; the cores they demoed all stayed.
 #   map      the Studio's Map workspace, full-screen (the SAME object as its Map tab):
-#            paint/rect/fill on layers, plus the Entity tool that place a spawn
+#            paint/rect/fill on layers, the Entity tool that places a spawn, and the
+#            Rule button — none/line/blob for the brush's material. A ruled cell draws
+#            its CONNECTIONS (there is no tileset renderer here), which is the only
+#            thing on this canvas that says a road is a road
 #   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt,
 #            palette sampled from the image + an HSV/hex mixer for a colour it lacks)
 #   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
@@ -262,7 +276,7 @@ Understand these deliberate patterns before editing the build:
   a `Light`, a `Sound` and a flipbook clock — the model records what should be
   HEARD into `World::sounds` rather than opening a device, because a pure core
   must stay compilable into a headless test),
-  `map_edit_core` (tile AND entity edits as undoable `doc::Command`s),
+  `map_edit_core` (tile, entity AND autotile-rule edits as undoable `doc::Command`s),
   `particles_core`, `tween_core`, `light_core`, `audio_core` (all four now have a
   second consumer: an actor's `Emitter`/`Light`/`Sound`/flipbook, chapter 133 —
   the effect labs that used to be their only one are gone), `paint_core` (pixel

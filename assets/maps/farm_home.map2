@@ -1,8 +1,9 @@
-map2 1
+map2 2
 name farm_home
 size 24 18
 tile 16
 layer ground tiles -
+rule 2 line
 row 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
 row 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
 row 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1

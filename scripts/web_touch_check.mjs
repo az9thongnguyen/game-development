@@ -291,15 +291,28 @@ try {
     ok(`a touch on Save wrote a save (px=${px0}) — touch reaches the game`);
 
     // ---- 5. hold the d-pad, and check the player MOVED --------------------
+    // Up to three holds, not one. The claim is "holding the button moves the player",
+    // not "it moves within one particular 700 ms window" — and a browser that stalls
+    // on a GC or a first-frame jank turns the second claim into a coin flip. It did:
+    // one run in five failed here with px unchanged, and passed on a plain retry.
+    // Rounds are REPORTED, so a real regression that needs three of them is visible
+    // rather than absorbed.
     const r0 = css(right);
-    await touch(cdp, r0.x, r0.y, 700);
-    await touch(cdp, s0.x, s0.y, 150);
-    await sleep(400);
-    const after = await cdp.eval(readSave);
-    const px1 = pxOf(after);
-    if (px1 === null) fail('the second save has no player position');
-    if (px1 <= px0) fail(`holding the d-pad's east button did not move the player (px ${px0} -> ${px1})`);
-    ok(`held the east button: px ${px0} -> ${px1}`);
+    let px1 = null;
+    let rounds = 0;
+    for (; rounds < 3; ++rounds) {
+        await touch(cdp, r0.x, r0.y, 700);
+        await touch(cdp, s0.x, s0.y, 150);
+        await sleep(400);
+        const after = await cdp.eval(readSave);
+        px1 = pxOf(after);
+        if (px1 === null) fail('the second save has no player position');
+        if (px1 > px0) break;
+    }
+    if (px1 <= px0)
+        fail(`holding the d-pad's east button did not move the player in ${rounds} holds `
+             + `(px ${px0} -> ${px1})`);
+    ok(`held the east button: px ${px0} -> ${px1}` + (rounds ? `  (${rounds + 1} holds)` : ''));
 
     console.log('\nweb touch: PASS — a real finger walked the farm');
 } finally {

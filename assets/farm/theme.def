@@ -19,11 +19,13 @@ sheet path  textures/farm_path.hrt  16
 tile ground 1 town  0      # plain grass
 tile ground 3 water 0      # the pond — the tile the pack did not have
 
-# The path is AUTOTILED, so the map keeps saying "2" and the corner, the T and the
-# two end caps are worked out from the neighbours. `base` is 0 because the sheet's
-# grid position IS the neighbour mask — tile 5 is north|south. Redraw the path in the
-# Map workspace and the pieces follow; nothing in the .map2 file changes.
-autotile ground 2 path 0   # the worn path, sixteen pieces we drew
+# The path is autotiled — but this file no longer says so. `rule 2 line` in
+# maps/farm_home.map2 says it, because "a path is a road, not a region" is a fact
+# about the world and the Map workspace has to be able to read it (chapter 134).
+# Here, index 0 is just where the set starts: the sheet's grid position IS the
+# neighbour mask, so tile 5 is north|south and the corner, the T and the two end caps
+# are worked out per cell. Redraw the path in the Map workspace and the pieces follow.
+tile ground 2 path 0       # the worn path, sixteen pieces we drew
 
 tile decor 1 town 28       # a small green tree
 tile decor 2 town 72       # timber wall

@@ -265,7 +265,76 @@ static void test_entity_property_is_undoable() {
     CHECK(sp->props.empty());
 }
 
+// ---- chapter 134: a material's rule, as one undoable step -------------------
+static void test_set_rule() {
+    tilemap::Map m = make_map(8, 6);
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::None);
+
+    doc::CommandStack st;
+    auto c1 = mapedit::set_rule(m, "ground", 2, tilemap::RuleKind::Line);
+    CHECK(c1.has_value());
+    if (!c1) return;
+    st.push_apply(std::move(*c1));
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::Line);
+
+    // Setting the same rule again is not an edit: history you did not make is history
+    // you cannot undo past.
+    CHECK(!mapedit::set_rule(m, "ground", 2, tilemap::RuleKind::Line).has_value());
+    // Nor is a rule on 0 (empty is not a material) or on a layer that is not there.
+    CHECK(!mapedit::set_rule(m, "ground", 0, tilemap::RuleKind::Line).has_value());
+    CHECK(!mapedit::set_rule(m, "nosuch", 2, tilemap::RuleKind::Line).has_value());
+
+    // Line -> Blob is a change to a rule that already exists, so it merges with any
+    // further changes — but NOT with the step that created the rule. Same split as
+    // set_entity_prop, for the same reason: one Ctrl+Z should step back a value, not
+    // undo the fact that the material has a rule at all.
+    auto c2 = mapedit::set_rule(m, "ground", 2, tilemap::RuleKind::Blob);
+    CHECK(c2.has_value());
+    if (c2) st.push_apply(std::move(*c2));
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::Blob);
+    CHECK(st.undo());
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::Line);     // back one VALUE
+    CHECK(st.undo());
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::None);     // ...then the rule
+    CHECK(st.redo());
+    CHECK(st.redo());
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::Blob);
+
+    // Removing a rule is an edit like any other, and it comes back — into the MERGED
+    // run, not into the step before it. Line -> Blob -> None is one continuous cycle
+    // on one material, so undoing it lands where that cycle began (Line), not one
+    // click back. That is what merging means, and it is the same answer the entity
+    // property sliders give.
+    auto c3 = mapedit::set_rule(m, "ground", 2, tilemap::RuleKind::None);
+    CHECK(c3.has_value());
+    if (c3) st.push_apply(std::move(*c3));
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::None);
+    CHECK(st.undo());
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::Line);
+    CHECK(st.redo());
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::None);
+    // ...and the rule the FIRST command created is still its own step underneath.
+    CHECK(st.undo());
+    CHECK(st.undo());
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::None);
+    CHECK(!st.can_undo());
+
+    CHECK(st.redo());
+    CHECK(st.redo());
+
+    // A rule is about the MATERIAL, so it survives repainting the cells that wear it
+    // — and it changes what every one of them draws without any of them moving.
+    auto c4 = mapedit::set_rule(m, "ground", 2, tilemap::RuleKind::Line);
+    CHECK(c4.has_value());
+    if (c4) st.push_apply(std::move(*c4));
+    m.set("ground", 0, 0, 2);
+    m.set("ground", 1, 0, 2);
+    CHECK(m.rule_for("ground", 2) == tilemap::RuleKind::Line);
+    CHECK(tilemap::rule_piece(m, "ground", 0, 0) == 2);      // east only: an end cap
+}
+
 int main() {
+    test_set_rule();
     test_rect_and_flood();
     test_undo_is_exact();
     test_stroke_is_one_step();

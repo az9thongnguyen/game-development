@@ -221,4 +221,43 @@ std::optional<doc::Command> set_entity_prop(tilemap::Map& m, const std::string& 
     return cmd;
 }
 
+std::optional<doc::Command> set_rule(tilemap::Map& m, const std::string& layer,
+                                     std::int32_t value, tilemap::RuleKind kind) {
+    if (value == 0) return std::nullopt;          // 0 is empty, not a material
+    if (m.layer(layer) == nullptr) return std::nullopt;
+    const tilemap::RuleKind before = m.rule_for(layer, value);
+    if (before == kind) return std::nullopt;      // history you did not make
+
+    tilemap::Map* mp = &m;
+    const auto    put = [](tilemap::Map* mm, const std::string& ln, std::int32_t v,
+                           tilemap::RuleKind k) {
+        tilemap::Layer* l = mm->layer(ln);
+        if (l == nullptr) return;
+        for (std::size_t i = 0; i < l->rules.size(); ++i)
+            if (l->rules[i].value == v) {
+                if (k == tilemap::RuleKind::None)
+                    l->rules.erase(l->rules.begin() + static_cast<long>(i));
+                else
+                    l->rules[i].kind = k;
+                return;
+            }
+        if (k != tilemap::RuleKind::None) l->rules.push_back(tilemap::Rule{v, k});
+    };
+
+    doc::Command cmd;
+    cmd.label = layer + " rule " + std::to_string(value);
+    cmd.apply  = [mp, layer, value, kind, put]   { put(mp, layer, value, kind); };
+    cmd.revert = [mp, layer, value, before, put] { put(mp, layer, value, before); };
+    // Cycling None -> Line -> Blob -> None is one gesture on one material, so the
+    // steps merge — but only once the rule EXISTS, for the same reason a created
+    // entity property does not merge into its own creation: one Ctrl+Z should step
+    // back a value, not undo the fact that the material has a rule at all.
+    cmd.merge_key = before == tilemap::RuleKind::None
+                        ? 0
+                        : entity_key(layer + "#rule#" + std::to_string(value),
+                                     0x27220A95u);
+    return cmd;
+}
+
 } // namespace mapedit
+

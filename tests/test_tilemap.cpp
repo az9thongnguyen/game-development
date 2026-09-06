@@ -143,7 +143,7 @@ static void test_format_rejects() {
     // A version from the future is refused rather than half-read: parsing a newer
     // schema with an older parser is how a tool silently drops fields it does not
     // know about and then writes the loss back to disk.
-    CHECK(!load("map2 2\nname x\nsize 1 1\ntile 8\n").has_value());
+    CHECK(!load("map2 3\nname x\nsize 1 1\ntile 8\n").has_value());
     CHECK(!load("map2 0\nname x\nsize 1 1\ntile 8\n").has_value());
 
     CHECK(!load("").has_value());
@@ -429,6 +429,148 @@ static void test_autotile() {
 //  exact multiple of the tile size must drop the partial cells rather than pad them
 //  with whatever follows in memory.
 // -----------------------------------------------------------------------------
+// ---- chapter 134: rules live in the MAP ------------------------------------
+static void test_rules_roundtrip_and_version() {
+    // A map with no rules is still a v1 file: its bytes — and therefore its release
+    // id — must not move for a feature it does not use.
+    Map plain;
+    plain.name = "p"; plain.w = plain.h = 2; plain.tile = 8;
+    plain.layers.push_back(Layer{"ground", LayerKind::Tiles, "", {1, 1, 1, 1}, {}});
+    CHECK(to_text(plain).rfind("map2 1\n", 0) == 0);
+
+    Map m;
+    m.name = "r"; m.w = 3; m.h = 3; m.tile = 8;
+    Layer g{"ground", LayerKind::Tiles, "", {}, {}};
+    g.cells.assign(9, 0);
+    g.rules.push_back(Rule{2, RuleKind::Line});
+    g.rules.push_back(Rule{5, RuleKind::Blob});
+    m.layers.push_back(std::move(g));
+    const std::string text = to_text(m);
+    CHECK(text.rfind("map2 2\n", 0) == 0);
+    CHECK(text.find("rule 2 line\nrule 5 blob\nrow") != std::string::npos);
+
+    auto back = load(text);
+    CHECK(back.has_value());
+    if (back) {
+        CHECK(to_text(*back) == text);
+        CHECK(back->rule_for("ground", 2) == RuleKind::Line);
+        CHECK(back->rule_for("ground", 5) == RuleKind::Blob);
+        CHECK(back->rule_for("ground", 9) == RuleKind::None);   // no rule is an answer
+        CHECK(back->rule_for("nosuch",  2) == RuleKind::None);
+    }
+
+    // The refusals. Each is a file that would otherwise mean two things at once.
+    const char* head = "map2 2\nname x\nsize 2 1\ntile 8\nlayer g tiles -\n";
+    CHECK(!load(std::string(head) + "rule 0 line\nrow 1 1\n").has_value());       // 0 is empty
+    CHECK(!load(std::string(head) + "rule 2 blob\nrule 2 line\nrow 1 1\n").has_value());
+    CHECK(!load(std::string(head) + "rule 2 spiral\nrow 1 1\n").has_value());
+    // A rule BETWEEN rows. The map has to be taller than one row for this to be the
+    // case it means: with a single row the grid is already complete when the rule
+    // appears, and the outer parser refuses it as an unknown directive for a
+    // different reason — which made this look tested when it was not.
+    CHECK(!load("map2 2\nname x\nsize 1 2\ntile 8\nlayer g tiles -\n"
+                "row 1\nrule 2 line\nrow 1\n").has_value());
+    CHECK(!load(std::string(head) + "row 1 1\nrule 2 line\n").has_value());       // after the grid
+    // ...and a v1 file with no rules still loads, because that is most of them.
+    CHECK(load("map2 1\nname x\nsize 2 1\ntile 8\nlayer g tiles -\nrow 1 1\n").has_value());
+}
+
+// The one implementation, replacing farm::line_piece: a road's four neighbours, a
+// region's eight, and 0 for a cell whose value nobody gave a rule.
+static void test_rule_piece() {
+    Map m;
+    m.name = "r"; m.w = 3; m.h = 3; m.tile = 8;
+    Layer g{"ground", LayerKind::Tiles, "", {}, {}};
+    g.cells = {0, 2, 0,
+               2, 2, 2,
+               0, 2, 0};
+    g.rules.push_back(Rule{2, RuleKind::Line});
+    m.layers.push_back(std::move(g));
+
+    // The centre continues on all four sides: the crossroads, piece 15 of 16.
+    CHECK(rule_piece(m, "ground", 1, 1) == 15);
+    // The north arm continues only southward: piece 4 (south bit).
+    CHECK(rule_piece(m, "ground", 1, 0) == 4);
+    // Out of bounds does NOT connect, so the arms are end caps, not through-runs.
+    CHECK(rule_piece(m, "ground", 0, 1) == 2);          // east only
+    CHECK(rule_piece(m, "ground", 0, 0) == 0);          // an empty cell: nothing
+    CHECK(neighbour_mask(m, "ground", 1, 1) == (kN | kE | kS | kW));
+
+    // The contract for an EMPTY cell, which is the one place the bounds check earns
+    // its keep: Map::at answers 0 off the map, so without it a hole in the middle of
+    // nothing would report the void beyond the edge as more of itself.
+    CHECK(m.at("ground", 0, 0) == 0);
+    CHECK((neighbour_mask(m, "ground", 0, 0) & (kN | kW | kNW | kNE | kSW)) == 0);
+
+    // Drop the rule and every one of those becomes 0 — the number a caller adds to a
+    // base without asking whether there was a rule.
+    m.layers[0].rules.clear();
+    CHECK(rule_piece(m, "ground", 1, 1) == 0);
+    CHECK(rule_piece(m, "ground", 1, 0) == 0);
+
+    // A region reads its diagonals too, so the same cross is a different piece.
+    m.layers[0].rules.push_back(Rule{2, RuleKind::Blob});
+    CHECK(rule_piece(m, "ground", 1, 1) == autotile_index(kN | kE | kS | kW));
+    CHECK(rule_piece(m, "ground", 1, 1) != 15);
+    m.set("ground", 0, 0, 2);                            // fill a corner
+    CHECK(neighbour_mask(m, "ground", 1, 1) == (kN | kE | kS | kW | kNW));
+    // ...which the LINE rule would have ignored entirely. That is the difference.
+    CHECK(autotile_line_index(neighbour_mask(m, "ground", 1, 1)) == 15);
+}
+
+// The sixteen neighbourhoods, and then the farm's own path. Moved here from
+// tests/test_farm.cpp in chapter 134 with the function it checks: the five cells
+// below are the ones that make that path a path rather than a row of squares, and
+// they are read off a real committed map, which is the check that outlives whichever
+// module owns the chooser.
+//
+// The whole-frame test in test_farm_scene can only prove the picture CHANGES from
+// cell to cell. That left two mutations alive — "never look north" and "any neighbour
+// connects, not just the same id" — both of which still produce a picture that varies
+// per cell, just the wrong one. So the answer is checked here, by value.
+static void test_rule_piece_sixteen_and_the_real_path() {
+    // A 3x3 map with the cell under test in the middle. Every DIAGONAL is set to the
+    // same id in all sixteen cases: for a line they carry no information, and a rule
+    // that quietly consulted one would answer sixteen different questions here.
+    const auto probe = [](int bits) {
+        const int n = bits & 1, e = bits & 2, sth = bits & 4, w = bits & 8;
+        std::string text = "map2 2\nname probe\nsize 3 3\ntile 16\nlayer ground tiles -\n"
+                           "rule 2 line\n";
+        text += std::string("row 2 ") + (n ? "2" : "1") + " 2\n";
+        text += std::string("row ") + (w ? "2" : "1") + " 2 " + (e ? "2" : "1") + "\n";
+        text += std::string("row 2 ") + (sth ? "2" : "1") + " 2\n";
+        const auto m = load(text);
+        CHECK(m.has_value());
+        return m ? rule_piece(*m, "ground", 1, 1) : -1;
+    };
+    for (int bits = 0; bits < 16; ++bits) CHECK(probe(bits) == bits);
+
+    // The farm's own path, at the five cells that make it a path. Read off
+    // assets/maps/farm_home.map2: a vertical run down column 4 from row 6, turning
+    // east along row 11 and ending at column 16.
+    assets::set_base_path(ASSET_ROOT "/assets");
+    const auto bytes = assets::load_file("maps/farm_home.map2");
+    CHECK(bytes.has_value());
+    if (!bytes) return;
+    const auto map = load(std::string(bytes->begin(), bytes->end()));
+    CHECK(map.has_value());
+    if (!map) return;
+    // The rule is in the FILE now, not in the game that reads it. If that line ever
+    // goes missing every assertion below collapses to 0 at once.
+    CHECK(map->rule_for("ground", 2) == RuleKind::Line);
+    const auto at = [&](int x, int y) { return rule_piece(*map, "ground", x, y); };
+    CHECK(at(4, 6)   == 4);    // the north end cap: only south continues
+    CHECK(at(4, 8)   == 5);    // ...a straight vertical run
+    CHECK(at(4, 11)  == 3);    // the corner: north and east
+    CHECK(at(10, 11) == 10);   // ...a straight horizontal run
+    CHECK(at(16, 11) == 8);    // the east end cap
+
+    // The grass fills the map and has NO rule, so every one of its cells answers 0 —
+    // which is the number a renderer adds to a base without asking first.
+    CHECK(map->rule_for("ground", 1) == RuleKind::None);
+    CHECK(at(0, 0) == 0);
+}
+
 static void test_tileset() {
     // A 3x2 grid of 4px tiles, each filled with its own index so a mis-cut is
     // visible as a wrong colour rather than as a plausible picture.
@@ -496,6 +638,9 @@ static void test_tileset() {
 
 int main() {
     test_format();
+    test_rules_roundtrip_and_version();
+    test_rule_piece();
+    test_rule_piece_sixteen_and_the_real_path();
     test_tileset();
     test_format_rejects();
     test_migration();

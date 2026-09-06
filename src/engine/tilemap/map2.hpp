@@ -28,18 +28,47 @@
 
 namespace tilemap {
 
-inline constexpr int kFormatVersion = 1;
+// Version 2 added per-layer autotile RULES (chapter 134). A file is written at the
+// LOWEST version that can express it, so a map with no rules is still a v1 file and
+// its bytes — and therefore its release id — do not move for a feature it does not
+// use. The guard below (`version > kFormatVersion` refuses) is what makes that
+// meaningful: an old binary must refuse a file with rules rather than drop them and
+// write the loss back.
+inline constexpr int kFormatVersion = 2;
 
 // A layer is either painted tile ids or a boolean mask (collision, water, …).
 // Keeping them one type rather than two keeps the file grammar and the row parser
 // single, and a mask is just a layer whose ids are 0 or 1.
 enum class LayerKind { Tiles, Mask };
 
+// How a MATERIAL tiles. A cell whose value has a rule is not a tile id — it is a
+// material, and which piece of its set the cell wears is decided by its neighbours.
+// `None` is the absence of a rule and is never written to a file.
+//
+//   Line — a road: one tile wide, four cardinal neighbours, 16 pieces
+//   Blob — a region: grass, a lake, a plateau; eight neighbours, 47 pieces
+//
+// Which of the two a material is, is a fact about the WORLD, not about the artwork —
+// so it lives in the map, where an editor and every renderer can both read it. It
+// used to live in the farm's theme file, where the editor could not see it and drew
+// a flat colour for a road it had no idea was a road.
+enum class RuleKind { None, Line, Blob };
+
+struct Rule {
+    std::int32_t value = 0;                  // the material id, never 0 (0 = empty)
+    RuleKind     kind  = RuleKind::None;
+};
+
 struct Layer {
     std::string          name;
     LayerKind            kind = LayerKind::Tiles;
     std::string          tileset;          // empty for a mask
     std::vector<std::int32_t> cells;       // row-major, w*h; 0 = empty
+    // At most one rule per value — a second is a contradiction, not an override, and
+    // the parser refuses it. Order is authoring order and is preserved by to_text.
+    std::vector<Rule>    rules;
+
+    [[nodiscard]] RuleKind rule_for(std::int32_t value) const;
 };
 
 struct Property { std::string key, value; };
@@ -70,6 +99,8 @@ struct Map {
     // ---- queries ------------------------------------------------------------
     bool in_bounds(int x, int y) const { return x >= 0 && y >= 0 && x < w && y < h; }
 
+    [[nodiscard]] RuleKind rule_for(const std::string& layer_name, std::int32_t value) const;
+
     const Layer* layer(const std::string& n) const;
     Layer*       layer(const std::string& n);
 
@@ -99,6 +130,21 @@ std::string to_text(const Map& m);
 
 // The migration on its own, for tests and for tools that want to be explicit.
 std::optional<Map> from_fpsmap1(const std::string& text);
+
+// The eight neighbours of (x,y) on `layer` that hold the SAME value it does, as the
+// bit mask autotile.hpp reads (kN, kNE, … clockwise from north). Out of bounds is
+// NOT the same — a road that reaches the map edge gets an end cap, because that is
+// the truth; the alternative pretends the world continues.
+std::uint8_t neighbour_mask(const Map& m, const std::string& layer, int x, int y);
+
+// Which piece of its set the cell at (x,y) wears. **0 when its value has no rule**,
+// so a caller can always write `base + rule_piece(...)` without asking first.
+//
+// This is the one implementation. It used to be `farm::line_piece`, a copy that only
+// knew about lines and lived where no editor could call it — so the Map workspace
+// drew a flat square for a road and you found out what it looked like by running the
+// game.
+int rule_piece(const Map& m, const std::string& layer, int x, int y);
 
 // Look up a property, or `fallback` when absent.
 std::string prop(const std::vector<Property>& props, const std::string& key,

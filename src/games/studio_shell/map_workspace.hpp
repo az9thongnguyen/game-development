@@ -71,6 +71,16 @@ public:
     // a facing on nothing is a value nobody can see.
     engine::OpResult cycle_facing();
 
+    // Cycle the CURRENT BRUSH's material through none -> line -> blob -> none on the
+    // current layer, as one undoable edit. Refuses on brush 0 (empty is not a
+    // material) and when there is no layer, and says so — a control that goes quiet
+    // is a control you cannot tell from a broken one.
+    engine::OpResult cycle_rule();
+    // Where the Rule button landed in the last draw, so a test can press the thing a
+    // hand presses rather than the function behind it. Zero-height when the inspector
+    // ran out of room, which is the honest answer (see inspector_clipped).
+    [[nodiscard]] ui::Rect rule_rect() const { return rule_rect_; }
+
     // True when the inspector ran out of room and its last control came back short.
     // `slot()` CLAMPS rather than overflowing, so a panel one control too tall does
     // not spill — it silently hands back a zero-height rect, which draws nothing and
@@ -142,6 +152,7 @@ private:
     // The canvas rect, remembered from the last draw: immediate mode has no layout
     // until it draws, so hit-testing uses the previous frame's geometry.
     ui::Rect canvas_{};
+    ui::Rect rule_rect_{};
     bool     inspector_clipped_ = false;
 
     // The tile under the cursor, and the in-progress rectangle. -1 = off the map.
@@ -165,6 +176,7 @@ private:
     int  want_brush_ = -1;
     int  want_entity_ = -1;                  // index into entity_names()
     bool want_facing_ = false;
+    bool want_rule_ = false;
     bool want_undo_ = false, want_redo_ = false, want_save_ = false;
 };
 

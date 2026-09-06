@@ -80,6 +80,17 @@ std::optional<doc::Command> place_entity(tilemap::Map& m, const std::string& nam
 std::optional<doc::Command> set_entity_prop(tilemap::Map& m, const std::string& name,
                                             const std::string& key, const std::string& value);
 
+// ---- rules -------------------------------------------------------------------
+// Give (or take away) a material's autotile rule, undoably. `kind == None` removes
+// it. nullopt when nothing would change, when the layer does not exist, or when
+// `value` is 0 — 0 is "empty", and empty is not a material.
+//
+// It is one command, not one per affected cell: a rule changes how EVERY cell of that
+// value is drawn, and the cells themselves do not move. Undo restores the rule, and
+// the picture follows because the picture was never stored.
+std::optional<doc::Command> set_rule(tilemap::Map& m, const std::string& layer,
+                                     std::int32_t value, tilemap::RuleKind kind);
+
 // A drag. Cells are written through as the mouse moves — you have to see the paint
 // under the cursor — and the whole gesture reaches the stack as ONE command when the
 // button comes up. Re-applying it is therefore idempotent, which is exactly what

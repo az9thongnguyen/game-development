@@ -16,12 +16,14 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/assets.hpp"
 #include "engine/commands/registry.hpp"
 #include "engine/document/document.hpp"
 #include "engine/renderer2d.hpp"
+#include "engine/ui/theme.hpp"
 #include "engine/ui/ui.hpp"
 #include "games/fps/map.hpp"
 #include "games/studio_shell/map_workspace.hpp"
@@ -120,15 +122,66 @@ struct ShotDriver {
     ui::Context                ui;
 
     void panel(studioshell::MapWorkspace& ws, double dt = 1.0 / 60.0) {
+        panel(ws, ui::Input{}, platform::InputState{}, dt);
+    }
+
+    // The widgets read ui::Input and the canvas reads platform::InputState — two
+    // input paths through one frame, and a test that fed only one of them would press
+    // nothing while looking like it had.
+    void panel(studioshell::MapWorkspace& ws, const ui::Input& uin,
+               const platform::InputState& in = platform::InputState{},
+               double dt = 1.0 / 60.0) {
         const int       iw = ws.inspector_width();
         gfx::Renderer2D g(fb, 1);
-        ui.begin(&g, ui::Input{}, SW, SH);
+        ui.begin(&g, uin, SW, SH);
         ws.draw_canvas(ui, g, ui::Rect{0, 0, SW - iw, SH});
         ws.draw_inspector(ui, g, ui::Rect{SW - iw, 0, iw, SH});
         ui.end();
-        ws.update(dt, platform::InputState{}, /*interactive*/ true);
+        ws.update(dt, in, /*interactive*/ true);
     }
 };
+
+// The size `--lab map` opens at. Separate from ShotDriver's 900x700 because "it fits
+// in the screenshot" and "it fits in the window" are two different claims.
+struct LabDriver {
+    static constexpr int LW = 960, LH = 600;
+    std::vector<std::uint32_t> buf = std::vector<std::uint32_t>(
+        static_cast<std::size_t>(LW) * LH, 0);
+    platform::Framebuffer      fb{buf.data(), LW, LH, LW};
+    ui::Context                ui;
+
+    void panel(studioshell::MapWorkspace& ws) {
+        // The pad and status strip WorkspaceHost reserves, so this is the rect the
+        // real host hands over rather than the whole window.
+        const int pad = 16, status = 24;
+        const int iw = ws.inspector_width();
+        gfx::Renderer2D g(fb, 1);
+        ui.begin(&g, ui::Input{}, LW, LH);
+        const ui::Rect body{pad, pad, LW - pad * 2, LH - pad * 2 - status};
+        ws.draw_canvas(ui, g, ui::Rect{body.x, body.y, body.w - iw - 12, body.h});
+        ws.draw_inspector(ui, g, ui::Rect{body.x + body.w - iw, body.y, iw, body.h});
+        ui.end();
+        ws.update(1.0 / 60.0, platform::InputState{}, /*interactive*/ true);
+    }
+};
+
+// ui::interact fires on RELEASE over the rect, so a test that only presses proves a
+// widget was drawn and never that it can be pressed (chapter 133's lesson, and 126's).
+void click(ShotDriver& d, studioshell::MapWorkspace& ws, ui::Rect r) {
+    if (r.w <= 0 || r.h <= 0) return;
+    const int cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    ui::Input press{}; press.mx = cx; press.my = cy; press.down = true; press.pressed = true;
+    ui::Input rel{};   rel.mx = cx;   rel.my = cy;   rel.released = true;
+    d.panel(ws, press);
+    d.panel(ws, rel);
+    d.panel(ws);
+}
+
+platform::InputState key_press(platform::Key k) {
+    platform::InputState in{};
+    in.key_pressed[static_cast<int>(k)] = true;
+    return in;
+}
 
 // Mouse at the centre of tile (tx,ty). The workspace owns the pan/zoom arithmetic
 // (it centres the map on the canvas), so ask it rather than duplicating the maths
@@ -442,6 +495,150 @@ static void test_entity_tool() {
     cmd::clear();
 }
 
+// ---- chapter 134: the brush's material has a rule, and you can press it ----
+static void test_rule_button() {
+    CHECK(write_text(kPath, fixture_text()));
+    studioshell::MapWorkspace ws(kPath);
+    CHECK(ws.loaded());
+
+    ShotDriver d;
+    d.panel(ws);                                  // a draw, so rule_rect() is known
+    CHECK(ws.rule_rect().h > 0);                  // ...and it fits in the panel
+    CHECK(!ws.inspector_clipped());
+
+    // At the size `--lab map` actually opens (960x600), which is smaller than the
+    // 900x700 above and is the frame a person will really see. A section added to a
+    // panel that was already nearly full is exactly how a control ends up drawn
+    // nowhere (chapters 127, 132, 133), so the height is asserted, not assumed.
+    {
+        LabDriver lab;
+        lab.panel(ws);
+        lab.panel(ws);
+        CHECK(!ws.inspector_clipped());
+        CHECK(ws.rule_rect().h > 0);
+    }
+    // rule_rect() is where the LAST draw put it, and that draw was a different frame
+    // at a different size. Redraw here or every click below lands in the lab's
+    // coordinates inside the screenshot's window — which is how this test first
+    // "proved" that pressing the button did nothing.
+    d.panel(ws);
+
+    // Brush 1 on `ground`, cycling none -> line -> blob -> none. Pressed the way a
+    // hand presses it, not by calling cycle_rule().
+    CHECK(ws.map().rule_for("ground", 1) == tilemap::RuleKind::None);
+    click(d, ws, ws.rule_rect());
+    CHECK(ws.map().rule_for("ground", 1) == tilemap::RuleKind::Line);
+    CHECK(ws.dirty());
+    click(d, ws, ws.rule_rect());
+    CHECK(ws.map().rule_for("ground", 1) == tilemap::RuleKind::Blob);
+    click(d, ws, ws.rule_rect());
+    CHECK(ws.map().rule_for("ground", 1) == tilemap::RuleKind::None);
+
+    // It is about the material under the BRUSH, so switching brushes switches the
+    // question. Through the keyboard, which is the other way a brush is chosen.
+    click(d, ws, ws.rule_rect());                 // 1 -> line
+    d.panel(ws, ui::Input{}, key_press(platform::Key::Num3));
+    d.panel(ws);
+    CHECK(ws.map().rule_for("ground", 3) == tilemap::RuleKind::None);
+    click(d, ws, ws.rule_rect());
+    CHECK(ws.map().rule_for("ground", 3) == tilemap::RuleKind::Line);
+    CHECK(ws.map().rule_for("ground", 1) == tilemap::RuleKind::Line);   // 1 kept its own
+
+    // Brush 0 is EMPTY, and empty is not a material. The button is disabled — and the
+    // proof that it is disabled is that pressing it says nothing at all, which is the
+    // only difference between a disabled control and one whose guard refuses.
+    while (ws.take_message()) {}
+    d.panel(ws, ui::Input{}, key_press(platform::Key::Num0));
+    d.panel(ws);
+    click(d, ws, ws.rule_rect());
+    CHECK(!ws.take_message().has_value());
+    CHECK(ws.map().rule_for("ground", 0) == tilemap::RuleKind::None);
+    // ...and the operation refuses on its own, not merely because the button is off.
+    // A guard that only exists in the widget is a guard the command palette and the
+    // keyboard walk straight past (D-rule: the operation lives in the core).
+    const engine::OpResult refused = ws.cycle_rule();
+    CHECK(!refused.ok);
+    CHECK(refused.message.find("empty") != std::string::npos);
+    CHECK(ws.map().rule_for("ground", 0) == tilemap::RuleKind::None);
+
+    // ...and the rule survives the file, which is the whole reason it lives in the map.
+    CHECK(ws.save().ok);
+    const auto reread = tilemap::load(read_text(kPath));
+    CHECK(reread.has_value());
+    if (reread) {
+        CHECK(reread->rule_for("ground", 1) == tilemap::RuleKind::Line);
+        CHECK(reread->rule_for("ground", 3) == tilemap::RuleKind::Line);
+    }
+    CHECK(read_text(kPath).rfind("map2 2\n", 0) == 0);   // it is a v2 file now
+
+    // A frame to look at: a cross of the LINE material next to a block of the BLOB
+    // one, and a third material with no rule at all. The canvas has no tileset
+    // renderer, so these connectors are the only thing on screen that says the road
+    // is a road — and until chapter 134 there was nothing at all.
+    {
+        const auto paint = [&](std::int32_t brush,
+                               std::vector<std::pair<int, int>> cells) {
+            d.panel(ws, ui::Input{},
+                    key_press(static_cast<platform::Key>(
+                        static_cast<int>(platform::Key::Num0) + brush)));
+            d.panel(ws);
+            for (const auto& c : cells) {
+                platform::InputState press = at_tile(ws, c.first, c.second, true);
+                press.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+                d.panel(ws, ui::Input{}, press);
+                d.panel(ws, ui::Input{}, at_tile(ws, c.first, c.second, false));
+            }
+        };
+        paint(1, {{1, 1}, {1, 2}, {1, 3}, {0, 2}, {2, 2}, {3, 2}});
+        paint(3, {{5, 1}, {6, 1}, {5, 2}, {6, 2}, {6, 3}});
+        paint(5, {{0, 5}, {1, 5}});                 // no rule: no connectors at all
+        CHECK(ws.map().at("ground", 1, 2) == 1);
+        CHECK(ws.map().rule_for("ground", 5) == tilemap::RuleKind::None);
+        // Brush 3 was given `line` above; make the block a REGION so the diagonal
+        // pips have something to say — a blob is the other half of the rule.
+        d.panel(ws, ui::Input{},
+                key_press(static_cast<platform::Key>(static_cast<int>(platform::Key::Num0) + 3)));
+        d.panel(ws);
+        click(d, ws, ws.rule_rect());               // line -> blob
+        CHECK(ws.map().rule_for("ground", 3) == tilemap::RuleKind::Blob);
+        d.panel(ws);
+        d.panel(ws);
+        dump_ppm(d.buf, SW, SH, "map_rules.ppm");
+
+        // And what the eye saw, pinned to pixels. A whole-frame comparison would only
+        // prove the picture changed; these are three specific claims about three
+        // specific cells (the memory: frame diffs prove variety, not correctness).
+        const gfx::Color ink = ui::theme::bg;
+        const auto at_px = [&](int px, int py) {
+            return d.buf[static_cast<std::size_t>(py) * SW + static_cast<std::size_t>(px)]
+                   & 0x00FFFFFFu;
+        };
+        const auto centre_of = [&](int tx, int ty) {
+            const ui::Rect r = ws.tile_rect(tx, ty);
+            return std::pair<int, int>{r.x + r.w / 2, r.y + r.h / 2};
+        };
+
+        // 1. A cell with NO rule draws no connector at all — its centre is its colour.
+        const auto plain = centre_of(0, 5);
+        CHECK(at_px(plain.first, plain.second) ==
+              (studioshell::tile_color(5) & 0x00FFFFFFu));
+
+        // 2. A ruled cell DOES: the hub is drawn in ink at its centre.
+        const auto road = centre_of(1, 2);
+        CHECK(at_px(road.first, road.second) == (ink & 0x00FFFFFFu));
+
+        // 3. The pip that canonicalisation drops. Cell (6,3) hangs below the block, so
+        //    its north-west diagonal (5,2) is a region cell — but WEST of it, (5,3), is
+        //    empty, so that diagonal cannot change which of the 47 pieces it wears.
+        //    Drawing a pip there would promise a difference the renderer will not make.
+        CHECK(ws.map().at("ground", 5, 2) == 3);      // the diagonal IS the material
+        CHECK(ws.map().at("ground", 5, 3) != 3);      // ...and its cardinal is not
+        const ui::Rect c63 = ws.tile_rect(6, 3);
+        CHECK(at_px(c63.x + 1, c63.y + 1) != (ink & 0x00FFFFFFu));
+    }
+    cmd::clear();
+}
+
 static void test_commands_are_unregistered() {
     cmd::clear();
     {
@@ -468,6 +665,7 @@ int main() {
     test_tools_and_missing_map();
     test_the_game_can_load_what_the_editor_writes();
     test_entity_tool();
+    test_rule_button();
     test_commands_are_unregistered();
 
     assets::set_base_path(".");
