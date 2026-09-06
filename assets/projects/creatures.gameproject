@@ -1,0 +1,36 @@
+gameproject1
+name Creatures
+schema 1
+entry creatures
+summary Walk into the long grass, meet something, catch it, and watch it grow up.
+cover textures/creatures_cover.hrt
+asset map maps/creature_route.map2
+asset data creatures/types.def
+asset data creatures/moves.def
+asset data creatures/species.def
+asset data creatures/encounters.def
+asset data creatures/theme.def
+asset texture textures/town.hrt
+asset texture textures/farm_path.hrt
+asset texture textures/farm_player.hrt
+asset texture textures/farm_water.hrt
+asset texture textures/parts_creature.hrt
+asset texture textures/creatures_cover.hrt
+asset texture textures/creature_01.hrt
+asset texture textures/creature_02.hrt
+asset texture textures/creature_03.hrt
+asset texture textures/creature_04.hrt
+asset texture textures/creature_05.hrt
+asset texture textures/creature_06.hrt
+asset texture textures/creature_07.hrt
+asset texture textures/creature_08.hrt
+asset texture textures/creature_09.hrt
+asset texture textures/creature_10.hrt
+asset texture textures/creature_11.hrt
+asset texture textures/creature_12.hrt
+asset texture textures/creature_13.hrt
+asset texture textures/creature_14.hrt
+asset texture textures/creature_15.hrt
+asset texture textures/creature_16.hrt
+asset texture textures/creature_17.hrt
+asset texture textures/creature_18.hrt

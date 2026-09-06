@@ -130,6 +130,7 @@ add_executable(demo
   src/games/studio/studio_scene.cpp
   src/games/hub/hub_panel.cpp
   src/games/farm/farm_scene.cpp
+  src/games/creatures/creatures_scene.cpp
   src/games/studio_shell/studio_shell_scene.cpp
   src/games/studio_shell/map_workspace.cpp
   src/games/studio_shell/palette.cpp
@@ -178,7 +179,7 @@ if(EMSCRIPTEN)
     VERBATIM)
   add_dependencies(demo web_pages)
 endif()
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core map_edit_core paint_core mix_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core creature_core map_edit_core paint_core mix_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -587,9 +588,11 @@ add_test(NAME farm_scene COMMAND test_farm_scene)
 add_library(creature_core STATIC
   src/games/creatures/defs.cpp
   src/games/creatures/battle.cpp
+  src/games/creatures/world.cpp
+  src/games/creatures/controls.cpp
 )
 target_include_directories(creature_core PUBLIC src)
-target_link_libraries(creature_core PRIVATE engine_flags)
+target_link_libraries(creature_core PUBLIC tilemap_core PRIVATE engine_flags)
 
 # Compiles assets.cpp so the test reads the REAL tables in assets/creatures/ rather
 # than a fixture: a balance file that stops parsing is a broken game, and only the
@@ -603,6 +606,33 @@ target_include_directories(test_creature PRIVATE src)
 target_compile_definitions(test_creature PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_creature PRIVATE creature_core mix_core engine_flags)
 add_test(NAME creature COMMAND test_creature)
+
+# The loop AROUND the battle, still with no window: walking the real route, being
+# ambushed only where the map says, growing without being healed by it, blacking out,
+# and a save that reads back. It walks the SHIPPED map — a 3x3 fixture would keep
+# passing while the route lost its collide layer.
+add_executable(test_creature_world tests/test_creature_world.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_creature_world PRIVATE src)
+target_compile_definitions(test_creature_world PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_creature_world PRIVATE creature_core engine_flags)
+add_test(NAME creature_world COMMAND test_creature_world)
+
+# The game PLAYED, with no window: walk into the grass with a finger on the d-pad the
+# renderer drew, fight what comes out by tapping the buttons, and check the screen
+# changed with the world. It never calls the function behind a button — four chapters
+# of this project shipped a control that was drawn perfectly and wired to nothing.
+add_executable(test_creatures_scene tests/test_creatures_scene.cpp
+  src/engine/image.cpp
+  src/games/creatures/creatures_scene.cpp
+  src/engine/renderer2d.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_creatures_scene PRIVATE src)
+target_compile_definitions(test_creatures_scene PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_creatures_scene PRIVATE creature_core ui_core text_core engine_flags)
+add_test(NAME creatures_scene COMMAND test_creatures_scene)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;

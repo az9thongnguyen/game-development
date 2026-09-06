@@ -1,0 +1,25 @@
+# The route's art. Same join as the farm's (`<layer> <id>` -> `<sheet> <index>`) and
+# the same two sheets, because the two games are set in the same world and there is
+# no reason for a second import of the same pack.
+#
+# The PLAYER is `textures/farm_player.hrt` — the mix from chapter 135, worn by a
+# second game without being copied, re-imported or redrawn. That is the parts sheet
+# paying for itself across a game boundary rather than inside one.
+sheet town textures/town.hrt        16
+sheet path textures/farm_path.hrt   16
+sheet who  textures/farm_player.hrt 16
+sheet water textures/farm_water.hrt 16
+
+tile ground 1 town  0      # plain grass
+tile ground 3 town  1      # long grass — the same pack, one tile over
+tile ground 4 water 0      # the river
+
+# The path is autotiled, and the map says so (`rule 2 line` in creature_route.map2),
+# not this file: whether a material is a road is a fact about the world.
+tile ground 2 path 0
+
+tile decor 1 town 28       # a tree
+tile decor 2 town 72       # the cabin's timber wall
+tile decor 3 town 43       # white stones
+
+actor player who 0

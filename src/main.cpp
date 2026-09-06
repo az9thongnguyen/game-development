@@ -35,6 +35,7 @@
 #include "demo/demo_scene.hpp"
 #include "games/chess/chess_gui.hpp"
 #include "games/chess/chess_tui.hpp"
+#include "games/creatures/creatures_scene.hpp"
 #include "games/farm/farm_scene.hpp"
 #include "games/fps/raycast_scene.hpp"
 #include "games/viz3d/scene3d.hpp"
@@ -129,6 +130,16 @@ const std::vector<Entry>& entries() {
             c.highdpi = true; c.supersample = kAA;
             v.push_back({"farm", c, [] {
                 return std::unique_ptr<engine::Scene>(new farm::FarmScene());
+            }});
+        }
+        {
+            platform::Config c;
+            c.title = "hand-engine — creatures";
+            c.fb_width = 640; c.fb_height = 360;
+            c.scale = 2; c.smooth = false;
+            c.highdpi = true; c.supersample = kAA;
+            v.push_back({"creatures", c, [] {
+                return std::unique_ptr<engine::Scene>(new creature::CreaturesScene());
             }});
         }
         return v;

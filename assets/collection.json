@@ -12,6 +12,17 @@
       "problems": []
     },
     {
+      "manifest": "projects/creatures.gameproject",
+      "name": "Creatures",
+      "summary": "Walk into the long grass, meet something, catch it, and watch it grow up.",
+      "entry": "creatures",
+      "cover": "textures/creatures_cover.hrt",
+      "readme": "",
+      "package": "e0d8f431296632cd",
+      "playable": true,
+      "problems": []
+    },
+    {
       "manifest": "projects/farm.gameproject",
       "name": "Farm",
       "summary": "Plant, water, sell, sleep — a day at a time, and it remembers.",
