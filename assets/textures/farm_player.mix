@@ -1,0 +1,9 @@
+# The player. Body and head, no hat, the tunic colour the parts sheet was drawn in.
+# The simplest possible mix, and it is here to be the baseline the other one differs
+# from: same two parts, and everything that makes Anna Anna is three lines below.
+mix1
+name farm_player
+size 16 16
+sheet parts textures/parts_farm.hrt 16
+part parts 1 at 0 0
+part parts 0 at 0 0

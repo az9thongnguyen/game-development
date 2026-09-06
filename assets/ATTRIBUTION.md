@@ -133,8 +133,11 @@ Re-bake it with:
 | `pieces/wQ.hrt` | declared | `ours.pack` | this repository |
 | `pieces/wR.hrt` | declared | `ours.pack` | this repository |
 | `sprites/spin_8.hrt` | declared | `ours.pack` | this repository |
+| `textures/farm_anna.hrt` | mixed | `textures/farm_anna.mix` | this repository |
 | `textures/farm_path.hrt` | drawn | `textures/farm_path.pix` | this repository |
+| `textures/farm_player.hrt` | mixed | `textures/farm_player.mix` | this repository |
 | `textures/farm_water.hrt` | generated | `textures/farm_water.recipe` | this repository |
+| `textures/parts_farm.hrt` | drawn | `textures/parts_farm.pix` | this repository |
 | `textures/studio_00.hrt` | declared | `ours.pack` | this repository |
 | `textures/studio_01.hrt` | declared | `ours.pack` | this repository |
 | `textures/studio_02.hrt` | declared | `ours.pack` | this repository |
@@ -143,7 +146,7 @@ Re-bake it with:
 | `textures/wall_2.hrt` | declared | `ours.pack` | this repository |
 | `textures/wall_3.hrt` | declared | `ours.pack` | this repository |
 
-23 raster assets, 0 unrecorded.
+26 raster assets, 0 unrecorded.
 
 <!-- END LEDGER (generated) -->
 

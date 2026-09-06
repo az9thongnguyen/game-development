@@ -3,6 +3,7 @@
 // =============================================================================
 #include "engine/commands/asset_commands.hpp"
 
+#include <map>
 #include <string>
 
 #include "engine/asset/provenance.hpp"
@@ -10,6 +11,7 @@
 #include "engine/commands/registry.hpp"
 #include "engine/image.hpp"
 #include "engine/image_png.hpp"
+#include "engine/mix/mix.hpp"
 #include "engine/paint/pixel_source.hpp"
 #include "engine/project/project.hpp"
 #include "engine/tilemap/map2.hpp"
@@ -143,8 +145,56 @@ void register_asset_commands() {
                               std::to_string(img->h) + ")"};
         });
 
-    // The FOURTH verb on this file, and the only one that writes no pixels. The other
-    // three each open a door into `.hrt`; this one walks the tree afterwards and
+    // ---- the FOURTH door (chapter 135) ------------------------------------------
+    // Assemble a sprite from parts. The other three doors each answer "where did this
+    // picture come from"; this one answers a question none of them can — make me a
+    // hundred sprites that all belong together. Held to exactly the same standard: the
+    // `.mix` is a SOURCE (it stays out of the manifest), `provenance_core` derives
+    // `mixed` from it, and a test re-bakes it and compares bytes.
+    cmd::register_command(
+        {"asset.mix", "Compose a sprite from parts into .hrt", "", "<src.mix> <dst.hrt>"},
+        [](const std::vector<std::string>& args) -> engine::OpResult {
+            if (args.size() < 2 || args[0].empty() || args[1].empty())
+                return {false, "usage: asset.mix <src.mix> <dst.hrt>"};
+
+            const std::string& src = args[0];
+            const std::string& dst = args[1];
+            if (!ends_with(dst, ".hrt"))
+                return {false, "destination must end in .hrt (that is the format the engine reads)"};
+
+            const auto bytes = assets::load_file(src);
+            if (!bytes) return {false, "cannot read " + src};
+
+            std::string why;
+            const auto  m = mix::parse_mix(std::string(bytes->begin(), bytes->end()), &why);
+            if (!m) return {false, src + ": " + why};
+
+            // The I/O the pure core refuses to do. Each sheet is read once however
+            // many parts come out of it — a mixer's whole shape is many parts, few
+            // sheets, and re-reading per part would make that the expensive case.
+            std::map<std::string, gfx::Image> loaded;
+            for (const mix::Mix::Sheet& sh : m->sheets) {
+                auto img = gfx::load_image(sh.path);
+                if (!img) return {false, src + ": cannot read sheet '" + sh.name + "' (" + sh.path + ")"};
+                loaded.emplace(sh.name, std::move(*img));
+            }
+            const auto find = [&loaded](const std::string& n) -> const gfx::Image* {
+                const auto it = loaded.find(n);
+                return it == loaded.end() ? nullptr : &it->second;
+            };
+
+            const auto img = mix::compose(*m, find, &why);
+            if (!img) return {false, src + ": " + why};
+
+            if (!assets::write_file(dst, gfx::encode_hrt(*img)))
+                return {false, "cannot write " + dst};
+
+            return {true, "mixed " + std::to_string(m->parts.size()) + " part(s) -> " + dst +
+                              "  (" + std::to_string(img->w) + "x" + std::to_string(img->h) + ")"};
+        });
+
+    // The FIFTH verb on this file, and the only one that writes no pixels. The other
+    // four each open a door into `.hrt`; this one walks the tree afterwards and
     // writes down what came through which. CLAUDE.md has always carried the rule
     // ("every new .hrt gains an ATTRIBUTION line in the same change") and never
     // carried the check, which is how twenty files came to be covered by a paragraph

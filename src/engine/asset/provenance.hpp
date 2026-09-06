@@ -38,7 +38,9 @@ namespace engine {
 // How a `.hrt` got here. Ordered by how strong the claim is: an Imported or Generated
 // or Drawn file can be re-baked from a committed source and byte-compared; a Declared
 // one is a promise; an Unrecorded one is a hole.
-enum class Origin { Imported, Generated, Drawn, Declared, Unrecorded };
+// Where a `.hrt` came from — one value per DOOR, plus the two that are not doors.
+// `Mixed` is chapter 135's: a sprite assembled from parts by a sibling `.mix`.
+enum class Origin { Imported, Generated, Drawn, Mixed, Declared, Unrecorded };
 
 const char* origin_name(Origin o);
 

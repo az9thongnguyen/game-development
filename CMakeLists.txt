@@ -384,7 +384,7 @@ target_include_directories(commands_core PUBLIC src)
 # project_core is PUBLIC because asset.new writes a manifest line: creating an asset
 # and declaring it are one act, and splitting them would give the Studio a way to make
 # a file the project cannot see.
-target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core provenance_core project_core tilemap_core PRIVATE engine_flags)
+target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core provenance_core project_core tilemap_core mix_core PRIVATE engine_flags)
 
 # Compiles the spine sources directly (like test_release_ops) so the test binary owns
 # a complete assets:: implementation without linking a window or a backend.
@@ -403,11 +403,27 @@ add_executable(test_commands tests/test_commands.cpp
   src/engine/image.cpp
   src/engine/tilemap/map2.cpp
   src/engine/tilemap/autotile.cpp   # map2's rule_piece resolves through it
+  src/engine/mix/mix.cpp            # ...and asset.mix composes through this
 )
 target_include_directories(test_commands PRIVATE src)
 target_compile_definitions(test_commands PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_commands PRIVATE png_core studio_core paint_core engine_flags)
 add_test(NAME commands COMMAND test_commands)
+
+# ---- Mix: a sprite assembled from parts, as text ----------------------------------
+# The FOURTH door into .hrt (chapter 135), and the door count in CLAUDE.md changed
+# with it deliberately. PURE: text in, an Image out, with the part images supplied by
+# a resolver the caller owns — no I/O, exactly like the other three doors.
+add_library(mix_core STATIC
+  src/engine/mix/mix.cpp
+)
+target_include_directories(mix_core PUBLIC src)
+target_link_libraries(mix_core PRIVATE engine_flags)
+
+add_executable(test_mix tests/test_mix.cpp)
+target_include_directories(test_mix PRIVATE src)
+target_link_libraries(test_mix PRIVATE mix_core engine_flags)
+add_test(NAME mix COMMAND test_mix)
 
 # ---- Paint: pixel edits as undoable commands --------------------------------------
 # The third client of doc::CommandStack, whose header has named a pixel editor since

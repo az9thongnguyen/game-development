@@ -18,6 +18,7 @@ const char* origin_name(Origin o) {
         case Origin::Imported:  return "imported";
         case Origin::Generated: return "generated";
         case Origin::Drawn:     return "drawn";
+        case Origin::Mixed:     return "mixed";
         case Origin::Declared:  return "declared";
         case Origin::Unrecorded:return "UNRECORDED";
     }
@@ -150,10 +151,13 @@ Ledger attribute(const std::vector<std::string>& hrt,
 
         const std::string pix    = sibling(path, ".pix");
         const std::string recipe = sibling(path, ".recipe");
+        const std::string mixsrc = sibling(path, ".mix");
         const bool        drawn  = has(sources, pix);
         const bool        gen    = has(sources, recipe);
+        const bool        mixed  = has(sources, mixsrc);
 
-        const int answers = static_cast<int>(mine.size()) + (drawn ? 1 : 0) + (gen ? 1 : 0);
+        const int answers = static_cast<int>(mine.size()) + (drawn ? 1 : 0) + (gen ? 1 : 0) +
+                            (mixed ? 1 : 0);
         if (answers > 1) {
             // Two answers to "who is answerable for this" is not a precedence puzzle
             // to resolve quietly; it means the answer is unknown.
@@ -176,6 +180,9 @@ Ledger attribute(const std::vector<std::string>& hrt,
         } else if (gen) {
             pv.origin = Origin::Generated;
             pv.source = recipe;
+        } else if (mixed) {
+            pv.origin = Origin::Mixed;
+            pv.source = mixsrc;
         }
         l.files.push_back(std::move(pv));
     }
@@ -244,7 +251,9 @@ Ledger scan_provenance() {
     const auto hrt   = assets::list_tree("", ".hrt");
     auto       srcs  = assets::list_tree("", ".pix");
     const auto recs  = assets::list_tree("", ".recipe");
+    const auto mixes = assets::list_tree("", ".mix");
     srcs.insert(srcs.end(), recs.begin(), recs.end());
+    srcs.insert(srcs.end(), mixes.begin(), mixes.end());
 
     Ledger bad;
     std::vector<Pack> packs;

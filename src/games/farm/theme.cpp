@@ -12,6 +12,11 @@ const Theme::Art* Theme::find(const std::string& layer, int id) const {
     return it == art.end() ? nullptr : &it->second;
 }
 
+const Theme::Art* Theme::actor(const std::string& name) const {
+    const auto it = actors.find(name);
+    return it == actors.end() ? nullptr : &it->second;
+}
+
 std::optional<Theme> parse_theme(const std::string& text) {
     Theme t;
     std::istringstream in(text);
@@ -42,6 +47,15 @@ std::optional<Theme> parse_theme(const std::string& text) {
             // Two lines for one id is the same typo as two sheets for one name: one of
             // them wins by file order, and which one is invisible.
             if (!t.art.emplace(std::make_pair(layer, id), a).second) return std::nullopt;
+        } else if (kind == "actor") {
+            std::string name;
+            Theme::Art  a;
+            if (!(ln >> name >> a.sheet >> a.index)) return std::nullopt;
+            if (a.index < 0) return std::nullopt;
+            // Same refusal as `tile`, for the same reason: a typo in a sheet name reads
+            // exactly like "this one has no art yet" and quietly loses the art.
+            if (t.sheets.find(a.sheet) == t.sheets.end()) return std::nullopt;
+            if (!t.actors.emplace(name, a).second) return std::nullopt;
         } else {
             return std::nullopt;   // an unknown record here is a typo, not a future field
         }
