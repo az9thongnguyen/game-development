@@ -82,6 +82,10 @@ static void test_refusals() {
     };
     CHECK(bad(""));                                                  // not a mix file
     CHECK(bad("size 4 4\nsheet s p.hrt 2\npart s 0 at 0 0\n"));      // no magic first
+    // ...and a junk first record must be REFUSED, not swallowed as the magic. This
+    // file is otherwise complete, so "whatever comes first is the header" would
+    // accept it — and then any text file with the right records in it is a mix.
+    CHECK(bad("banana\nname x\nsize 4 4\nsheet s p.hrt 2\npart s 0 at 0 0\n"));
     CHECK(bad("mix1\nsize 4 4\n"));                                  // no parts
     CHECK(bad("mix1\nsheet s p.hrt 2\npart s 0 at 0 0\n"));          // no size
     CHECK(bad("mix1\nsize 4 4\nsize 5 5\nsheet s p.hrt 2\npart s 0 at 0 0\n"));
@@ -94,6 +98,10 @@ static void test_refusals() {
     CHECK(bad("mix1\nsize 4 4\nsheet s p.hrt 2\npart s -1 at 0 0\n"));
     CHECK(bad("mix1\nsize 4 4\nsheet s p.hrt 2\npart s 0 0 0\n"));          // no `at`
     CHECK(bad("mix1\nsize 4 4\nsheet s p.hrt 2\npart s 0 at 0 0\nswap zz 000000\n"));
+    // Seven hex digits is neither rrggbb nor rrggbbaa. "At least six" would take it
+    // and read the wrong four bytes out of it — a colour that is nearly right.
+    CHECK(bad("mix1\nsize 4 4\nsheet s p.hrt 2\npart s 0 at 0 0\nswap 1234567 000000\n"));
+    CHECK(bad("mix1\nsize 4 4\nsheet s p.hrt 2\npart s 0 at 0 0\nswap 12345 000000\n"));
     CHECK(bad("mix1\nsize 4 4\nsheet s p.hrt 2\npart s 0 at 0 0\nswap 010203 010203\n"));
     CHECK(bad("mix1\nsize 4 4\nsheet s p.hrt 2\npart s 0 at 0 0\nwiggle 3\n"));  // unknown
 
@@ -169,6 +177,24 @@ static void test_compose_refusals() {
     CHECK(why_of("mix1\nsize 2 2\nsheet s p.hrt 2\npart s 0 at 1 1\n").empty());
 }
 
+// A swap changes a COLOUR, not a silhouette. Every other case here composites onto
+// something opaque, so alpha 255 comes out either way and the distinction is invisible
+// — which is exactly when it goes wrong unnoticed.
+static void test_swap_keeps_alpha() {
+    const gfx::Image img = sheet();
+    // Tile 2 has one half-transparent blue pixel and nothing under it.
+    auto m = mix::parse_mix("mix1\nsize 2 2\nsheet s p.hrt 2\npart s 2 at 0 0\n"
+                            "swap 4040e0 20c020\n");
+    CHECK(m.has_value());
+    if (!m) return;
+    auto out = mix::compose(*m, resolver(img));
+    CHECK(out.has_value());
+    if (!out) return;
+    const gfx::Color c = out->pixels[2];
+    CHECK(gfx::r_of(c) == 0x20 && gfx::g_of(c) == 0xc0 && gfx::b_of(c) == 0x20);
+    CHECK(gfx::a_of(c) == 128);      // the pixel is still as see-through as it was
+}
+
 static void test_deterministic() {
     // The whole positioning of this format against an AI generator: the same source
     // makes the same pixels, every time, on every machine.
@@ -187,6 +213,7 @@ int main() {
     test_refusals();
     test_compose();
     test_compose_refusals();
+    test_swap_keeps_alpha();
     test_deterministic();
     if (g_failures == 0) std::printf("mix: all tests passed\n");
     else                 std::printf("mix: %d FAILURE(S)\n", g_failures);

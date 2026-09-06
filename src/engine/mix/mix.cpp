@@ -52,7 +52,12 @@ const Mix::Sheet* Mix::sheet(const std::string& n) const {
 }
 
 int tile_count(const gfx::Image& img, int tile) {
-    if (tile <= 0 || img.w < tile || img.h < tile) return 0;
+    // Only the divide-by-zero needs a guard. An image smaller than one tile already
+    // answers 0 by integer division, and the extra `img.w < tile` test that used to be
+    // here was arithmetic nothing could reach — the fifth redundant guard this project
+    // has found by mutating a line and watching every test stay green (121, 122, 123,
+    // 125, and now this).
+    if (tile <= 0) return 0;
     return (img.w / tile) * (img.h / tile);
 }
 
