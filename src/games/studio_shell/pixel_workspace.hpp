@@ -18,6 +18,12 @@
 //  drawn here and a tile imported from a pack are the same file by the time anything
 //  downstream sees them — the property chapters 121 and 122 exist to protect.
 //
+//  Chapter 127 closed the ceiling this file shipped with: every colour it could
+//  select was a colour the image ALREADY held, because both doors — the sampled
+//  palette and the eyedropper — read the file. An editor that cannot introduce one
+//  new hue is a retouching tool, not a drawing one. `engine/paint/colour.hpp` is the
+//  arithmetic; the MIX section of the inspector is the two triggers.
+//
 //  No SDL: it reads a platform::InputState (a plain struct) and draws through
 //  Renderer2D, so the whole thing runs in the headless golden test.
 // =============================================================================
@@ -29,6 +35,7 @@
 
 #include "engine/document/command_stack.hpp"
 #include "engine/image.hpp"
+#include "engine/paint/colour.hpp"
 #include "engine/paint/paint.hpp"
 #include "engine/release/ops.hpp"
 #include "engine/ui/ui.hpp"
@@ -63,6 +70,18 @@ public:
     [[nodiscard]] const std::vector<gfx::Color>& palette() const { return palette_; }
     [[nodiscard]] Tool                           tool() const { return tool_; }
 
+    // Where the mixer's sliders are. NOT derived from colour(): see paint::Hsv — a
+    // colour cannot say where its sliders are, and every colour with v=0 is black.
+    [[nodiscard]] paint::Hsv         mix() const { return mix_; }
+    [[nodiscard]] const std::string& hex_field() const { return hex_field_; }
+
+    // True when the inspector ran out of room and its last control came back short.
+    // `slot()` CLAMPS rather than overflowing, so a panel one control too tall does
+    // not spill — it silently hands back a zero-height rect, which draws nothing and
+    // cannot be clicked. That is the chapter-126 bug from the other side: not drawn
+    // somewhere it cannot be pressed, but not drawn at all. Reported in status().
+    [[nodiscard]] bool inspector_clipped() const { return inspector_clipped_; }
+
     [[nodiscard]] std::string status() const override;
     [[nodiscard]] const char* hint() const override;
     [[nodiscard]] int         inspector_width() const override { return 280; }
@@ -80,6 +99,14 @@ public:
     // cannot disagree. Zero-width before the first draw, since only draw knows the
     // canvas.
     [[nodiscard]] ui::Rect pixel_rect(int px, int py) const;
+
+    // Where the mix controls landed, recorded by draw for the same reason canvas_ is:
+    // a caller that recomputed them would stop testing the layout and start testing
+    // its own copy of it (ch. 126). Empty before the first draw.
+    [[nodiscard]] ui::Rect mix_slider(int i) const {
+        return (i >= 0 && i < 3) ? mix_rect_[i] : ui::Rect{};
+    }
+    [[nodiscard]] ui::Rect hex_rect() const { return hex_rect_; }
     [[nodiscard]] int      hover_x() const { return hover_x_; }
     [[nodiscard]] int      hover_y() const { return hover_y_; }
 
@@ -102,6 +129,9 @@ private:
     void load();
     void build_palette();
     void note(bool ok, std::string msg);
+    // Select `c` AND move the mixer onto it — one function, because a selection that
+    // left the sliders behind would make the next drag jump to an unrelated colour.
+    void adopt(gfx::Color c);
 
     std::vector<std::string> paths_;
     int                      index_ = 0;
@@ -118,9 +148,25 @@ private:
     Tool       tool_   = Tool::Pencil;
     gfx::Color colour_ = 0xFFFFFFFFu;
     // Sampled from the image on load, not a fixed ramp. Editing a pack's sheet hands
-    // you that pack's own colours, which is what a pixel artist would reach for first
-    // — and it is less code than a colour picker, not more.
+    // you that pack's own colours, which is what a pixel artist reaches for first —
+    // and it is why the mixer below is an ADDITION rather than a replacement: the
+    // palette answers "the same colour as that", the mixer answers "a colour this
+    // sheet does not have yet", and each is the wrong tool for the other question.
     std::vector<gfx::Color> palette_;
+
+    // The colour being MIXED, in the coordinates the sliders move. Alpha rides
+    // alongside rather than inside: dragging hue must not change how transparent a
+    // picked pixel was.
+    paint::Hsv   mix_{};
+    std::uint8_t mix_a_ = 255;
+    // The hex field's text, which is NOT `to_hex(colour_)`: while it has focus it is
+    // whatever the user has typed so far, including halves of a code that do not
+    // parse yet.
+    std::string hex_field_ = "#FFFFFFFF";
+    bool        hex_focused_ = false;
+    bool        inspector_clipped_ = false;
+    ui::Rect    mix_rect_[3]{};
+    ui::Rect    hex_rect_{};
 
     int  zoom_ = 8;                        // pixel art is unusable at 1:1
     int  pan_x_ = 0, pan_y_ = 0;
@@ -149,6 +195,8 @@ private:
     int  want_tool_ = -1;
     int  want_swatch_ = -1;
     int  want_index_ = -1;
+    std::optional<paint::Hsv>  want_mix_;      // a slider moved
+    std::optional<gfx::Color>  want_colour_;   // a code was typed
     bool want_undo_ = false, want_redo_ = false, want_save_ = false;
 };
 

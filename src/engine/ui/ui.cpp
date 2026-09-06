@@ -88,6 +88,13 @@ void Context::end() {
     inert_ = false;
     if (!in_.down) active_ = 0;   // safety: nothing can be active with the button up
 
+    // A press that landed on NO widget takes the keyboard back. Without this a text
+    // field keeps focus after the user clicks away onto a canvas, and any scene that
+    // stands its letter shortcuts down while a field is focused (the pixel editor
+    // does — B, R, G and I are hex digits) never gets them back. Clicking outside a
+    // field is how every other program on the machine ends editing it.
+    if (in_.pressed && hot_ == 0) focused_ = 0;
+
     // Tab order is declaration order — the order the caller wrote the widgets in,
     // which is the order a reader sees them. Resolving it at end() rather than
     // per-widget means focus moves exactly one step per press however many widgets
