@@ -4,7 +4,7 @@ schema 1
 entry fps
 summary A hand-written raycaster walking a level this project drew.
 cover textures/wall_1.hrt
-asset map maps/level_00.map
+asset map maps/level_00.map2
 asset texture textures/wall_1.hrt
 asset texture textures/wall_2.hrt
 asset texture textures/wall_3.hrt

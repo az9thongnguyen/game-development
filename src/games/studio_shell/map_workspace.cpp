@@ -4,6 +4,7 @@
 #include "games/studio_shell/map_workspace.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <utility>
 
 #include "engine/commands/registry.hpp"
@@ -21,7 +22,28 @@ namespace {
 // enough that a crash costs a sentence rather than an afternoon.
 constexpr double kAutosaveSeconds = 10.0;
 
-constexpr const char* kToolNames[] = {"Paint", "Rect", "Fill"};
+constexpr const char* kToolNames[] = {"Paint", "Rect", "Fill", "Entity"};
+constexpr int         kToolCount   = 4;
+// A facing is stored as `dir`, in RADIANS, because that is the property the game
+// reads (`fps::from_shared_text` -> `spawn_dir`) and the one the fpsmap1 migration
+// writes. The compass letter is presentation and lives only in this file.
+//
+// Writing a prettier `facing E` alongside it was the first attempt and was wrong in
+// the way that matters: the editor would have had a control that changed a value
+// nothing downstream read — drawn, clickable, and dead. One property, one reader.
+constexpr const char* kFacings[] = {"E", "S", "W", "N"};
+constexpr double      kHalfPi    = 1.5707963267948966;
+
+// `dir` -> the nearest of the four, so a hand-authored angle still shows a letter
+// rather than a blank, and cycling from it lands somewhere predictable.
+int facing_index(const std::string& dir_value) {
+    if (dir_value.empty()) return -1;
+    const double r = std::strtod(dir_value.c_str(), nullptr);
+    const double q = r / kHalfPi;
+    int          i = static_cast<int>(q < 0 ? q - 0.5 : q + 0.5) % 4;
+    if (i < 0) i += 4;
+    return i;
+}
 
 // Ten stable, distinguishable colours. Deliberately not an evenly spaced hue ramp at
 // one lightness — that is hard to separate for a large minority of people, and these
@@ -50,7 +72,8 @@ MapWorkspace::~MapWorkspace() {
     if (!commands_registered_) return;
     // Every handler captured `this`. Leaving them registered would leave the palette
     // holding a call into freed memory.
-    for (const char* id : {"map.save", "map.undo", "map.redo", "map.reload"})
+    for (const char* id : {"map.save", "map.undo", "map.redo", "map.reload",
+                           "map.entity.place", "map.entity.facing"})
         cmd::unregister(id);
 }
 
@@ -128,6 +151,22 @@ void MapWorkspace::register_commands() {
                           });
     cmd::register_command(cmd::Info{"map.reload", "Map: reload from disk", "", ""},
                           [this](const std::vector<std::string>&) { return reload(); });
+    // The two entity operations. The button and the palette entry call the SAME
+    // function — an operation that exists in only one trigger is the drift the
+    // registry was built to prevent, and it is exactly how Map Lab came to own the
+    // only spawn editor in the project.
+    cmd::register_command(cmd::Info{"map.entity.place", "Map: place the selected entity", "",
+                                    "<x> <y>"},
+                          [this](const std::vector<std::string>& a) -> engine::OpResult {
+                              if (a.size() < 2) return {false, "usage: map.entity.place <x> <y>"};
+                              try {
+                                  return place_selected(std::stoi(a[0]), std::stoi(a[1]));
+                              } catch (...) {
+                                  return {false, "x and y must be whole numbers"};
+                              }
+                          });
+    cmd::register_command(cmd::Info{"map.entity.facing", "Map: cycle the entity's facing", "", ""},
+                          [this](const std::vector<std::string>&) { return cycle_facing(); });
     commands_registered_ = true;
 }
 
@@ -158,6 +197,9 @@ std::string MapWorkspace::status() const {
     std::string s = path_ + (dirty() ? "  *  unsaved" : "  saved");
     if (hover_x_ >= 0)
         s += "   tile " + std::to_string(hover_x_) + ", " + std::to_string(hover_y_);
+    // A control that was clipped away is invisible AND unclickable, so the only place
+    // it can announce itself is here.
+    if (inspector_clipped_) s += "   [panel clipped — make the window taller]";
     return s;
 }
 
@@ -189,6 +231,12 @@ void MapWorkspace::update(double dt, const platform::InputState& in, bool intera
     if (want_layer_ >= 0) { layer_ = want_layer_; want_layer_ = -1; }
     if (want_tool_  >= 0) { tool_  = static_cast<Tool>(want_tool_); want_tool_ = -1; }
     if (want_brush_ >= 0) { brush_ = want_brush_; want_brush_ = -1; }
+    if (want_entity_ >= 0) {
+        const auto names = entity_names();
+        if (want_entity_ < static_cast<int>(names.size())) entity_ = names[want_entity_];
+        want_entity_ = -1;
+    }
+    if (want_facing_) { want_facing_ = false; message_ = cycle_facing(); }
     if (want_undo_) { want_undo_ = false; if (!stack_.undo()) note(false, "nothing to undo"); }
     if (want_redo_) { want_redo_ = false; if (!stack_.redo()) note(false, "nothing to redo"); }
     if (want_save_) { want_save_ = false; message_ = save(); }
@@ -230,6 +278,7 @@ void MapWorkspace::update(double dt, const platform::InputState& in, bool intera
         if (in.pressed(platform::Key::B)) tool_ = Tool::Paint;
         if (in.pressed(platform::Key::R)) tool_ = Tool::Rect;
         if (in.pressed(platform::Key::G)) tool_ = Tool::Fill;
+        if (in.pressed(platform::Key::E)) tool_ = Tool::Entity;
     }
 
     // The canvas rect comes from the previous draw — immediate mode has no layout
@@ -307,7 +356,55 @@ void MapWorkspace::update(double dt, const platform::InputState& in, bool intera
                 if (edit) stack_.push_apply(*edit);
             }
             break;
+
+        case Tool::Entity:
+            // A DRAG, not a press: an entity you can only drop is one you cannot
+            // nudge. place_entity gives the whole gesture one merge key, so the drag
+            // is one undo step and the creation that began it is another.
+            if (left && hover_x_ >= 0 && !cmd) place_selected(hover_x_, hover_y_);
+            break;
     }
+}
+
+std::vector<std::string> MapWorkspace::entity_names() const {
+    std::vector<std::string> names;
+    for (const auto& e : map_.entities) names.push_back(e.name);
+    // Always offered, even on a map that has none: a tool that can only move entities
+    // that already exist can never make the first one, which is the state every map
+    // starts in and the exact gap that kept Map Lab alive.
+    if (std::find(names.begin(), names.end(), std::string("spawn_player")) == names.end())
+        names.push_back("spawn_player");
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    return names;
+}
+
+engine::OpResult MapWorkspace::place_selected(int tx, int ty) {
+    if (!loaded_) return {false, "no map open"};
+    if (entity_.empty()) return {false, "no entity selected"};
+    auto cmd = mapedit::place_entity(map_, entity_, tx, ty);
+    if (!cmd) return {false, entity_ + " is already there"};   // not an error, not a step
+    stack_.push_apply(*cmd);
+    return {true, entity_ + " -> " + std::to_string(tx) + "," + std::to_string(ty)};
+}
+
+engine::OpResult MapWorkspace::cycle_facing() {
+    if (!loaded_) return {false, "no map open"};
+    const tilemap::Entity* e = map_.entity(entity_);
+    // Refused rather than silently creating one somewhere: a facing on an entity that
+    // is not on the map is a value with no position, and nothing would show it.
+    if (e == nullptr) return {false, "place " + entity_ + " first"};
+
+    const int  cur  = facing_index(tilemap::prop(e->props, "dir"));
+    const int  next = (cur < 0) ? 0 : (cur + 1) % 4;
+    // std::to_string on a double, to match exactly what the fpsmap1 migration writes:
+    // two spellings of the same angle would make a re-migrated file differ from a
+    // re-saved one, and a byte comparison is how this project checks such things.
+    auto cmd = mapedit::set_entity_prop(map_, entity_, "dir",
+                                        std::to_string(next * kHalfPi));
+    if (!cmd) return {false, "facing unchanged"};
+    stack_.push_apply(*cmd);
+    return {true, entity_ + " facing " + kFacings[next]};
 }
 
 // ---- drawing -----------------------------------------------------------------
@@ -364,6 +461,33 @@ void MapWorkspace::draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect are
     }
     g.draw_rect(ox - 1, oy - 1, map_.w * tile + 2, map_.h * tile + 2, th::border_strong);
 
+    // Entities, on top of every layer. Drawn even when the Entity tool is not active,
+    // because a spawn you cannot see is one you place twice — and the whole reason
+    // this tool exists is that the map had a half nothing on screen ever showed.
+    for (const tilemap::Entity& e : map_.entities) {
+        if (!map_.in_bounds(e.x, e.y)) continue;
+        const int px = ox + e.x * tile, py = oy + e.y * tile;
+        if (px + tile < area.x || px > area.x + area.w) continue;
+        const bool sel = e.name == entity_;
+        g.fill_rect_blend(px, py, tile, tile, sel ? 0x9037D67Au : 0x6037D67Au);
+        g.draw_rect(px, py, tile, tile, sel ? th::accent : th::border_strong);
+
+        // The facing as a stub toward the edge it points at. A compass letter would
+        // be unreadable at zoom 1; a direction is legible at any size.
+        const int fi = facing_index(tilemap::prop(e.props, "dir"));
+        if (fi >= 0) {
+            const int m = std::max(2, tile / 4), c2 = tile / 2;
+            if      (fi == 0) g.fill_rect(px + tile - m, py + c2 - 1, m, 2, th::accent);   // E
+            else if (fi == 1) g.fill_rect(px + c2 - 1, py + tile - m, 2, m, th::accent);   // S
+            else if (fi == 2) g.fill_rect(px, py + c2 - 1, m, 2, th::accent);              // W
+            else              g.fill_rect(px + c2 - 1, py, 2, m, th::accent);              // N
+        }
+        if (tile >= 24) {
+            g.set_font_size(th::sz_caption);
+            g.draw_text(px + 2, py - th::sz_caption - 1, e.name.c_str(), th::text);
+        }
+    }
+
     if (rect_active_) {
         const int hx = hover_x_ < 0 ? rect_x0_ : hover_x_;
         const int hy = hover_y_ < 0 ? rect_y0_ : hover_y_;
@@ -406,13 +530,13 @@ void MapWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect 
     g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_sm).y, dims.c_str(), th::text_dim);
 
     // ---- tools ----
-    g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_xs).y, "TOOL   B / R / G",
+    g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_xs).y, "TOOL   B / R / G / E",
                 th::text_muted);
     {
         const ui::Rect row = ui.slot(30);
         ui.push_id("tool");
-        const int w = (row.w - th::space_xs * 2) / 3;
-        for (int i = 0; i < 3; ++i)
+        const int w = (row.w - th::space_xs * (kToolCount - 1)) / kToolCount;
+        for (int i = 0; i < kToolCount; ++i)
             if (ui.button(ui::Rect{row.x + i * (w + th::space_xs), row.y, w, row.h},
                           kToolNames[i], static_cast<int>(tool_) == i))
                 want_tool_ = i;
@@ -464,6 +588,37 @@ void MapWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect 
     }
     ui.skip();
 
+    // ---- entities ----
+    // Drawn always, not only when the Entity tool is active: it is the section that
+    // tells you the map HAS a spawn, and hiding it behind a tool means the answer is
+    // only visible to someone who already went looking.
+    g.set_font_size(th::sz_caption);
+    g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_xs).y, "ENTITY   E to place",
+                th::text_muted);
+    {
+        const auto names = entity_names();
+        ui.push_id("ent");
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            const tilemap::Entity* e = map_.entity(names[i]);
+            const std::string where =
+                e ? std::to_string(e->x) + "," + std::to_string(e->y) : std::string("unplaced");
+            ui.push_id(static_cast<int>(i));
+            if (ui.list_item(ui.slot(26), names[i].c_str(), names[i] == entity_, nullptr,
+                             where.c_str(), e ? ui::Tone::Info : ui::Tone::Warning))
+                want_entity_ = static_cast<int>(i);
+            ui.pop_id();
+        }
+        // The facing button says what it WOULD set, and is disabled when there is
+        // nothing to set it on — the state cycle_facing() refuses.
+        const tilemap::Entity* sel = map_.entity(entity_);
+        const int              fi  = sel ? facing_index(tilemap::prop(sel->props, "dir")) : -1;
+        const std::string      label =
+            std::string("Facing  ") + (fi < 0 ? "-" : kFacings[fi]);
+        if (ui.button(ui.slot(28), label.c_str(), false, sel != nullptr)) want_facing_ = true;
+        ui.pop_id();
+    }
+    ui.skip();
+
     // ---- history ----
     {
         const ui::Rect row = ui.slot(30);
@@ -476,7 +631,13 @@ void MapWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect 
             want_redo_ = true;
         ui.pop_id();
     }
-    if (ui.button(ui.slot(30), dirty() ? "Save  *" : "Save", dirty())) want_save_ = true;
+    // Ask for the height and check what came back: `slot()` clamps to what is left,
+    // so a panel one control too tall hands back a rect of height 0 — which draws
+    // nothing and cannot be clicked. Adding the ENTITY section is what made this
+    // reachable, and a screenshot is what showed it.
+    const ui::Rect save_row = ui.slot(30);
+    inspector_clipped_      = save_row.h < 30;
+    if (ui.button(save_row, dirty() ? "Save  *" : "Save", dirty())) want_save_ = true;
 
     g.set_font_size(th::sz_caption);
     const std::string hint = stack_.can_undo() ? "undo: " + stack_.undo_label()

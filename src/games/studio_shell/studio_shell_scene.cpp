@@ -55,7 +55,7 @@ const char* const kGuideLines[] = {
     "WINDOWED",
     "  (no flag)|M0 engine demo — the 480×270 software framebuffer",
     "  --gui|chess [hvh|hvai] [easy|medium|hard] — click a piece, click a square",
-    "  --fps|raycaster — W/S walk, A/D turn; plays maps/level_00.map",
+    "  --fps|raycaster — W/S walk, A/D turn; plays maps/level_00.map2",
     "  --3d|3D core — drag to orbit, WASD, ENTER/SPACE change shading",
     "  --viz3d|3D sandbox — 1–4 spawn, click select, drag to move",
     "  --iso|farm sim — 1–0 brush, LMB paint, RMB walk farmer, F5/F9 save/load",

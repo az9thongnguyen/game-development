@@ -142,10 +142,137 @@ static void test_stroke_is_one_step() {
     CHECK(!bad.finish().has_value());
 }
 
+// ---------------------------------------------------------------------------
+//  Entities. The half of a map that is not a grid, and the reason the old Map Lab
+//  outlived the Map workspace by ten chapters.
+// ---------------------------------------------------------------------------
+static void test_place_entity_creates_then_moves() {
+    tilemap::Map      m = make_map(8, 8);
+    doc::CommandStack st;
+
+    CHECK(m.entities.empty());
+    auto c1 = mapedit::place_entity(m, "spawn_player", 2, 3);
+    CHECK(c1.has_value());
+    if (c1) st.push_apply(*c1);
+    CHECK(m.entities.size() == 1);
+    CHECK(m.entities[0].name == "spawn_player");
+    CHECK(m.entities[0].x == 2 && m.entities[0].y == 3);
+
+    // Moving it is a move, not a second spawn.
+    auto c2 = mapedit::place_entity(m, "spawn_player", 5, 1);
+    CHECK(c2.has_value());
+    if (c2) st.push_apply(*c2);
+    CHECK(m.entities.size() == 1);
+    CHECK(m.entities[0].x == 5 && m.entities[0].y == 1);
+
+    // Undo the move: back to the first cell, still exactly one entity.
+    CHECK(st.undo());
+    CHECK(m.entities.size() == 1);
+    CHECK(m.entities[0].x == 2 && m.entities[0].y == 3);
+
+    // Undo the CREATION: it must go away. Leaving it at its first cell would be a
+    // different edit wearing undo's clothes — the map would keep a spawn the author
+    // never placed, and nothing downstream could tell.
+    CHECK(st.undo());
+    CHECK(m.entities.empty());
+
+    CHECK(st.redo());
+    CHECK(m.entities.size() == 1 && m.entities[0].x == 2);
+}
+
+static void test_a_drag_is_one_undo_step_but_the_creation_is_not() {
+    tilemap::Map      m = make_map(8, 8);
+    doc::CommandStack st;
+
+    if (auto c = mapedit::place_entity(m, "spawn_player", 0, 0)) st.push_apply(*c);
+    // A drag: one command per frame, all merging into one step.
+    for (int x = 1; x <= 4; ++x)
+        if (auto c = mapedit::place_entity(m, "spawn_player", x, 0)) st.push_apply(*c);
+    CHECK(m.entities[0].x == 4);
+
+    CHECK(st.undo());
+    CHECK(m.entities[0].x == 0);         // the whole drag, in one press
+    CHECK(st.undo());
+    CHECK(m.entities.empty());           // ...and the creation did NOT merge into it
+    CHECK(!st.undo());
+
+    // Two different entities do not share a step, or moving one would undo the other.
+    doc::CommandStack st2;
+    tilemap::Map      m2 = make_map(8, 8);
+    if (auto c = mapedit::place_entity(m2, "a", 0, 0)) st2.push_apply(*c);
+    if (auto c = mapedit::place_entity(m2, "b", 1, 1)) st2.push_apply(*c);
+    if (auto c = mapedit::place_entity(m2, "a", 2, 0)) st2.push_apply(*c);
+    if (auto c = mapedit::place_entity(m2, "b", 3, 1)) st2.push_apply(*c);
+    CHECK(st2.undo());
+    CHECK(m2.entity("b")->x == 1);
+    CHECK(m2.entity("a")->x == 2);       // b moved back, a did not
+}
+
+static void test_entity_refusals() {
+    tilemap::Map m = make_map(4, 4);
+    CHECK(!mapedit::place_entity(m, "spawn_player", -1, 0).has_value());
+    CHECK(!mapedit::place_entity(m, "spawn_player", 4, 0).has_value());
+    CHECK(!mapedit::place_entity(m, "spawn_player", 0, 4).has_value());
+    CHECK(!mapedit::place_entity(m, "", 0, 0).has_value());
+    CHECK(m.entities.empty());           // and not one of them created anything
+
+    // The command comes back UNAPPLIED, so it has to be run before the map knows
+    // anything happened — a caller that only inspects the optional has changed nothing.
+    auto first = mapedit::place_entity(m, "spawn_player", 1, 1);
+    CHECK(first.has_value());
+    if (first) first->apply();
+    CHECK(m.entities.size() == 1);
+    // Placing it where it already is changes nothing, so it must not become a step:
+    // an undo that appears to do nothing is indistinguishable from a broken undo.
+    CHECK(!mapedit::place_entity(m, "spawn_player", 1, 1).has_value());
+}
+
+static void test_entity_property_is_undoable() {
+    tilemap::Map      m = make_map(4, 4);
+    doc::CommandStack st;
+    // No entity, no property: a facing on a spawn that does not exist would be a
+    // silent no-op the author never sees.
+    CHECK(!mapedit::set_entity_prop(m, "spawn_player", "facing", "E").has_value());
+
+    if (auto c = mapedit::place_entity(m, "spawn_player", 1, 1)) st.push_apply(*c);
+    auto p1 = mapedit::set_entity_prop(m, "spawn_player", "facing", "E");
+    CHECK(p1.has_value());
+    if (p1) st.push_apply(*p1);
+    const tilemap::Entity* sp = m.entity("spawn_player");
+    CHECK(sp != nullptr);
+    if (sp == nullptr) return;                 // guard: a null here must FAIL, not crash
+    CHECK(sp->props.size() == 1);
+    if (sp->props.size() == 1) CHECK(sp->props[0].value == "E");
+
+    CHECK(!mapedit::set_entity_prop(m, "spawn_player", "facing", "E").has_value());  // same value
+
+    auto p2 = mapedit::set_entity_prop(m, "spawn_player", "facing", "N");
+    CHECK(p2.has_value());
+    if (p2) st.push_apply(*p2);
+    if (sp->props.size() == 1) CHECK(sp->props[0].value == "N");
+    if (auto p3 = mapedit::set_entity_prop(m, "spawn_player", "facing", "W")) st.push_apply(*p3);
+    if (sp->props.size() == 1) CHECK(sp->props[0].value == "W");
+
+    // One step for the CYCLE (N -> W merged), landing back on E. The step that
+    // introduced the property is deliberately not part of it — collapsing them would
+    // make the first Ctrl+Z remove a facing rather than step back one value.
+    CHECK(st.undo());
+    CHECK(sp->props.size() == 1);
+    if (sp->props.size() == 1) CHECK(sp->props[0].value == "E");
+
+    // Undo again and the property must be GONE, not empty-valued: it did not exist.
+    CHECK(st.undo());
+    CHECK(sp->props.empty());
+}
+
 int main() {
     test_rect_and_flood();
     test_undo_is_exact();
     test_stroke_is_one_step();
+    test_place_entity_creates_then_moves();
+    test_a_drag_is_one_undo_step_but_the_creation_is_not();
+    test_entity_refusals();
+    test_entity_property_is_undoable();
     if (g_failures == 0) std::printf("map_edit: all tests passed\n");
     else                 std::printf("map_edit: %d FAILURE(S)\n", g_failures);
     return g_failures;

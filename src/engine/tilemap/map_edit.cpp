@@ -116,4 +116,109 @@ std::optional<doc::Command> Stroke::finish() {
     return make_command(*map_, layer_, std::move(cells), label_);
 }
 
+
+// ---- entities ---------------------------------------------------------------
+
+namespace {
+
+// A stable per-entity merge key, so dragging one spawn is one undo step and moving
+// TWO different entities is two. Hashing the name rather than an index because an
+// index moves when an entity is created — which is exactly what the first move does.
+std::uint64_t entity_key(const std::string& name, std::uint64_t salt) {
+    std::uint64_t h = 1469598103934665603ull ^ salt;      // FNV-1a, 64-bit
+    for (unsigned char ch : name) { h ^= ch; h *= 1099511628211ull; }
+    return h | 1ull;                                       // never 0: 0 means "never merge"
+}
+
+tilemap::Entity* find(tilemap::Map& m, const std::string& name) {
+    for (auto& e : m.entities)
+        if (e.name == name) return &e;
+    return nullptr;
+}
+
+} // namespace
+
+std::optional<doc::Command> place_entity(tilemap::Map& m, const std::string& name,
+                                         int x, int y) {
+    if (name.empty() || !m.in_bounds(x, y)) return std::nullopt;
+
+    const tilemap::Entity* cur = find(m, name);
+    const bool             existed = cur != nullptr;
+    const int              px = existed ? cur->x : 0;
+    const int              py = existed ? cur->y : 0;
+    if (existed && px == x && py == y) return std::nullopt;   // nothing to undo
+
+    tilemap::Map* mp = &m;
+    doc::Command  cmd;
+    cmd.label = "move " + name;
+    cmd.apply = [mp, name, x, y] {
+        if (tilemap::Entity* e = find(*mp, name)) { e->x = x; e->y = y; return; }
+        tilemap::Entity e;
+        e.name = name;
+        e.x = x;
+        e.y = y;
+        mp->entities.push_back(std::move(e));
+    };
+    // The two undos are genuinely different. Restoring a position is not enough for
+    // an entity that did not exist: leaving it behind at its first cell is a new
+    // edit wearing undo's clothes.
+    cmd.revert = existed
+        ? std::function<void()>([mp, name, px, py] {
+              if (tilemap::Entity* e = find(*mp, name)) { e->x = px; e->y = py; }
+          })
+        : std::function<void()>([mp, name] {
+              for (std::size_t i = 0; i < mp->entities.size(); ++i)
+                  if (mp->entities[i].name == name) {
+                      mp->entities.erase(mp->entities.begin() + static_cast<long>(i));
+                      return;
+                  }
+          });
+    // Only a MOVE merges. Creation must stand alone, or the drag that follows it
+    // would swallow the creation and undo would restore a position for an entity
+    // that should not be there at all.
+    cmd.merge_key = existed ? entity_key(name, 0) : 0;
+    return cmd;   // NOT applied here: doc::CommandStack::push_apply is what applies
+}
+
+std::optional<doc::Command> set_entity_prop(tilemap::Map& m, const std::string& name,
+                                            const std::string& key, const std::string& value) {
+    if (key.empty()) return std::nullopt;
+    tilemap::Entity* e = find(m, name);
+    if (e == nullptr) return std::nullopt;
+
+    bool        had = false;
+    std::string before;
+    for (const auto& p : e->props)
+        if (p.key == key) { had = true; before = p.value; break; }
+    if (had && before == value) return std::nullopt;
+
+    tilemap::Map* mp = &m;
+    doc::Command  cmd;
+    cmd.label = name + " " + key;
+    cmd.apply = [mp, name, key, value] {
+        tilemap::Entity* t = find(*mp, name);
+        if (t == nullptr) return;
+        for (auto& p : t->props)
+            if (p.key == key) { p.value = value; return; }
+        t->props.push_back(tilemap::Property{key, value});
+    };
+    cmd.revert = [mp, name, key, had, before] {
+        tilemap::Entity* t = find(*mp, name);
+        if (t == nullptr) return;
+        for (std::size_t i = 0; i < t->props.size(); ++i)
+            if (t->props[i].key == key) {
+                if (had) t->props[i].value = before;
+                else     t->props.erase(t->props.begin() + static_cast<long>(i));
+                return;
+            }
+    };
+    // Same rule as place_entity, for the same reason: CREATING the property stands
+    // alone, changing it merges. Otherwise cycling a facing E -> N would collapse
+    // into the step that introduced it, and one Ctrl+Z would remove the property
+    // rather than step back one value — the gesture and its beginning are not the
+    // same edit.
+    cmd.merge_key = had ? entity_key(name + "/" + key, 0x9E3779B97F4A7C15ull) : 0;
+    return cmd;
+}
+
 } // namespace mapedit

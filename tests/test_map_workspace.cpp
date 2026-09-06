@@ -10,6 +10,9 @@
 //  Files go into a scratch directory through the assets:: seam, like test_release_ops.
 // =============================================================================
 #include <cstdint>
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -61,6 +64,22 @@ std::string read_text(const std::string& path) {
     return b ? std::string(b->begin(), b->end()) : std::string();
 }
 
+// A screenshot, for a human to look at. Counting pixels proves something was drawn;
+// only an eye can say it was the right thing — which is how the last four chapters
+// each found a bug no assertion had.
+void dump_ppm(const std::vector<std::uint32_t>& buf, int w, int h, const char* name) {
+    std::FILE* f = std::fopen(name, "wb");
+    if (!f) return;
+    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
+    for (std::uint32_t p : buf) {
+        const unsigned char rgb[3] = {static_cast<unsigned char>((p >> 16) & 0xFF),
+                                      static_cast<unsigned char>((p >> 8) & 0xFF),
+                                      static_cast<unsigned char>(p & 0xFF)};
+        std::fwrite(rgb, 1, 3, f);
+    }
+    std::fclose(f);
+}
+
 // One frame: draw (which is what publishes the canvas rect) then update with `in`.
 // Same order the App loop produces after the first frame.
 struct Driver {
@@ -76,6 +95,38 @@ struct Driver {
         ws.draw_canvas(ui, g, ui::Rect{0, 0, CW, CH});
         ui.end();
         ws.update(dt, in, /*interactive*/ true);
+    }
+
+    // Canvas AND inspector, split the way WorkspaceHost splits them — the only way to
+    // see a panel section at all, and this file had no way to draw one.
+    void panel(studioshell::MapWorkspace& ws, const platform::InputState& in = {},
+               double dt = 1.0 / 60.0) {
+        const int       iw = ws.inspector_width();
+        gfx::Renderer2D g(fb, 1);
+        ui.begin(&g, ui::Input{}, CW, CH);
+        ws.draw_canvas(ui, g, ui::Rect{0, 0, CW - iw, CH});
+        ws.draw_inspector(ui, g, ui::Rect{CW - iw, 0, iw, CH});
+        ui.end();
+        ws.update(dt, in, /*interactive*/ true);
+    }
+};
+
+// A framebuffer big enough to hold a map AND a whole inspector, for screenshots.
+constexpr int SW = 900, SH = 700;
+struct ShotDriver {
+    std::vector<std::uint32_t> buf = std::vector<std::uint32_t>(
+        static_cast<std::size_t>(SW) * SH, 0);
+    platform::Framebuffer      fb{buf.data(), SW, SH, SW};
+    ui::Context                ui;
+
+    void panel(studioshell::MapWorkspace& ws, double dt = 1.0 / 60.0) {
+        const int       iw = ws.inspector_width();
+        gfx::Renderer2D g(fb, 1);
+        ui.begin(&g, ui::Input{}, SW, SH);
+        ws.draw_canvas(ui, g, ui::Rect{0, 0, SW - iw, SH});
+        ws.draw_inspector(ui, g, ui::Rect{SW - iw, 0, iw, SH});
+        ui.end();
+        ws.update(dt, platform::InputState{}, /*interactive*/ true);
     }
 };
 
@@ -253,12 +304,150 @@ static void test_the_game_can_load_what_the_editor_writes() {
     CHECK(game_map && game_map->w == 8 && game_map->h == 6);
 }
 
+// ---------------------------------------------------------------------------
+//  The Entity tool — the operation that lets Map Lab die.
+//
+//  Driven through the CANVAS and through the PALETTE, because those are the two
+//  triggers and the D-rule is that they are one operation. A tool wired to only one
+//  of them is how the project ended up with a spawn editor that lived in a different
+//  scene, writing a different format, for ten chapters.
+// ---------------------------------------------------------------------------
+static void test_entity_tool() {
+    CHECK(write_text(kPath, fixture_text()));
+    studioshell::MapWorkspace ws(kPath);
+    CHECK(ws.loaded());
+    cmd::clear();
+    ws.register_commands();
+    CHECK(cmd::exists("map.entity.place"));
+    CHECK(cmd::exists("map.entity.facing"));
+
+    // `spawn_player` is offered on a map that has none. Without it the tool could
+    // only move entities that already exist, i.e. never make the first one.
+    CHECK(ws.map().entities.empty());
+    const auto names = ws.entity_names();
+    CHECK(std::find(names.begin(), names.end(), std::string("spawn_player")) != names.end());
+    CHECK(ws.selected_entity() == "spawn_player");
+
+    Driver d;
+    d.frame(ws, platform::InputState{});
+
+    // A facing before there is anything to face is refused, not silently created —
+    // the guard's first direction.
+    const engine::OpResult early = cmd::run("map.entity.facing");
+    CHECK(!early.ok);
+    CHECK(early.message.find("place") != std::string::npos);
+    CHECK(ws.map().entities.empty());
+
+    // ---- through the canvas ----
+    platform::InputState in = at_tile(ws, 2, 3, false);
+    in.key_pressed[static_cast<int>(platform::Key::E)] = true;
+    d.frame(ws, in);
+    CHECK(ws.tool() == studioshell::MapWorkspace::Tool::Entity);
+
+    d.frame(ws, at_tile(ws, 2, 3, true));          // press and drag
+    CHECK(ws.map().entities.size() == 1);
+    CHECK(ws.map().entity("spawn_player") != nullptr);
+    if (auto* e = ws.map().entity("spawn_player")) CHECK(e->x == 2 && e->y == 3);
+
+    d.frame(ws, at_tile(ws, 5, 3, true));          // still held: a nudge, not a new one
+    d.frame(ws, at_tile(ws, 6, 3, true));
+    CHECK(ws.map().entities.size() == 1);
+    if (auto* e = ws.map().entity("spawn_player")) CHECK(e->x == 6);
+    d.frame(ws, at_tile(ws, 6, 3, false));
+
+    // The drag is ONE undo step; the creation that began it is another.
+    CHECK(cmd::run("map.undo").ok);
+    if (auto* e = ws.map().entity("spawn_player")) CHECK(e->x == 2);
+    CHECK(cmd::run("map.undo").ok);
+    CHECK(ws.map().entities.empty());
+    CHECK(cmd::run("map.redo").ok);
+    CHECK(ws.map().entities.size() == 1);
+
+    // ---- through the palette ----
+    CHECK(cmd::run("map.entity.place", {"7", "1"}).ok);
+    if (auto* e = ws.map().entity("spawn_player")) CHECK(e->x == 7 && e->y == 1);
+    CHECK(!cmd::run("map.entity.place", {"7"}).ok);          // too few
+    CHECK(!cmd::run("map.entity.place", {"a", "b"}).ok);     // not numbers
+    CHECK(!cmd::run("map.entity.place", {"99", "99"}).ok);   // off the map
+    if (auto* e = ws.map().entity("spawn_player")) CHECK(e->x == 7);   // and none moved it
+
+    // ---- facing, the guard's other direction ----
+    CHECK(cmd::run("map.entity.facing").ok);
+    // Stored as `dir`, in RADIANS — the property `fps::from_shared_text` reads into
+    // spawn_dir, and the one the fpsmap1 migration writes. A prettier `facing E`
+    // would have been a control that changed a value nothing downstream reads.
+    const auto dir_of = [&ws] {
+        const tilemap::Entity* e = ws.map().entity("spawn_player");
+        return e ? std::strtod(tilemap::prop(e->props, "dir", "-1").c_str(), nullptr) : -1.0;
+    };
+    const double kHalfPi = 1.5707963267948966;
+    CHECK(std::abs(dir_of() - 0.0) < 1e-9);                    // E
+    CHECK(cmd::run("map.entity.facing").ok);
+    CHECK(std::abs(dir_of() - kHalfPi) < 1e-6);                // S
+    for (int i = 0; i < 3; ++i) CHECK(cmd::run("map.entity.facing").ok);
+    CHECK(std::abs(dir_of() - 0.0) < 1e-9);                    // four steps is a full turn
+
+    // ...and the GAME sees it. This is the assertion the first version would have
+    // failed: the editor wrote `facing`, the raycaster reads `dir`, and every check
+    // that stopped at "the property changed" was green.
+    CHECK(cmd::run("map.entity.facing").ok);                   // -> S
+    CHECK(ws.save().ok);
+    const auto seen = fps::from_shared_text(read_text(kPath));
+    CHECK(seen.has_value());
+    if (seen) {
+        CHECK(seen->spawn_cx == 7 && seen->spawn_cy == 1);
+        CHECK(std::abs(seen->spawn_dir - static_cast<float>(kHalfPi)) < 1e-4f);
+    }
+    for (int i = 0; i < 3; ++i) CHECK(cmd::run("map.entity.facing").ok);   // back to E
+
+    // A frame to look at: the marker on the map, its facing stub, and the ENTITY
+    // section that says where the spawn is without anyone picking the tool.
+    {
+        // A REAL panel height. The 400x300 canvas the rest of this file uses is
+        // narrower than one 8x6 map at zoom 2 and shorter than the inspector, so a
+        // screenshot of it shows neither the marker nor the bottom of the panel —
+        // and the first one taken proved exactly that by showing the controls
+        // colliding. See test_inspector_clipped below for the other half.
+        ShotDriver shot;
+        shot.panel(ws);
+        shot.panel(ws);
+        dump_ppm(shot.buf, SW, SH, "map_entity.ppm");
+        CHECK(!ws.inspector_clipped());
+    }
+
+    // ...and the guard's other direction: squeezed, it SAYS so. A control clipped
+    // away is invisible and unclickable, so the status line is the only place left
+    // for it to announce itself.
+    {
+        Driver squeezed;
+        squeezed.panel(ws);
+        squeezed.panel(ws);
+        CHECK(ws.inspector_clipped());
+        CHECK(ws.status().find("clipped") != std::string::npos);
+    }
+
+    // ---- and it survives the file ----
+    CHECK(ws.save().ok);
+    const auto reread = tilemap::load(read_text(kPath));
+    CHECK(reread.has_value());
+    if (reread) {
+        const tilemap::Entity* e = reread->entity("spawn_player");
+        CHECK(e != nullptr);
+        if (e) {
+            CHECK(e->x == 7 && e->y == 1);
+            CHECK(std::abs(std::strtod(tilemap::prop(e->props, "dir", "-1").c_str(),
+                                       nullptr)) < 1e-9);      // E survived the file
+        }
+    }
+    cmd::clear();
+}
+
 static void test_commands_are_unregistered() {
     cmd::clear();
     {
         studioshell::MapWorkspace ws(kPath);
         ws.register_commands();
-        CHECK(cmd::all().size() == 4);
+        CHECK(cmd::all().size() == 6);
         CHECK(!cmd::filter("save").empty());
     }
     // The handlers captured `this`. Leaving them behind would leave the palette
@@ -278,6 +467,7 @@ int main() {
     test_autosave_and_recovery();
     test_tools_and_missing_map();
     test_the_game_can_load_what_the_editor_writes();
+    test_entity_tool();
     test_commands_are_unregistered();
 
     assets::set_base_path(".");

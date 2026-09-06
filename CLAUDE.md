@@ -35,6 +35,12 @@ regression, not a shortcut:
   swap in `emscripten_set_main_loop` with zero changes to engine/game code.
 - **All file I/O goes through `assets::` (`src/engine/assets.*`)**, never scattered
   `fopen`. The web build uses a virtual filesystem.
+- **`map2` is the only map format anything WRITES** (chapter 132). The older
+  `fpsmap1` has exactly one remaining reader — `tilemap::from_fpsmap1`, reached
+  through `tilemap::load` — and no writer at all: Map Lab, its only producer, was
+  retired along with `fps::to_text`/`from_text`. Convert an old file with
+  `--cmd map.migrate <src.map> <dst.map2>`. A format nothing can write cannot come
+  back, which is the whole point of deleting the writer rather than deprecating it.
 - **`.hrt` is the only raster format the engine READS at runtime** (`HRT1|w|h|RGBA8`).
   It has exactly **three offline doors**, one per origin, so art from a pack and art
   this project made arrive downstream as the same kind of file:
@@ -79,11 +85,12 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 ```sh
 ./build/demo            # M0 engine demo (retro 480x270)
 ./build/demo --gui [hvh|hvai] [easy|medium|hard]   # chess GUI      (--tui = terminal)
-./build/demo --fps      # M2 raycaster (loads the Map-Lab-authored maps/level_00.map)
+./build/demo --fps      # M2 raycaster (loads maps/level_00.map2)
 
 ./build/demo --lab      # list the labs; --lab <id> runs one
 #   scene    the Studio's Scene workspace, full-screen (the SAME object as its Scene tab)
-#   map      tile-grid level editor -> maps/level_NN.map (still fpsmap1; not yet absorbed)
+#   map      the Studio's Map workspace, full-screen (the SAME object as its Map tab):
+#            paint/rect/fill on layers, plus the Entity tool that place a spawn
 #   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt,
 #            palette sampled from the image + an HSV/hex mixer for a colour it lacks)
 #   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
@@ -160,8 +167,8 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**28 of the 78 tests**: `ctest` here reports 78, a build configured without Drogon
-reports 50. Since chapter 129 CI has a `baas-test` job in the
+**28 of the 77 tests**: `ctest` here reports 77, a build configured without Drogon
+reports 49. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that
@@ -223,7 +230,7 @@ src/engine/     hand-written core: math, renderer2d, renderer3d, geometry, camer
                 assets, image, text, ui, ecs/, jobs/, memory/, physics/, anim/,
                 fx/, audio/ + the platform spine: project/, resource/, release/, hub/
 src/games/      one dir per scene/tool (chess, fps, iso, colony, studio, sandbox,
-                maplab, hub, studio_shell, fx, light, audio, anim, runner, …)
+                hub, studio_shell, fx, light, audio, anim, runner, …)
 docs/book/      the guidebook (read the chapter for the subsystem you touch)
 server/         hand-written HTTP server (POSIX sockets) — separate process, no engine code
 baas/           Drogon Game-BaaS backend — separate process, links no engine code
@@ -248,7 +255,7 @@ Understand these deliberate patterns before editing the build:
   and the hit test cannot disagree; no renderer, no SDK),
   `inflate_core` (hand-written DEFLATE) and `png_core` (decode only, offline),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
-  `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
+  `map_edit_core` (tile AND entity edits as undoable `doc::Command`s),
   `particles_core`, `tween_core`, `light_core`, `audio_core`, `paint_core` (pixel
   edits as undoable commands — the third client of `doc::CommandStack` — plus
   `pixel_source`, the `.pix` -> `Image` bake, and `colour`, the HSV/hex arithmetic

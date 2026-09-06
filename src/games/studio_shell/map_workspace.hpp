@@ -35,7 +35,10 @@ namespace studioshell {
 
 class MapWorkspace : public Workspace {
 public:
-    enum class Tool { Paint, Rect, Fill };
+    // Entity is the tool that lets the old Map Lab die: painting moved here in
+    // chapter 112 and placing a spawn did not, so that lab stayed alive as the only
+    // way to author one — writing the older format the whole time.
+    enum class Tool { Paint, Rect, Fill, Entity };
 
     // `map_path` is asset-relative and may be empty (the project declares no map).
     // Loading happens here so the shell can show WHY there is no canvas.
@@ -53,6 +56,28 @@ public:
     [[nodiscard]] const std::string& problem() const override { return problem_; }
     [[nodiscard]] bool               dirty() const override { return stack_.dirty(); }
     [[nodiscard]] const tilemap::Map& map() const { return map_; }
+    [[nodiscard]] Tool                tool() const { return tool_; }
+
+    // Every entity this map has, plus the one every map can have. `spawn_player` is
+    // in the list even on a map that has none, because a tool that can only move
+    // entities that already exist can never make the first one.
+    [[nodiscard]] std::vector<std::string> entity_names() const;
+    [[nodiscard]] const std::string&       selected_entity() const { return entity_; }
+
+    // Put the selected entity on a tile, undoably. Public because the canvas drag and
+    // the `map.entity.place` command must be one operation (D-rule).
+    engine::OpResult place_selected(int tx, int ty);
+    // E -> S -> W -> N, as a `facing` property. Refused when the entity is not placed:
+    // a facing on nothing is a value nobody can see.
+    engine::OpResult cycle_facing();
+
+    // True when the inspector ran out of room and its last control came back short.
+    // `slot()` CLAMPS rather than overflowing, so a panel one control too tall does
+    // not spill — it silently hands back a zero-height rect, which draws nothing and
+    // cannot be clicked. The Pixels workspace has carried this since chapter 127; this
+    // one did not, and adding the ENTITY section is what made it matter. Reported in
+    // status(), because a control that is not there needs to say so somewhere.
+    [[nodiscard]] bool inspector_clipped() const { return inspector_clipped_; }
 
     // The tile under the cursor belongs in the status line, and only this workspace
     // knows there are tiles at all — which is precisely why status() lives here.
@@ -107,6 +132,7 @@ private:
     std::string recovery_text_;
 
     Tool         tool_ = Tool::Paint;
+    std::string  entity_ = "spawn_player";
     int          layer_ = 0;
     std::int32_t brush_ = 1;
     int          zoom_ = 2;
@@ -116,6 +142,7 @@ private:
     // The canvas rect, remembered from the last draw: immediate mode has no layout
     // until it draws, so hit-testing uses the previous frame's geometry.
     ui::Rect canvas_{};
+    bool     inspector_clipped_ = false;
 
     // The tile under the cursor, and the in-progress rectangle. -1 = off the map.
     int  hover_x_ = -1, hover_y_ = -1;
@@ -136,6 +163,8 @@ private:
     int  want_layer_ = -1;
     int  want_tool_  = -1;
     int  want_brush_ = -1;
+    int  want_entity_ = -1;                  // index into entity_names()
+    bool want_facing_ = false;
     bool want_undo_ = false, want_redo_ = false, want_save_ = false;
 };
 
