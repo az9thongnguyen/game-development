@@ -148,6 +148,41 @@ int main() {
         CHECK(!before.empty() && before != after);
     }
 
+    // ---- the cover joins the closure (chapter 130) ---------------------------
+    // A cover ships, so it is hashed like everything else that ships, and a cover that
+    // is not there makes the project unshippable rather than the card empty.
+    {
+        write("art.hrt", "HRT1....pixels");
+        write("cover_new.gameproject",
+              "gameproject1\nname C\nschema 1\nentry fps\ncover art.hrt\n");
+        const Inspection in = inspect("cover_new.gameproject", known);
+        CHECK(in.shippable());
+        CHECK(in.assets.size() == 1);
+        CHECK(!in.assets.empty() && in.assets[0].type == "cover");
+        CHECK(!in.assets.empty() && in.assets[0].present);
+        CHECK(!in.package.empty());
+
+        // ...and NOT twice when the manifest already declared that same path. Hashing
+        // one file under two names would change the release id with no change in
+        // content, which is the one thing a content-addressed id must never do.
+        write("cover_dup.gameproject",
+              "gameproject1\nname C\nschema 1\nentry fps\ncover art.hrt\nasset texture art.hrt\n");
+        const Inspection dup = inspect("cover_dup.gameproject", known);
+        CHECK(dup.shippable());
+        CHECK(dup.assets.size() == 1);
+        CHECK(!dup.assets.empty() && dup.assets[0].type == "texture");   // the declaration wins
+
+        // A missing cover is a problem, named, and no package hash is derived.
+        write("cover_gone.gameproject",
+              "gameproject1\nname C\nschema 1\nentry fps\ncover absent.hrt\n");
+        const Inspection gone = inspect("cover_gone.gameproject", known);
+        CHECK(!gone.shippable());
+        CHECK(mentions(gone.problems, "absent.hrt"));
+        CHECK(gone.package.empty());
+        CHECK(gone.assets.size() == 1);            // still LISTED, with present=false
+        CHECK(!gone.assets.empty() && !gone.assets[0].present);
+    }
+
     std::filesystem::remove_all("test_inspect_tmp");
     if (g_failures == 0) std::printf("test_inspect: all checks passed\n");
     return g_failures == 0 ? 0 : 1;
