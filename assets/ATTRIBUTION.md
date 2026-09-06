@@ -133,10 +133,29 @@ Re-bake it with:
 | `pieces/wQ.hrt` | declared | `ours.pack` | this repository |
 | `pieces/wR.hrt` | declared | `ours.pack` | this repository |
 | `sprites/spin_8.hrt` | declared | `ours.pack` | this repository |
+| `textures/creature_01.hrt` | mixed | `textures/creature_01.mix` | this repository |
+| `textures/creature_02.hrt` | mixed | `textures/creature_02.mix` | this repository |
+| `textures/creature_03.hrt` | mixed | `textures/creature_03.mix` | this repository |
+| `textures/creature_04.hrt` | mixed | `textures/creature_04.mix` | this repository |
+| `textures/creature_05.hrt` | mixed | `textures/creature_05.mix` | this repository |
+| `textures/creature_06.hrt` | mixed | `textures/creature_06.mix` | this repository |
+| `textures/creature_07.hrt` | mixed | `textures/creature_07.mix` | this repository |
+| `textures/creature_08.hrt` | mixed | `textures/creature_08.mix` | this repository |
+| `textures/creature_09.hrt` | mixed | `textures/creature_09.mix` | this repository |
+| `textures/creature_10.hrt` | mixed | `textures/creature_10.mix` | this repository |
+| `textures/creature_11.hrt` | mixed | `textures/creature_11.mix` | this repository |
+| `textures/creature_12.hrt` | mixed | `textures/creature_12.mix` | this repository |
+| `textures/creature_13.hrt` | mixed | `textures/creature_13.mix` | this repository |
+| `textures/creature_14.hrt` | mixed | `textures/creature_14.mix` | this repository |
+| `textures/creature_15.hrt` | mixed | `textures/creature_15.mix` | this repository |
+| `textures/creature_16.hrt` | mixed | `textures/creature_16.mix` | this repository |
+| `textures/creature_17.hrt` | mixed | `textures/creature_17.mix` | this repository |
+| `textures/creature_18.hrt` | mixed | `textures/creature_18.mix` | this repository |
 | `textures/farm_anna.hrt` | mixed | `textures/farm_anna.mix` | this repository |
 | `textures/farm_path.hrt` | drawn | `textures/farm_path.pix` | this repository |
 | `textures/farm_player.hrt` | mixed | `textures/farm_player.mix` | this repository |
 | `textures/farm_water.hrt` | generated | `textures/farm_water.recipe` | this repository |
+| `textures/parts_creature.hrt` | drawn | `textures/parts_creature.pix` | this repository |
 | `textures/parts_farm.hrt` | drawn | `textures/parts_farm.pix` | this repository |
 | `textures/studio_00.hrt` | declared | `ours.pack` | this repository |
 | `textures/studio_01.hrt` | declared | `ours.pack` | this repository |
@@ -146,7 +165,7 @@ Re-bake it with:
 | `textures/wall_2.hrt` | declared | `ours.pack` | this repository |
 | `textures/wall_3.hrt` | declared | `ours.pack` | this repository |
 
-26 raster assets, 0 unrecorded.
+45 raster assets, 0 unrecorded.
 
 <!-- END LEDGER (generated) -->
 

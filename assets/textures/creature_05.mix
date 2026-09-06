@@ -1,0 +1,13 @@
+# tidefin — water, stage 2 of 3: the same, plus the line's crest.
+# the finned body, a round face and a fan crest.
+# Nobody drew this creature. It is four tiles of textures/parts_creature.pix
+# and two colour swaps, and its evolution is this file plus one more part.
+mix1
+name tidefin
+size 16 16
+sheet parts textures/parts_creature.hrt 16
+part parts 8 at 0 0    # crest
+part parts 1 at 0 0    # body
+part parts 3 at 0 0    # face
+swap 6f7686 3a7bd5    # body
+swap b9c0cf 9fd8ef    # accent

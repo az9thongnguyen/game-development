@@ -592,13 +592,15 @@ target_link_libraries(creature_core PRIVATE engine_flags)
 
 # Compiles assets.cpp so the test reads the REAL tables in assets/creatures/ rather
 # than a fixture: a balance file that stops parsing is a broken game, and only the
-# committed file can say so.
+# committed file can say so. Links mix_core for the art half — "evolution is the same
+# recipe plus one part" is a claim about eighteen committed `.mix` files, and it is
+# checkable, so it is checked rather than asserted in a comment.
 add_executable(test_creature tests/test_creature.cpp
   src/engine/assets.cpp
 )
 target_include_directories(test_creature PRIVATE src)
 target_compile_definitions(test_creature PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
-target_link_libraries(test_creature PRIVATE creature_core engine_flags)
+target_link_libraries(test_creature PRIVATE creature_core mix_core engine_flags)
 add_test(NAME creature COMMAND test_creature)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------

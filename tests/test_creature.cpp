@@ -15,6 +15,8 @@
 //  keep passing while the shipped balance file stopped parsing.
 // =============================================================================
 #include <cstdio>
+#include <cstring>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -26,6 +28,7 @@
 #include "engine/rand.hpp"
 #include "games/creatures/battle.hpp"
 #include "games/creatures/defs.hpp"
+#include "engine/mix/mix.hpp"
 
 static int g_failures = 0;
 #define CHECK(cond)                                                      \
@@ -542,6 +545,95 @@ void test_no_free_lunch(const Dex& d) {
     CHECK(distinct > 10);
 }
 
+
+// ---- 7. the eighteen wear something, and evolution is one more part ------------
+//
+//  The sim above never opens a file. These two do, because the claim the art half of
+//  this chapter makes is checkable and would otherwise be a sentence in a comment.
+
+std::optional<mix::Mix> load_mix(const std::string& path) {
+    const auto bytes = assets::load_file(path);
+    if (!bytes) return std::nullopt;
+    std::string why;
+    return mix::parse_mix(std::string(bytes->begin(), bytes->end()), &why);
+}
+
+void test_every_species_wears_a_sprite(const Dex& d) {
+    std::set<std::string> seen;
+    for (const SpeciesDef& s : d.species) {
+        const auto bytes = assets::load_file(s.sprite);
+        CHECK(bytes.has_value());
+        if (bytes) {
+            CHECK(bytes->size() > 12);
+            CHECK(std::memcmp(bytes->data(), "HRT1", 4) == 0);
+            const std::uint32_t w = (static_cast<std::uint32_t>((*bytes)[4]) << 24) |
+                                    (static_cast<std::uint32_t>((*bytes)[5]) << 16) |
+                                    (static_cast<std::uint32_t>((*bytes)[6]) << 8) | (*bytes)[7];
+            CHECK(w == 16);
+        } else {
+            std::printf("      %s wears a missing sprite: %s\n", s.name.c_str(), s.sprite.c_str());
+        }
+        // Two species sharing one picture would look like a mixer working and is the
+        // easiest way for a copy-paste in species.def to survive review.
+        CHECK(seen.insert(s.sprite).second);
+        // And the sprite must be MIXED, not a drawing that wandered in: the whole
+        // point of eighteen is that no one of them was drawn.
+        CHECK(load_mix(s.sprite.substr(0, s.sprite.size() - 4) + ".mix").has_value());
+    }
+    CHECK(seen.size() == 18);
+}
+
+void test_evolution_is_one_more_part(const Dex& d) {
+    int lines = 0;
+    for (const SpeciesDef& first : d.species) {
+        // Start of a line: nobody evolves INTO it.
+        bool is_first = true;
+        for (const SpeciesDef& o : d.species) if (o.evolve_to == first.id) is_first = false;
+        if (!is_first) continue;
+        ++lines;
+
+        std::vector<mix::Mix> stages;
+        for (const SpeciesDef* s = &first; s;
+             s = s->evolve_to ? d.species_by_id(s->evolve_to) : nullptr) {
+            const auto m = load_mix(s->sprite.substr(0, s->sprite.size() - 4) + ".mix");
+            CHECK(m.has_value());
+            if (!m) return;
+            stages.push_back(*m);
+        }
+        CHECK(stages.size() == 3);
+        if (stages.size() != 3) continue;
+
+        for (std::size_t i = 0; i + 1 < stages.size(); ++i) {
+            const mix::Mix& a = stages[i];
+            const mix::Mix& b = stages[i + 1];
+            // ONE more part, and every part of the earlier stage survives into the
+            // later one. That is the sentence parts_creature.pix is written around,
+            // and without this it is only a sentence.
+            CHECK(b.parts.size() == a.parts.size() + 1);
+            for (const mix::Mix::Part& pa : a.parts) {
+                bool found = false;
+                for (const mix::Mix::Part& pb : b.parts)
+                    if (pb.sheet == pa.sheet && pb.index == pa.index &&
+                        pb.x == pa.x && pb.y == pa.y) found = true;
+                if (!found)
+                    std::printf("      %s drops part %d when it evolves\n",
+                                a.name.c_str(), pa.index);
+                CHECK(found);
+            }
+            // The colour never moves along a line, or the family resemblance the
+            // whole sheet exists for would be a coincidence of three hand-typed pairs.
+            CHECK(b.swaps.size() == a.swaps.size());
+            for (std::size_t k = 0; k < a.swaps.size() && k < b.swaps.size(); ++k) {
+                CHECK(a.swaps[k].from == b.swaps[k].from);
+                CHECK(a.swaps[k].to   == b.swaps[k].to);
+            }
+        }
+        CHECK(stages[0].parts.size() == 2);   // a body and a face
+        CHECK(stages[2].parts.size() == 4);   // ...plus a crest, plus a tail
+    }
+    CHECK(lines == 6);
+}
+
 } // namespace
 
 int main() {
@@ -558,6 +650,8 @@ int main() {
     test_hash_is_sensitive(d);
     test_ai(d);
     test_no_free_lunch(d);
+    test_every_species_wears_a_sprite(d);
+    test_evolution_is_one_more_part(d);
     test_thousand_replays(d);
 
     if (g_failures == 0) std::printf("test_creature: all checks passed\n");

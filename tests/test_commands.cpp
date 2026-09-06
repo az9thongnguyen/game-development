@@ -416,6 +416,59 @@ static void test_every_import_reproduces_its_committed_bytes() {
 }
 
 // -----------------------------------------------------------------------------
+//  ...and the same sweep for the OTHER three doors.
+//
+//  Until chapter 136 the generated/drawn/mixed halves of this rule were checked by
+//  naming ONE file each — one `.recipe`, one `.pix`, one `.mix`. That was honest when
+//  the repo had three sources. It stopped being honest the moment a single commit
+//  added nineteen: eighteen species plus the parts sheet they are cut from, and not
+//  one of them would have been noticed going stale. The import half was already a
+//  sweep (above); this is the rest of the standard, and it grows for free.
+//
+//  It re-bakes to a scratch path and compares against the COMMITTED artefact, so a
+//  `.mix` that reads a sheet another source produces is still comparing like with
+//  like: everything on disk is what is committed.
+// -----------------------------------------------------------------------------
+static void test_every_source_rebakes_to_its_committed_bytes() {
+    assets::set_base_path(ASSET_ROOT "/assets");
+    cmd::clear();
+    cmd::register_asset_commands();
+
+    struct Door { const char* suffix; const char* command; };
+    const Door doors[] = {{".recipe", "asset.texture"},
+                          {".pix",    "asset.pixels"},
+                          {".mix",    "asset.mix"}};
+
+    int checked = 0;
+    for (const Door& door : doors) {
+        const std::size_t n = std::strlen(door.suffix);
+        // The whole tree, not textures/ — the same reason scan_provenance walks it:
+        // a sweep that misses a folder reports a clean sheet it never looked at.
+        for (const std::string& src : assets::list_tree("", door.suffix)) {
+            const std::string hrt = src.substr(0, src.size() - n) + ".hrt";
+            const auto committed = assets::load_file(hrt);
+            // A source with no artefact beside it is the same kind of hole as an
+            // artefact with no source, and nothing else in the repo would say so.
+            CHECK(committed.has_value());
+            if (!committed) { std::printf("      %s has no %s\n", src.c_str(), hrt.c_str()); continue; }
+
+            const engine::OpResult r = cmd::run(door.command, {src, "textures/_rebake.hrt"});
+            CHECK(r.ok);
+            if (!r.ok) std::printf("      %s: %s\n", src.c_str(), r.message.c_str());
+            const auto again = assets::load_file("textures/_rebake.hrt");
+            CHECK(again.has_value());
+            if (committed && again && *committed != *again)
+                std::printf("      %s is NOT what %s bakes to\n", hrt.c_str(), src.c_str());
+            if (committed && again) CHECK(*committed == *again);
+            std::filesystem::remove(ASSET_ROOT "/assets/textures/_rebake.hrt");
+            ++checked;
+        }
+    }
+    // Same trap as the import sweep: an empty list passes everything inside it.
+    CHECK(checked >= 24);
+}
+
+// -----------------------------------------------------------------------------
 //  Bringing an asset into existence — the ceiling chapter 127 wrote down.
 //
 //  Run against a TEMPORARY asset root, not the repository's. `asset.new` re-bakes
@@ -666,6 +719,7 @@ int main() {
     test_registry();
     test_asset_commands();
     test_every_import_reproduces_its_committed_bytes();
+    test_every_source_rebakes_to_its_committed_bytes();
     test_map_migrate();
     test_attribution_command();
     test_asset_new();
