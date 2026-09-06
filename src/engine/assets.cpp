@@ -3,6 +3,7 @@
 // =============================================================================
 #include "engine/assets.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -125,6 +126,21 @@ bool rename(const std::string& from, const std::string& to) {
     if (ec) return false;
     persist(to);
     return true;
+}
+
+std::vector<std::string> list_dir(const std::string& dir, const std::string& suffix) {
+    std::vector<std::string> names;
+    std::error_code ec;                       // no exceptions: a missing dir is an answer
+    const std::filesystem::path full = std::filesystem::path(g_base) / dir;
+    for (const auto& e : std::filesystem::directory_iterator(full, ec)) {
+        if (!e.is_regular_file()) continue;
+        std::string n = e.path().filename().string();
+        if (suffix.size() > n.size()) continue;
+        if (n.compare(n.size() - suffix.size(), suffix.size(), suffix) != 0) continue;
+        names.push_back(std::move(n));
+    }
+    std::sort(names.begin(), names.end());    // determinism, not tidiness — see the header
+    return names;
 }
 
 std::int64_t mtime(const std::string& path) {
