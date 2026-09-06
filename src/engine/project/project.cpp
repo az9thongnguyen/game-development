@@ -25,11 +25,21 @@ std::optional<Project> parse_project(const std::string& text) {
             continue;
         }
 
-        if (key == "name") {
+        // Free text to the end of the line: a name and a one-line summary are prose,
+        // and prose has spaces in it.
+        auto rest_of_line = [&ls] {
             std::string rest;
             std::getline(ls, rest);
             if (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
-            p.name = rest;
+            return rest;
+        };
+
+        if (key == "name") {
+            p.name = rest_of_line();
+        } else if (key == "summary") {
+            p.summary = rest_of_line();
+        } else if (key == "cover") {
+            ls >> p.cover;
         } else if (key == "schema") {
             int v;
             if (!(ls >> v)) return std::nullopt;  // malformed schema value → unusable
@@ -53,6 +63,12 @@ std::string to_text(const Project& p) {
         << "name " << p.name << "\n"
         << "schema " << p.schema << "\n"
         << "entry " << p.entry << "\n";
+    // Only when set. An empty `summary` line would parse back to the same Project, but
+    // it would REWRITE every manifest that has never heard of summaries the first time
+    // anything saved one — and a diff nobody asked for is how a round-trip test stops
+    // being evidence.
+    if (!p.summary.empty()) out << "summary " << p.summary << "\n";
+    if (!p.cover.empty())   out << "cover " << p.cover << "\n";
     for (const auto& a : p.assets)
         out << "asset " << a.type << " " << a.path << "\n";
     return out.str();
@@ -67,6 +83,13 @@ std::vector<std::string> validate(const Project& p,
                        " (this build supports up to " + std::to_string(kProjectSchema) + ")");
     }
     if (p.name.empty()) errs.push_back("project name is required");
+
+    // The collection page decodes `.hrt` by hand — it is the one raster format this
+    // project has. A cover named `.png` is not a slow path, it is a blank card.
+    if (!p.cover.empty() && !(p.cover.size() > 4 &&
+                              p.cover.compare(p.cover.size() - 4, 4, ".hrt") == 0)) {
+        errs.push_back("cover must be a .hrt file (got '" + p.cover + "')");
+    }
 
     if (p.entry.empty()) {
         errs.push_back("entry scene is required");

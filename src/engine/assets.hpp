@@ -39,6 +39,20 @@ bool append_file(const std::string& path, const std::vector<uint8_t>& bytes);
 // or channel pointer is published without ever exposing a half-written file. False on error.
 bool rename(const std::string& from, const std::string& to);
 
+// The names (not paths) of the entries directly inside `dir` (base-relative) whose
+// name ends in `suffix`, sorted. `suffix` empty lists everything.
+//
+// Sorted, because a caller that turns a directory into a FILE — an index, a package,
+// a hash — must not produce different bytes on two machines because readdir felt
+// different. A missing directory is an empty list, not an error: "nothing here" is
+// the right answer for a collection with no projects in it, and it is also what the
+// web build sees for a directory the preload excluded.
+//
+// This is the only listing door for the same reason load_file is the only reading one:
+// std::filesystem works over Emscripten's MEMFS, so one implementation serves both,
+// and no caller has to know which filesystem it is standing on.
+std::vector<std::string> list_dir(const std::string& dir, const std::string& suffix = "");
+
 // Last-modified time as implementation-defined ticks (for hot-reload change
 // detection), or 0 if the file is missing or the platform can't report it (e.g. the
 // web has no filesystem watch). Only meaningful when compared against a prior value.

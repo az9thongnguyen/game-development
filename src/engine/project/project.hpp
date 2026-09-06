@@ -11,6 +11,8 @@
 //      name Creator Demo
 //      schema 1
 //      entry fps
+//      summary A raycast demo you can walk around in.   (optional, one line)
+//      cover textures/wall_1.hrt                        (optional, asset-relative)
 //
 //  Unknown keys are ignored so later additive fields (assets, build profiles,
 //  backend endpoint...) stay backward-compatible. ponytail: minimal on purpose —
@@ -39,6 +41,14 @@ struct Project {
     std::string name;             // display name (required)
     int         schema = 0;       // manifest schema version (required, <= kProjectSchema)
     std::string entry;            // entry scene id, e.g. "fps" (required)
+
+    // What a LIST of games needs and a launcher does not. Both optional, and both
+    // emitted by to_text() only when set, so every manifest written before they
+    // existed still round-trips to its own bytes.
+    std::string summary;          // one line, for a card under the name
+    std::string cover;            // asset-relative `.hrt` — the only raster the
+                                  // collection page can decode (it decodes it itself:
+                                  // "HRT1" | BE w | BE h | RGBA8, ~15 lines of JS)
     std::vector<AssetRef> assets; // declared content dependencies (optional)
 };
 

@@ -175,6 +175,16 @@ jobs:
           node --version
           node scripts/web_touch_check.mjs --dir build-web
 
+      # -----------------------------------------------------------------------
+      #  The other half of "one link": a page that lists what there is, and a Play
+      #  button that LANDS somewhere. A correct href is not a working link —
+      #  chapter 123's keyboard was wired to a canvas nobody had focused, and every
+      #  check that stopped one step short of the end passed. So this one taps Play
+      #  and waits for the game to say "running".
+      # -----------------------------------------------------------------------
+      - name: The collection page lists the games, and Play reaches one
+        run: node scripts/web_collection_check.mjs --dir build-web
+
   # ---------------------------------------------------------------------------
   #  BaaS — the half of the suite that had never run anywhere but a laptop
   # ---------------------------------------------------------------------------

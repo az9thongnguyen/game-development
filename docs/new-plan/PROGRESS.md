@@ -1064,6 +1064,57 @@ một dòng `STATUS` lúc configure. Không có gì báo lúc chạy.
 CI dựng và test backend, không dựng image, không gọi `/healthz` · bản kiểm ở máy chạy
 amd64 **giả lập**; native amd64 là lần chạy đầu của CI.
 
+## S21 — một cái link gửi được (chương 130) — XONG 2026-09-06
+
+Chương 128 làm **một** game với tới được bằng ngón tay, ở một URL không ai đoán ra. Slice
+này làm nốt nửa còn lại: `web/collection.html` liệt kê mọi `*.gameproject` thành card (bìa,
+một câu, Play), và **Play đáp xuống trong game đang chạy** — có kiểm, không suy luận.
+
+- **`project_core` thêm `cover` + `summary`**, tuỳ chọn, và `to_text` **chỉ ghi khi có** —
+  đó CHÍNH LÀ migration, và nó là một test: `to_text(parse(old)) == old`. Một dòng
+  `summary ` luôn ghi sẽ viết lại mọi manifest chưa từng nghe nói đến summary, ngay lần lưu
+  đầu tiên.
+- **`cover` vào closure** (nó ship thì nó được hash) — **trừ khi** manifest đã khai đúng
+  path đó. Bìa của farm chính là tileset của nó; hash hai lần sẽ **đổi release id mà nội
+  dung không đổi**. Bằng chứng: publish sau thay đổi báo `verified`, không phải id mới.
+- **Chỉ mục được BAKE, không phải danh sách ai đó giữ.** `--cmd collection.index` +
+  `assets::list_dir` (verb thứ tư của seam I/O, **sắp xếp** vì nó nuôi một file được
+  commit). `assets/collection.json` đứng đúng quan hệ mà `.hrt` có với `.recipe`/`.pix`:
+  test re-bake và so từng byte, và **đếm** entry bằng `list_dir` — thêm game mà quên
+  index là một test đỏ, không phải một game biến mất khỏi trang.
+- **Trang tự giải mã `.hrt`** (15 dòng `DataView`) → bìa là **đúng file engine đọc**, không
+  mở cửa PNG nào vào pipeline. `.hrt` vẫn **ba** cửa; cửa thứ tư là quyết định của S26.
+- **Ảnh chụp lại tìm ra lỗi — chương thứ TƯ liên tiếp.** Mọi assertion xanh trên trang có
+  canvas 320×180 bị CSS thu xuống 258×145: scale **nguyên** tính rất kỹ rồi bị nhân 0,81
+  ngay sau đó. Sửa bằng đúng cách chương 128: buffer lấy kích thước từ chính cái hộp nó
+  hiện trong, + `ResizeObserver`. Bìa giờ là `64x64@9x` và `192x176@3x` — nguyên, **theo
+  pixel thiết bị**, là chỗ duy nhất "nguyên" có nghĩa.
+- **Bẫy `POST_BUILD` sập trong vòng một giờ** kể từ lúc tôi viết chú thích về nó: nó chỉ
+  chạy khi `demo` link lại, nên sửa trang thì không copy gì và bài kiểm vẫn kiểm **trang
+  cũ** — y hệt bẫy `--shell-file` ở ch.118. Đổi thành `add_custom_target` + `add_dependencies`.
+  Thứ được copy là **allowlist** (`textures`, `projects`), không phải "cả cây trừ vài chỗ":
+  `assets/` còn chứa `saves/`, và ch.128 là chuyện xảy ra khi một *denylist* quên một dòng.
+- **Công cụ đo test lại là thứ nói dối.** Lần mutation đầu: 14/15, sạch đáng ngờ. Harness
+  khôi phục **nội dung** nhưng đẩy **mtime lùi**, nên object của mutation trước sống sót:
+  từ M4 trở đi **mỗi lần chạy có hai mutation**, cái thứ hai (bỏ một bounds guard) làm
+  `test_collection` abort trước khi chạm assertion nào. Sửa `os.utime` + in
+  `baseline after restore` → **15/15, baseline GREEN**. Bài học không phải về mtime: điểm
+  mutation là một *tuyên bố về test do một chương trình sinh ra*, và chương trình đó **không
+  có test nào**.
+- Sống sót thật (đã đóng): không có gì kiểm rằng một **thư mục** tên `x.gameproject` không
+  phải project — để nguyên thì nó thành một card hỏng ma, báo lỗi cho một manifest không ai viết.
+
+**Số liệu:** 77/77 ctest · ASan+UBSan xanh trên 7 suite liên quan · **15/15 + 4/4 mutation**
+· golden path xanh, 0 rò `.tmp`, package hash **không đổi** · web build xanh · bài kiểm
+trình duyệt: 2 game liệt kê, 2 bìa giải mã (205c/32c), README render (6 heading, 1 bảng,
+11 mục, 1 code block), **chạm Play → game chạy**.
+
+**Chưa xác minh / trần:** bìa là **texture có sẵn**, không phải title card hay khung hình
+chụp (cửa thứ tư — S26) · **không có `/play/<hash>`**: link trỏ vào manifest trong cây làm
+việc, không phải release đã publish (cần server — S29) · markdown là **một tập con** (không
+link, ảnh, list lồng, blockquote) · **Chrome only** · chỉ mục **bake bằng tay**, test chỉ
+bắt được sau · `build-web/assets/` trùng lặp nửa MB với `demo.data`.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1074,7 +1125,7 @@ làm chín T6).
 |---|---|---|
 | ~~S19~~ | ~~Trang web thật + chứng minh chạm~~ — **XONG**, chương 128 | M |
 | ~~S20~~ | ~~CI chạy 28 test BaaS~~ — **XONG**, chương 129 (27/28; cái thứ 28 là một trần) | S |
-| S21 | Collection page + `cover`/`summary` trong manifest + README template | S/M |
+| ~~S21~~ | ~~Collection page + `cover`/`summary` + README template~~ — **XONG**, chương 130 | S/M |
 | S22 | Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card | M |
 | S23 | Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1` | L |
 | S24 | Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene | M |
@@ -1085,8 +1136,8 @@ làm chín T6).
 | S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |
 | S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
 
-Điểm dừng show được: **sau S21** (mở link trên điện thoại, chọn game, chơi) và **sau S28**
-(hai game + PvP).
+Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,
+chọn một cái, chơi. Điểm tiếp theo là **sau S28** (hai game + PvP).
 
 Sau đó (chưa xếp thứ tự):
 

@@ -76,12 +76,67 @@ static void test_validate() {
     CHECK(!validate({"Demo", 0, "fps"}, known).empty());              // schema unset
 }
 
+// ---- cover + summary: what a LIST of games needs (chapter 130) ---------------
+
+static void test_cover_and_summary_roundtrip() {
+    const std::string text =
+        "gameproject1\nname Farm\nschema 1\nentry farm\n"
+        "summary Plant, water, sleep. A day at a time.\n"
+        "cover textures/town.hrt\n";
+    auto p = parse_project(text);
+    CHECK(p.has_value());
+    CHECK(p->summary == "Plant, water, sleep. A day at a time.");   // free text, spaces kept
+    CHECK(p->cover == "textures/town.hrt");
+    CHECK(to_text(*p) == text);       // canonical order: name, schema, entry, summary, cover
+}
+
+static void test_absent_fields_are_not_written() {
+    // The migration IS this test. Every manifest written before these fields existed
+    // must round-trip to its own bytes — otherwise the first save rewrites files that
+    // did not change, and the round-trip check stops being evidence of anything.
+    const std::string old_text = "gameproject1\nname X\nschema 1\nentry fps\n";
+    auto p = parse_project(old_text);
+    CHECK(p && p->summary.empty() && p->cover.empty());
+    CHECK(to_text(*p) == old_text);
+    CHECK(validate(*p, {"fps"}).empty());     // absent is valid, not "not yet filled in"
+}
+
+static void test_cover_must_be_hrt() {
+    // The collection page decodes .hrt by hand; anything else is a blank card, and a
+    // blank card is the failure that looks like a slow network.
+    auto bad = parse_project("gameproject1\nname X\nschema 1\nentry fps\ncover art/x.png\n");
+    CHECK(bad.has_value());                              // it PARSES — this is semantics
+    const auto errs = validate(*bad, {"fps"});
+    CHECK(errs.size() == 1);
+    CHECK(!errs.empty() && errs[0].find("art/x.png") != std::string::npos);
+
+    // Both directions of the guard. A .hrt cover passes, and so does no cover at all;
+    // a guard that never lifts is the bug the guard was supposed to prevent.
+    auto good = parse_project("gameproject1\nname X\nschema 1\nentry fps\ncover a/b.hrt\n");
+    CHECK(good && validate(*good, {"fps"}).empty());
+    // ".hrt" alone is a suffix with no name in front of it.
+    auto naked = parse_project("gameproject1\nname X\nschema 1\nentry fps\ncover .hrt\n");
+    CHECK(naked && validate(*naked, {"fps"}).size() == 1);
+}
+
+static void test_summary_is_one_line() {
+    // `summary` reads to end of line, so a second line cannot smuggle itself in — it
+    // parses as its own (unknown, ignored) record instead of extending the summary.
+    auto p = parse_project("gameproject1\nname X\nschema 1\nentry fps\n"
+                           "summary first line\nsecond line here\n");
+    CHECK(p && p->summary == "first line");
+}
+
 int main() {
     test_parse_and_roundtrip();
     test_fail_closed();
     test_forward_compat();
     test_asset_declarations();
     test_validate();
+    test_cover_and_summary_roundtrip();
+    test_absent_fields_are_not_written();
+    test_cover_must_be_hrt();
+    test_summary_is_one_line();
 
     if (g_failures == 0) std::printf("project: all tests passed\n");
     else                 std::printf("project: %d FAILURE(S)\n", g_failures);

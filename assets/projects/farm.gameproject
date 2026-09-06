@@ -2,6 +2,8 @@ gameproject1
 name Farm
 schema 1
 entry farm
+summary Plant, water, sell, sleep — a day at a time, and it remembers.
+cover textures/town.hrt
 asset map maps/farm_home.map2
 asset data farm/crops.def
 asset data farm/items.def

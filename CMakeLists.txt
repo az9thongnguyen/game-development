@@ -152,6 +152,34 @@ if(EMSCRIPTEN)
   # the previous page — found the hard way, by testing a change that was never in the
   # bundle. LINK_DEPENDS makes the shell a real input.
   set_property(TARGET demo APPEND PROPERTY LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/shell.html")
+
+  # The collection page is a SEPARATE page, so it cannot read the preloaded MEMFS that
+  # lives inside the wasm module — it fetches over HTTP like any page. Put next to
+  # demo.html the four things it asks for: itself, the baked index, the covers, and the
+  # READMEs beside the manifests.
+  #
+  # An ALLOWLIST of asset subdirectories, not the tree minus a few. The preload learned
+  # this the expensive way in chapter 128: `assets/` also holds saves/, releases/ and
+  # channels/, which are this machine's state, and shipping saves/device.id gave every
+  # browser the same guest account. A denylist is one forgotten line away from doing it
+  # again; a list of what MAY be served cannot leak what nobody added to it.
+  #
+  # A custom TARGET, not a POST_BUILD step on demo. POST_BUILD only runs when demo
+  # relinks, so editing just the page copied nothing and the browser check went on
+  # testing the previous one — which is the same trap `--shell-file` set above, and it
+  # was sprung again within the hour of writing this. A custom target is always
+  # out of date, so the four copies always happen; they are half a megabyte.
+  add_custom_target(web_pages
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/web/collection.html" "$<TARGET_FILE_DIR:demo>/collection.html"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/assets/collection.json" "$<TARGET_FILE_DIR:demo>/collection.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/textures" "$<TARGET_FILE_DIR:demo>/assets/textures"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/projects" "$<TARGET_FILE_DIR:demo>/assets/projects"
+    VERBATIM)
+  add_dependencies(demo web_pages)
 endif()
 target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core map_edit_core paint_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core maplab_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
@@ -369,6 +397,7 @@ add_executable(test_commands tests/test_commands.cpp
   src/engine/resource/resource.cpp
   src/engine/assets.cpp
   src/engine/commands/asset_commands.cpp
+  src/engine/project/collection.cpp
   src/engine/image.cpp
 )
 target_include_directories(test_commands PRIVATE src)
@@ -642,6 +671,9 @@ target_link_libraries(project_core PRIVATE engine_flags)
 # had drifted. Impure (reads through assets::), so its symbols come from the final link.
 add_library(inspect_core STATIC
   src/engine/project/inspect.cpp
+  # The collection index (chapter 130): one directory of manifests -> one file a page
+  # can read. Same lib because it is the same act — read + validate — applied to many.
+  src/engine/project/collection.cpp
 )
 target_include_directories(inspect_core PUBLIC src)
 target_link_libraries(inspect_core PRIVATE engine_flags)
@@ -669,6 +701,23 @@ add_executable(test_project tests/test_project.cpp
 target_include_directories(test_project PRIVATE src)
 target_link_libraries(test_project PRIVATE engine_flags)
 add_test(NAME project COMMAND test_project)
+
+# The collection index. Two halves, two kinds of check: to_json is pure (escaping,
+# field order, stable bytes), and build_collection reads the REAL projects/ directory —
+# which is how the committed assets/collection.json is held to being what the manifests
+# bake to, and how a project added without re-baking becomes a failing test rather than
+# a game missing from the page.
+add_executable(test_collection tests/test_collection.cpp
+  src/engine/project/collection.cpp
+  src/engine/project/inspect.cpp
+  src/engine/project/project.cpp
+  src/engine/resource/resource.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_collection PRIVATE src)
+target_compile_definitions(test_collection PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}/assets")
+target_link_libraries(test_collection PRIVATE engine_flags)
+add_test(NAME collection COMMAND test_collection)
 
 # Content hashing (Horizon 0 resource identity): the deterministic fingerprint a
 # package manifest / preview-parity check needs. Pure, headless, unit-tested.

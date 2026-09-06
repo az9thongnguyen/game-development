@@ -1,0 +1,336 @@
+<!doctype html>
+<!-- =========================================================================
+     web/collection.html  —  the page a link can point at
+     -----------------------------------------------------------------------
+     Chapter 128 made ONE game reachable with a finger. The link to it was a query
+     string somebody had to be told: `demo.html?project=projects/farm.gameproject`.
+     This is the other half — a page that lists what there is.
+
+     Three things here are deliberate:
+
+       * It decodes `.hrt` ITSELF. `.hrt` is "HRT1" | BE width | BE height | RGBA8,
+         which is fifteen lines of DataView — so a cover is the same file the engine
+         reads, with no PNG export door added to the asset pipeline to serve a web
+         page. Drawn at an INTEGER scale with smoothing off: pixel art resampled at
+         1.02x is not the art.
+
+       * A broken project gets a card, not a hiding place. `inspect()` already refuses
+         to drop a missing asset from its list, for the reason written there: a browser
+         that silently drops what it cannot find is the one you cannot use to find out
+         what is wrong. Same rule, one layer out — an unplayable game shows its
+         problems where its Play button would be.
+
+       * The list comes from `assets/collection.json`, baked by `--cmd collection.index`
+         from the projects directory. Not hand-kept: chapter 129 is what happens to a
+         list that is written down twice.
+     ========================================================================= -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1116">
+  <title>hand-engine — games</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%234e7a3c'/></svg>">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; min-height: 100%;
+      background: #0f1116; color: #c8d0dc;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    body {
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+               max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      max-width: 980px; margin: 0 auto;
+    }
+    header { padding: 8px 0 18px; border-bottom: 1px solid #1e2330; margin-bottom: 18px; }
+    h1 { margin: 0 0 4px; font-size: 20px; color: #e2e8f2; letter-spacing: .2px; }
+    .sub { color: #6b7590; font-size: 13px; }
+    #grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    .card {
+      background: #151a24; border: 1px solid #232a38; border-radius: 10px;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .shot {
+      background: #0b0d12; border-bottom: 1px solid #232a38;
+      display: grid; place-items: center; aspect-ratio: 16 / 9;
+    }
+    /* The canvas FILLS the shot box and its drawing buffer is sized to match (see
+       sizeAndPaint). `max-width: 100%` on a fixed buffer would have CSS resample what
+       paint() had just placed on integer boundaries — chapter 128's bug, one page over. */
+    .shot canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+    .shot .none { color: #465064; font-size: 12px; }
+    .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
+    .name { font-weight: 600; color: #e2e8f2; }
+    .summary { color: #93a0b8; font-size: 13px; min-height: 1.5em; }
+    .meta { color: #5c6680; font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: auto; padding-top: 4px; }
+    a.play, button {
+      font: inherit; font-size: 13px; color: #c8d0dc; text-decoration: none;
+      background: #1a1f2b; border: 1px solid #2a3140; border-radius: 6px;
+      padding: 6px 14px; cursor: pointer; display: inline-block;
+    }
+    a.play { background: #2c4a2a; border-color: #3d6639; color: #dcecd8; font-weight: 600; }
+    a.play:hover { background: #365a33; }
+    button:hover { background: #222836; }
+    .broken { color: #d98b6a; font-size: 12px; }
+    .broken ul { margin: 4px 0 0; padding-left: 18px; }
+    .readme {
+      display: none; margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid #232a38; font-size: 13px; color: #a9b4c8;
+    }
+    .card.open .readme { display: block; }
+    .readme h1 { font-size: 16px; margin: 12px 0 6px; }
+    .readme h2 { font-size: 14px; margin: 14px 0 6px; color: #8fa2c4; }
+    .readme h3 { font-size: 13px; margin: 12px 0 4px; color: #8fa2c4; }
+    .readme p, .readme ul, .readme ol { margin: 6px 0; }
+    .readme code { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+                   background: #0e131b; border: 1px solid #232a38; border-radius: 4px; padding: 0 4px; }
+    .readme pre { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+                  background: #0b0d12; border: 1px solid #232a38; border-radius: 6px;
+                  padding: 8px 10px; overflow-x: auto; }
+    /* A table wider than a phone must scroll INSIDE the card, not open the page. */
+    .readme table { border-collapse: collapse; font-size: 12px; display: block; overflow-x: auto; }
+    .readme th, .readme td { border: 1px solid #232a38; padding: 4px 8px; text-align: left; }
+    .readme th { color: #8fa2c4; background: #0e131b; }
+    #err { color: #d98b6a; }
+    footer { margin-top: 26px; color: #4d566c; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>hand-engine</h1>
+    <div class="sub">Games built on a from-scratch C++ engine. Every pixel drawn by its own code.</div>
+  </header>
+  <div id="err"></div>
+  <div id="grid"></div>
+  <footer id="foot"></footer>
+
+  <script>
+  (function () {
+    var grid = document.getElementById('grid');
+    var err  = document.getElementById('err');
+    var foot = document.getElementById('foot');
+
+    // ---- .hrt, decoded here ------------------------------------------------
+    // "HRT1" | uint32 BE width | uint32 BE height | RGBA8 rows. DataView reads
+    // big-endian by default, which is the one place this format is convenient.
+    function decodeHrt(buf) {
+      if (!buf || buf.byteLength < 12) return null;
+      var dv = new DataView(buf);
+      if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'HRT1')
+        return null;
+      var w = dv.getUint32(4), h = dv.getUint32(8);
+      if (!w || !h || buf.byteLength < 12 + w * h * 4) return null;
+      return { w: w, h: h, px: new Uint8ClampedArray(buf, 12, w * h * 4) };
+    }
+
+    // Nearest-neighbour, and an INTEGER scale whenever the art fits: a 192x176 sheet
+    // drawn at 1.02x has some pixels one screen-pixel wide and some two, which reads
+    // as a blurry sheet rather than as art. Only when it does not fit does the scale
+    // become fractional, because a cropped cover hides content.
+    //
+    // The scale is only integral if it is integral in SCREEN pixels, which is why the
+    // drawing buffer is sized from the element's own box times devicePixelRatio rather
+    // than fixed at some convenient number. A 320x180 buffer inside a 258x145 card is
+    // resampled by CSS at 0.81 on its way to the screen, and every integer this
+    // function worked out is gone by the time anyone sees it. That is chapter 128's
+    // stretched canvas wearing different clothes: the drawing buffer and the box it is
+    // shown in have to agree, and nothing keeps them in step unless something does.
+    function sizeAndPaint(canvas, img) {
+      var box = canvas.getBoundingClientRect();
+      if (!box.width || !box.height) return false;          // not laid out yet
+      var dpr = window.devicePixelRatio || 1;
+      var cw = Math.max(1, Math.round(box.width * dpr));
+      var ch = Math.max(1, Math.round(box.height * dpr));
+      if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+
+      var ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      var src = document.createElement('canvas');
+      src.width = img.w; src.height = img.h;
+      src.getContext('2d').putImageData(new ImageData(img.px, img.w, img.h), 0, 0);
+
+      var fit = Math.min(cw / img.w, ch / img.h);
+      var k = fit >= 1 ? Math.floor(fit) : fit;
+      var dw = Math.max(1, Math.round(img.w * k)), dh = Math.max(1, Math.round(img.h * k));
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(src, Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh);
+      canvas.dataset.painted = img.w + 'x' + img.h + '@' + (k >= 1 ? k + 'x' : k.toFixed(2));
+      return true;
+    }
+
+    // ---- the markdown subset the README template uses ----------------------
+    // Headings, fenced code, pipe tables, lists, `code`, **bold**, paragraphs. Every
+    // value is HTML-escaped BEFORE any tag is added: the README is ours and same-origin,
+    // and that is exactly the assumption that stops being true the day it is not.
+    function md(src) {
+      function esc(s) { return s.replace(/[&<>]/g, function (c) {
+        return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; }); }
+      function inl(s) {
+        return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>')
+                     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      }
+      var isRow  = function (s) { return /^\s*\|.*\|\s*$/.test(s); };
+      var isRule = function (s) { return /^\s*\|[\s:|-]+\|\s*$/.test(s); };
+      var isItem = function (s) { return /^\s*([-*]|\d+\.)\s+/.test(s); };
+      var cells  = function (s) {
+        return s.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); });
+      };
+      var out = [], L = src.split('\n'), i = 0;
+      while (i < L.length) {
+        if (/^```/.test(L[i])) {
+          var buf = []; i++;
+          while (i < L.length && !/^```/.test(L[i])) buf.push(L[i++]);
+          i++;
+          out.push('<pre>' + esc(buf.join('\n')) + '</pre>');
+        } else if (/^(#{1,4})\s+/.test(L[i])) {
+          var m = /^(#{1,4})\s+(.*)$/.exec(L[i++]);
+          var n = Math.min(3, m[1].length);
+          out.push('<h' + n + '>' + inl(m[2]) + '</h' + n + '>');
+        } else if (isRow(L[i]) && i + 1 < L.length && isRule(L[i + 1])) {
+          var head = cells(L[i]); i += 2; var rows = [];
+          while (i < L.length && isRow(L[i])) rows.push(cells(L[i++]));
+          out.push('<table><thead><tr>' +
+            head.map(function (c) { return '<th>' + inl(c) + '</th>'; }).join('') +
+            '</tr></thead><tbody>' + rows.map(function (r) {
+              return '<tr>' + r.map(function (c) { return '<td>' + inl(c) + '</td>'; }).join('') + '</tr>';
+            }).join('') + '</tbody></table>');
+        } else if (isItem(L[i])) {
+          var ordered = /^\s*\d/.test(L[i]), items = [];
+          while (i < L.length) {
+            if (isItem(L[i])) { items.push(L[i++].replace(/^\s*([-*]|\d+\.)\s+/, '')); }
+            // An indented line with no marker continues the item above it.
+            else if (items.length && /^\s+\S/.test(L[i])) { items[items.length - 1] += ' ' + L[i++].trim(); }
+            else break;
+          }
+          var tag = ordered ? 'ol' : 'ul';
+          out.push('<' + tag + '>' + items.map(function (t) { return '<li>' + inl(t) + '</li>'; }).join('') +
+                   '</' + tag + '>');
+        } else if (!L[i].trim()) {
+          i++;
+        } else {
+          var para = [];
+          while (i < L.length && L[i].trim() && !/^(#{1,4}\s|```)/.test(L[i]) && !isRow(L[i]) && !isItem(L[i]))
+            para.push(L[i++]);
+          out.push('<p>' + inl(para.join(' ')) + '</p>');
+        }
+      }
+      return out.join('\n');
+    }
+
+    // ---- cards -------------------------------------------------------------
+    function card(g) {
+      var el = document.createElement('div');
+      el.className = 'card';
+      el.dataset.manifest = g.manifest;
+
+      var shot = document.createElement('div');
+      shot.className = 'shot';
+      if (g.cover) {
+        var cv = document.createElement('canvas');
+        cv.dataset.cover = g.cover;   // size is set from the box in sizeAndPaint()
+        shot.appendChild(cv);
+        fetch('assets/' + g.cover).then(function (r) {
+          if (!r.ok) throw new Error(r.status + ' ' + g.cover);
+          return r.arrayBuffer();
+        }).then(function (b) {
+          var img = decodeHrt(b);
+          if (!img) throw new Error('not a .hrt: ' + g.cover);
+          // Paint now, and again whenever the card changes width — a rotation, a
+          // window drag, or the README below it opening and taking the scrollbar.
+          if (!sizeAndPaint(cv, img)) requestAnimationFrame(function () { sizeAndPaint(cv, img); });
+          new ResizeObserver(function () { sizeAndPaint(cv, img); }).observe(cv);
+        }).catch(function (e) {
+          // A cover that failed to load must SAY so. A silently blank panel is
+          // indistinguishable from a game that has no art.
+          shot.innerHTML = '<span class="none">cover unavailable — ' + e.message + '</span>';
+        });
+      } else {
+        shot.innerHTML = '<span class="none">no cover</span>';
+      }
+      el.appendChild(shot);
+
+      var body = document.createElement('div');
+      body.className = 'body';
+      var name = document.createElement('div');
+      name.className = 'name'; name.textContent = g.name;
+      var sum = document.createElement('div');
+      sum.className = 'summary'; sum.textContent = g.summary || '';
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = g.entry + (g.package ? '  ·  ' + g.package : '');
+      body.appendChild(name); body.appendChild(sum); body.appendChild(meta);
+
+      if (!g.playable) {
+        var bad = document.createElement('div');
+        bad.className = 'broken';
+        var head = document.createElement('div');
+        head.textContent = 'not playable:';
+        var ul = document.createElement('ul');
+        (g.problems || []).forEach(function (p) {
+          var li = document.createElement('li'); li.textContent = p; ul.appendChild(li);
+        });
+        bad.appendChild(head); bad.appendChild(ul);
+        body.appendChild(bad);
+      }
+
+      var row = document.createElement('div');
+      row.className = 'row';
+      if (g.playable) {
+        var a = document.createElement('a');
+        a.className = 'play';
+        // The SAME query string chapter 128's page already answers to. This page adds a
+        // way to arrive at it, not a second way to launch.
+        a.href = 'demo.html?project=' + encodeURIComponent(g.manifest);
+        a.textContent = 'Play';
+        row.appendChild(a);
+      }
+      if (g.readme) {
+        var rd = document.createElement('div');
+        rd.className = 'readme';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'read me';
+        btn.addEventListener('click', function () {
+          el.classList.toggle('open');
+          if (rd.dataset.loaded) return;
+          rd.dataset.loaded = '1';
+          rd.textContent = 'loading…';
+          fetch('assets/' + g.readme)
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+            .then(function (t) { rd.innerHTML = md(t); })
+            .catch(function (e) { rd.textContent = 'README unavailable (' + e.message + ')'; });
+        });
+        row.appendChild(btn);
+        body.appendChild(row);
+        body.appendChild(rd);
+      } else {
+        body.appendChild(row);
+      }
+
+      el.appendChild(body);
+      return el;
+    }
+
+    fetch('collection.json')
+      .then(function (r) { if (!r.ok) throw new Error(r.status + ' collection.json'); return r.json(); })
+      .then(function (data) {
+        var games = data.games || [];
+        games.forEach(function (g) { grid.appendChild(card(g)); });
+        var broken = games.filter(function (g) { return !g.playable; }).length;
+        foot.textContent = games.length + ' project' + (games.length === 1 ? '' : 's') +
+                           (broken ? ', ' + broken + ' not playable' : '') +
+                           ' · baked by --cmd collection.index';
+        document.body.dataset.games = games.length;   // what an automated check reads
+      })
+      .catch(function (e) {
+        err.textContent = 'cannot read the game list (' + e.message + '). ' +
+          'Bake it with:  ./build/demo --cmd collection.index projects collection.json';
+        document.body.dataset.games = 'error';
+      });
+  })();
+  </script>
+</body>
+</html>

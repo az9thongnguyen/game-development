@@ -40,7 +40,24 @@ Inspection inspect(const std::string& project_path,
     // how much it explains is what makes reading only the first line usually enough.
     for (const auto& e : validate(in.project, known_entries)) in.problems.push_back(e);
 
-    for (const auto& a : in.project.assets) {
+    // The cover is content: it ships, so it is hashed, and a cover that is not there
+    // is a broken project rather than a card with a hole in it. It is declared in its
+    // own field rather than as an `asset` line because the LAUNCHER does not need it —
+    // but the closure does, so it joins the list here.
+    //
+    // Unless the manifest already declared that exact path. The farm's cover is its own
+    // tileset, which is `asset texture textures/town.hrt`; hashing it twice would put
+    // the same bytes in the package under two names and change the release id for no
+    // change in content.
+    std::vector<AssetRef> declared = in.project.assets;
+    if (!in.project.cover.empty()) {
+        bool already = false;
+        for (const auto& a : declared)
+            if (a.path == in.project.cover) { already = true; break; }
+        if (!already) declared.push_back({"cover", in.project.cover});
+    }
+
+    for (const auto& a : declared) {
         InspectedAsset ia;
         ia.type = a.type;
         ia.path = a.path;
