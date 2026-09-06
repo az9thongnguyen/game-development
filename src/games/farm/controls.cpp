@@ -6,13 +6,13 @@
 namespace farm {
 namespace {
 
-// A finger is about 9 mm across; at the scale this game renders, 44 logical pixels is
-// the smallest square that can be hit reliably without looking at it. Below that a
-// d-pad becomes a game about aiming, which is not the game.
-constexpr int kBtn = 44;
-constexpr int kGap = 6;
-
-constexpr int kMargin = 16;
+// `kBtn` (44), `kGap`, `kMargin` and `kPadSpan` are facts about a HAND, so they live
+// in engine/ui/touch.hpp with the proportion rule and the pad arithmetic. Aliased
+// rather than re-declared: two numbers that must agree are one number.
+using touch::kBtn;
+using touch::kGap;
+using touch::kMargin;
+using touch::kPadSpan;
 
 // The hotbar. It is drawn on every screen the game has, so it has two heights: the
 // 24 px strip it has always been, and a full 44 when there is room for a thumb.
@@ -35,26 +35,9 @@ constexpr int kSlotGap = 4;
 // the binding rule is the two-fifths one below.
 constexpr int kHudBottom = kBtn + kSlotPad * 2;
 
-constexpr int kPadSpan = kBtn * 3 + kGap * 2;   // the d-pad is three buttons square
-
-bool pad_fits(int w, int h) {
-    // Whether the controls fit is a question about PROPORTION, not about pixels. A
-    // button has to stay 44 logical pixels to be hittable, so on a small framebuffer
-    // the pad stops being an overlay and becomes the screen — and a control that
-    // covers what it acts on is worse than one that is absent. Two rules, each with a
-    // reason rather than a threshold that happened to look right:
-    //
-    //   * the controls may take at most half the WIDTH, so at least half is world
-    //   * the d-pad may take at most two fifths of the HEIGHT, so the player can see
-    //     where they are walking to
-    //
-    // The first version of this used fixed minimums and drew the pad over the 480x270
-    // retro framebuffer, where three 44px buttons are half the screen's height.
-    if (kPadSpan + kBtn * 2 + kGap > w / 2) return false;
-    if (kPadSpan > h * 2 / 5) return false;
-    if (h < kMargin + kPadSpan + kHudBottom) return false;
-    return true;
-}
+// The proportion rule itself is `touch::pad_fits`; what this game supplies is what it
+// keeps below the pad.
+bool pad_fits(int w, int h) { return touch::pad_fits(w, h, kHudBottom); }
 
 // How tall the hotbar strip is on this screen. Asked by the panel too, so the one
 // place that decides it is the one place that has to change.
@@ -81,12 +64,9 @@ Layout layout(int w, int h, bool conflict) {
     if (!big) return l;
 
     // ---- the d-pad, bottom left --------------------------------------------------
-    const int px = kMargin;
-    const int py = h - kHudBottom - kPadSpan;
-    l.up    = Box{px + kBtn + kGap, py, kBtn, kBtn};
-    l.left  = Box{px, py + kBtn + kGap, kBtn, kBtn};
-    l.right = Box{px + (kBtn + kGap) * 2, py + kBtn + kGap, kBtn, kBtn};
-    l.down  = Box{px + kBtn + kGap, py + (kBtn + kGap) * 2, kBtn, kBtn};
+    const touch::DPad pad = touch::dpad(w, h, kHudBottom);
+    const int py = pad.y;
+    l.up = pad.up; l.left = pad.left; l.right = pad.right; l.down = pad.down;
 
     // ---- the actions, bottom right -----------------------------------------------
     // The middle row is where a thumb rests, so the two verbs pressed constantly live

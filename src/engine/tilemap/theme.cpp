@@ -1,11 +1,11 @@
 // =============================================================================
-//  games/farm/theme.cpp  —  see theme.hpp
+//  engine/tilemap/theme.cpp  —  see theme.hpp
 // =============================================================================
-#include "games/farm/theme.hpp"
+#include "engine/tilemap/theme.hpp"
 
 #include <sstream>
 
-namespace farm {
+namespace tilemap {
 
 const Theme::Art* Theme::find(const std::string& layer, int id) const {
     const auto it = art.find({layer, id});
@@ -64,4 +64,4 @@ std::optional<Theme> parse_theme(const std::string& text) {
     return t;
 }
 
-} // namespace farm
+} // namespace tilemap

@@ -20,23 +20,25 @@
 //  answer a tap it became a second layout for the same screen, which is precisely the
 //  drift this file exists to stop. Its geometry moved here rather than being copied.
 //
-//  PURE: numbers in, numbers out. No renderer, no input struct, no engine types, and
-//  no includes at all, so the geometry is unit-testable without a window. The prices
-//  in here (16, 8, 4) are the theme's spacing written out rather than included: this
-//  file is the one that decides where these controls go, and a screen laid out from
-//  two sources is the bug in the paragraph above.
+//  PURE: numbers in, numbers out. No renderer, no input struct, no engine types. The
+//  prices in here (16, 8, 4) are the theme's spacing written out rather than
+//  included: this file is the one that decides where these controls go, and a screen
+//  laid out from two sources is the bug in the paragraph above.
+//
+//  The one include is `engine/ui/touch.hpp`, which chapter 137 cut out of this file
+//  when a second game arrived. What went there is what is true of any HAND — a 44 px
+//  minimum, and the proportion rule for whether a pad may cover the screen — plus the
+//  d-pad's own three-by-three arithmetic. What stayed here is the LAYOUT, because
+//  this pad sits above a four-slot hotbar and the creature game's does not.
 // =============================================================================
 #pragma once
 
+#include "engine/ui/touch.hpp"
+
 namespace farm {
 
-struct Box {
-    int x = 0, y = 0, w = 0, h = 0;
-    [[nodiscard]] bool contains(int px, int py) const {
-        return px >= x && py >= y && px < x + w && py < y + h;
-    }
-    [[nodiscard]] bool empty() const { return w <= 0 || h <= 0; }
-};
+using Box     = touch::Box;
+using Pointer = touch::Pointer;
 
 // Where every on-screen control sits, in FRAMEBUFFER coordinates — the same space
 // the pointer arrives in, so no transform stands between drawing and hitting.
@@ -72,12 +74,6 @@ Layout layout(int w, int h, bool conflict);
 
 // What the pointer is doing, in framebuffer coordinates. -1 = the pointer is not on
 // screen (the Play viewport blanks it when the mouse leaves).
-struct Pointer {
-    int  x = -1, y = -1;
-    bool down = false;      // held this frame
-    bool pressed = false;   // went down this frame
-};
-
 struct Action {
     int  dx = 0, dy = 0;    // a HELD direction, like the arrow keys
     bool use  = false;      // a fresh press, like Z

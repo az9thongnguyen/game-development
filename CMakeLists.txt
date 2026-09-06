@@ -457,6 +457,8 @@ add_library(tilemap_core STATIC
   src/engine/tilemap/map2.cpp
   src/engine/tilemap/camera2d.cpp
   src/engine/tilemap/autotile.cpp
+  src/engine/tilemap/theme.cpp        # moved out of farm_core in chapter 137: a second
+                                      # game needed "which picture does this id wear"
 )
 target_include_directories(tilemap_core PUBLIC src)
 target_link_libraries(tilemap_core PRIVATE engine_flags)
@@ -543,7 +545,6 @@ add_test(NAME map_workspace COMMAND test_map_workspace)
 # test can play three days and check the parsnips came up when the definition says.
 add_library(farm_core STATIC
   src/games/farm/defs.cpp
-  src/games/farm/theme.cpp
   src/games/farm/controls.cpp
   src/games/farm/world.cpp
   src/games/farm/dialogue.cpp

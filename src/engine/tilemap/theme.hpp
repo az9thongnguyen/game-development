@@ -1,5 +1,5 @@
 // =============================================================================
-//  games/farm/theme.hpp  —  which picture a tile id wears
+//  engine/tilemap/theme.hpp  —  which picture a tile id wears
 // =============================================================================
 //  The map stores SEMANTIC ids: ground 1 is grass, ground 2 is the path, decor 1 is
 //  a tree. That is what an author edits and what the Studio's palette shows, and it
@@ -38,7 +38,7 @@
 
 #include "engine/tilemap/map2.hpp"
 
-namespace farm {
+namespace tilemap {
 
 struct Theme {
     struct Sheet {
@@ -93,4 +93,4 @@ std::optional<Theme> parse_theme(const std::string& text);
 // scan, in the map module, where the Map workspace can call it too. A copy of it here
 // is why the editor drew a flat square for a road it had no idea was a road.
 
-} // namespace farm
+} // namespace tilemap

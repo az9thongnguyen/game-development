@@ -23,7 +23,7 @@
 #include "games/farm/controls.hpp"
 #include "engine/tilemap/autotile.hpp"
 #include "engine/tilemap/map2.hpp"
-#include "games/farm/theme.hpp"
+#include "engine/tilemap/theme.hpp"
 #include "games/studio/recipe.hpp"
 #include "games/studio/texture_gen.hpp"
 #include "engine/assets.hpp"
@@ -41,6 +41,10 @@ static int g_failures = 0;
     } while (0)
 
 using namespace farm;
+// The theme parser moved to `tilemap` in chapter 137, when a second game needed it.
+// The theme FILE it is pointed at is still farm content, which is why these checks
+// stayed here rather than following the code.
+using tilemap::parse_theme;
 
 namespace {
 
@@ -637,8 +641,8 @@ static void test_theme() {
     // The join, and the reason there are two sheets at all: two ids in the SAME layer
     // resolve to different files. Grass comes from the imported pack, the pond from a
     // tile this project drew, and the map does not know or care which.
-    const farm::Theme::Art* grass = t->find("ground", 1);
-    const farm::Theme::Art* pond  = t->find("ground", 3);
+    const tilemap::Theme::Art* grass = t->find("ground", 1);
+    const tilemap::Theme::Art* pond  = t->find("ground", 3);
     CHECK(grass && grass->sheet == "town"  && grass->index == 0);   // index 0 is a TILE
     CHECK(pond  && pond->sheet  == "water" && pond->index  == 0);   // ...in a different file
     CHECK(t->find("ground", 2)->index == 40);
@@ -691,7 +695,7 @@ static void test_theme() {
     const auto a = parse_theme("sheet p path.hrt\ntile ground 2 p 0\ntile decor 1 p 3\n");
     CHECK(a.has_value());
     if (!a) return;
-    const farm::Theme::Art* road = a->find("ground", 2);
+    const tilemap::Theme::Art* road = a->find("ground", 2);
     CHECK(road && road->index == 0);
     CHECK(a->find("decor", 1) && a->find("decor", 1)->index == 3);
 
