@@ -191,6 +191,41 @@ target_link_libraries(test_farm_live PRIVATE gbaas_sdk baas_core farm_core ui_co
 add_test(NAME farm_live COMMAND test_farm_live)
 
 # End-to-end realtime: the SDK's NATIVE ws:// transport against a live server.
-add_executable(test_sdk_realtime_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_realtime_live.cc)
-target_link_libraries(test_sdk_realtime_live PRIVATE gbaas_sdk baas_core CURL::libcurl engine_flags)
-add_test(NAME sdk_realtime_live COMMAND test_sdk_realtime_live)
+#
+# Gated on exactly what the TRANSPORT is gated on. sdk/cpp/CMakeLists.txt looks for
+# curl/websockets.h (libcurl >= 7.86) and, when it is missing, compiles the native
+# realtime transport as an inert stub and says so. This test drives raw ws frames with
+# curl_ws_recv, so without that header it does not COMPILE — and it was added
+# unconditionally, which meant the SDK degraded gracefully and the test that exercises
+# the degradation took the whole `baas` half of the build down with it.
+#
+# Nobody saw it because the only machine that ever built this half was a Mac with
+# Homebrew's curl 8.x. Ubuntu 22.04 ships 7.81 — and Ubuntu 22.04 is the base of the
+# backend's own container image, so "any machine" included CI the moment CI started
+# building it (chapter 129).
+#
+# The message is not decoration: a test that vanishes quietly is the exact failure this
+# whole slice exists to end, so a skip has to be as loud as a failure.
+if(GBAAS_CURL_WS_INC AND GBAAS_CURL_WS_LIB)
+  add_executable(test_sdk_realtime_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_realtime_live.cc)
+  target_link_libraries(test_sdk_realtime_live PRIVATE gbaas_sdk baas_core CURL::libcurl engine_flags)
+  add_test(NAME sdk_realtime_live COMMAND test_sdk_realtime_live)
+else()
+  message(STATUS
+    "baas: SKIPPING sdk_realtime_live — this libcurl has no WebSocket API (needs >= 7.86). "
+    "The SDK's native realtime is a stub in this build too, so the test would have "
+    "nothing to drive.")
+endif()
+
+# ---- one target for the Drogon-gated half ------------------------------------
+# CI runs the engine's 48 tests in a job with no Drogon, and these 28 in a job that
+# has it. That second job must not rebuild the first 48 to reach them, and it must
+# not carry a hand-written list of target names either — a list is a thing that goes
+# stale the day somebody adds a test and forgets it, which is exactly how this half
+# stayed dark in the first place.
+#
+# BUILDSYSTEM_TARGETS is every target THIS directory defines, so the grouping is the
+# directory, the same thing `ctest --test-dir build/baas` already selects on.
+get_property(baas_dir_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+add_custom_target(baas_tests)
+add_dependencies(baas_tests ${baas_dir_targets})

@@ -53,7 +53,7 @@ chuỗi). Cả hai là nợ nhỏ → gom vào slice dọn cuối, không phải
 |---|---|---|
 | **Touch trên web** | **0 dòng** trong `shell.html`; không set SDL touch hint ở nhánh Emscripten | `grep -c "touch\|pointer" web/shell.html` = 0; không có `SDL_HINT_TOUCH_MOUSE_EVENTS` trong `backend_sdl.cpp` |
 | **Trang web vẫn là debug shell** | font mono, panel `#log` luôn hiện, 123 dòng | `web/shell.html:22,32-33,41` |
-| **CI không chạy 23 test BaaS** | không có Drogon trong CI → cả bộ **tối** | `.github/workflows/ci.yml` không chứa `drogon`; `ls tests/test_baas_*.cc` = 23 |
+| **CI không chạy 28 test BaaS** | không có Drogon trong CI → cả bộ **tối ở CI** (chúng vẫn chạy ở máy này) | `ctest -N` = **76**; cấu hình lại với `-DCMAKE_DISABLE_FIND_PACKAGE_Drogon=ON` (đúng cái CI thấy) = **48**. Hiệu số là 28, không phải 23 — 23 là số *file* `test_baas_*.cc`, không phải số test đăng ký |
 | **`fpsmap1` vẫn sống** | hai định dạng map song song | `fps/map.{hpp,cpp}`, `raycast_scene.cpp`, `map_workspace.hpp`, `main.cpp`, `assets/maps/level_00.map` |
 | **Số lab là 13, không phải 9** | `scene pixel map texture editor fx light audio anim 3d viz3d iso colony` | `labs()` trong `src/main.cpp` |
 | **IntGrid + rule engine** | không tồn tại | `grep -rn intgrid src/` = rỗng |
@@ -93,7 +93,7 @@ minh) sớm; (c) nợ kiến trúc trước tính năng mới; (d) rủi ro cao 
 | # | Slice | ~ PLAN v2 | Size |
 |---|---|---|---|
 | S19 | Trang web thật + **chứng minh chạm** | T6 (nửa đầu) | M |
-| S20 | CI chạy 23 test BaaS (container Drogon) | T9a | S |
+| S20 | CI chạy 28 test BaaS (container Drogon) | T9a | S |
 | S21 | Collection page + `cover`/`summary` + README template | T6 (nửa sau) | S/M |
 | S22 | Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card | T4 + trần ch.127 | M |
 | S23 | Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1` | T3 (nửa đầu) | L |

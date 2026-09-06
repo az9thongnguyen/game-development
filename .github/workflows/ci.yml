@@ -4,11 +4,18 @@
 #  Reproduces the baseline on a fresh machine so a "it builds and tests pass"
 #  claim does not depend on the maintainer's laptop. The test_* targets are
 #  dependency-free and headless (no window/display), so ctest runs on CI as-is;
-#  building `demo` links SDL2 but does not need a display. The Drogon-guarded
-#  `baas` target is skipped automatically when Drogon is absent.
+#  building `demo` links SDL2 but does not need a display.
 #
-#  Authored 2026-07-11. NOTE: written but not run in the authoring environment —
-#  its first green run is the owner's verification after push.
+#  "The Drogon-guarded `baas` target is skipped automatically when Drogon is
+#  absent" used to be the end of that sentence, and it hid a number: skipping it
+#  skipped 28 of the 76 tests — every one about auth, tokens, purchases, cloud
+#  saves and the three that boot a real server. The `baas-test` job below installs
+#  Drogon instead of routing around it (chapter 129).
+#
+#  Authored 2026-07-11. The two newest jobs (`web-build`'s page check and
+#  `baas-test`) were RUN before they were pushed — the web one against a local
+#  Chrome, the BaaS one inside this very image. The older steps were not; that
+#  note used to cover the whole file and now covers only them.
 # =============================================================================
 name: CI
 
@@ -123,7 +130,8 @@ jobs:
   #  nothing and would have caught the leak: the preload manifest inside demo.js
   #  must not name a file from a directory that is gitignored as local state.
   #
-  #  NOTE: written but not run in the authoring environment.
+  #  The build steps were written blind in 2026-07-11; the page check below was
+  #  run locally against Chrome before it was pushed (chapter 128).
   web-build:
     name: web build (emscripten)
     runs-on: ubuntu-latest
@@ -166,3 +174,66 @@ jobs:
           google-chrome --version || true
           node --version
           node scripts/web_touch_check.mjs --dir build-web
+
+  # ---------------------------------------------------------------------------
+  #  BaaS — the half of the suite that had never run anywhere but a laptop
+  # ---------------------------------------------------------------------------
+  #  `ctest` on this machine reports 76 tests. The job above reports 48. The 28 in
+  #  between are the Drogon-gated ones — auth, JWT, leaderboard, cloud save,
+  #  inventory, purchases, RBAC, live ops, replays, tracing, and the three
+  #  end-to-end runs that boot a real server and drive it with the real SDK — and
+  #  they were dark in CI from the day they were written, because the runner only
+  #  ever installed SDL2.
+  #
+  #  The recipe is not new: baas/ops/Dockerfile has built this exact thing since
+  #  chapter 107 (`-DENGINE_BUILD_DESKTOP=OFF`, so no SDL2 is needed and the
+  #  backend image can exist at all). This job is that Dockerfile's build stage,
+  #  stopping at the tests instead of the binary.
+  #
+  #  Verified by running it: the same image, the same steps, on this branch.
+  baas-test:
+    name: baas tests (drogon)
+    runs-on: ubuntu-latest
+    container: drogonframework/drogon:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: What the Drogon image does not carry
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libsodium-dev libcurl4-openssl-dev pkg-config
+          cmake --version
+
+      - name: Configure, and SAY what this environment cannot build
+        run: |
+          set -o pipefail
+          cmake -B build-baas -DCMAKE_BUILD_TYPE=Release -DENGINE_BUILD_DESKTOP=OFF \
+            2>&1 | tee /tmp/configure.log
+          echo "--- skipped in this environment ---"
+          grep -iE 'SKIPPING|stub' /tmp/configure.log || echo "(nothing skipped)"
+
+      - name: Build the Drogon-gated half
+        run: |
+          # `baas_tests` is every target baas/CMakeLists.txt defines, so this job
+          # does not rebuild the 48 the job above already ran — and does not carry
+          # a list of target names that would go stale.
+          cmake --build build-baas --target baas_tests -j"$(nproc)"
+
+      - name: Run them
+        # --test-dir <build>/baas selects exactly the tests that directory registers.
+        run: ctest --test-dir build-baas/baas --output-on-failure
+
+      - name: ...and there really were 27 of the 28
+        run: |
+          n=$(ctest --test-dir build-baas/baas -N | grep -cE 'Test +#')
+          echo "registered baas tests: $n"
+          # A green job that ran nothing is the failure mode this whole slice is
+          # about. Assert a floor, not an exact count: adding a test must not break
+          # CI, losing the directory must.
+          #
+          # 27, not 28: `sdk_realtime_live` needs libcurl >= 7.86 for the WebSocket
+          # API, and this image is Ubuntu 22.04 with 7.81. The configure output above
+          # names it. That one test still only runs on a machine with a modern curl —
+          # see the chapter; it is a ceiling, not an oversight.
+          [ "$n" -ge 27 ] || { echo "::error::only $n baas tests were registered"; exit 1; }
