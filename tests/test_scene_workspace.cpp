@@ -21,7 +21,9 @@
 #include "engine/assets.hpp"
 #include "engine/commands/registry.hpp"
 #include "engine/renderer2d.hpp"
+#include "engine/ui/theme.hpp"
 #include "engine/ui/ui.hpp"
+#include "games/studio_shell/sound_bank.hpp"
 #include "games/sandbox/serialize.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
 
@@ -216,6 +218,16 @@ static void test_inspector_scrolls_and_offscreen_is_dead() {
     // chapter 133 it simply kept drawing, straight over the pinned Save button.
     CHECK(ws.inspector_content_height() > ws.inspector_viewport().h);
 
+    // ui::Context::slider draws its "label: value" ABOVE the rect it is given, so a
+    // row must clear the row before it by at least that line. Only the screenshot
+    // caught this the first time; it is an arithmetic fact and belongs in an assertion.
+    scroll_to_top(d, ws);
+    const ui::Rect rate = scroll_until(d, ws, "emitter.rate");
+    const ui::Rect box  = ws.control_rect("emitter");
+    CHECK(box.w > 0 && rate.w > 0);
+    if (box.w > 0 && rate.w > 0)
+        CHECK(rate.y - (box.y + box.h) >= ui::theme::sz_caption);
+
     // Where the emitter checkbox sits when it IS in reach. It is already below the
     // fold at the top of the body — the PLACE palette alone is taller than this
     // viewport — which is the whole reason the body scrolls.
@@ -285,24 +297,30 @@ static void test_flipbook_controls() {
     Driver d;
     studioshell::SceneWorkspace ws(kPath);
     select_first(d, ws);
-    // 24 frames at 8 fps is 3 s of animation; the actor's sheet has 4 frames.
-    for (int i = 0; i < 24; ++i) d.panel(ws, ui::Input{});
     sandbox::World& w = const_cast<sandbox::World&>(ws.world());
-    float t = 0;
-    int seen = 0;
-    w.reg.view<sandbox::Sprite>([&](ecs::Entity, sandbox::Sprite& s) {
-        if (s.frames > 1) { t = s.t; ++seen; }
-    });
-    CHECK(seen == 1);
-    CHECK(t > 0.0f);                                  // it animates while STOPPED
+    const auto clock = [&] {
+        float t = -1;
+        w.reg.view<sandbox::Sprite>([&](ecs::Entity, sandbox::Sprite& s) {
+            if (s.frames > 1) t = s.t;
+        });
+        return t;
+    };
+
+    // Scroll to Restart FIRST, then advance the clock: every frame animates, so
+    // measuring across the scroll would compare two arbitrary points of a 0.5 s cycle
+    // and a Restart that did nothing could still look like it went back.
+    const ui::Rect restart = scroll_until(d, ws, "flipbook.restart");
+    CHECK(restart.w > 0);
+    click(d, ws, restart);                            // start from a known zero: the
+    for (int i = 0; i < 20; ++i) d.panel(ws, ui::Input{});   // clock wraps every 0.5 s
+    const float t = clock();
+    CHECK(t > 0.2f);                                  // it animates while STOPPED
 
     const bool was_dirty = ws.dirty();
-    CHECK(click_control(d, ws, "flipbook.restart"));
-    float after = -1;
-    w.reg.view<sandbox::Sprite>([&](ecs::Entity, sandbox::Sprite& s) {
-        if (s.frames > 1) after = s.t;
-    });
-    CHECK(after >= 0.0f && after < t);                // the clock went back
+    click(d, ws, restart);                            // 3 frames: press, release, idle
+    const float after = clock();
+    CHECK(after >= 0.0f && after < 4.0f / 60.0f);     // back to ~0, not merely smaller
+    CHECK(after < t);
     CHECK(ws.dirty() == was_dirty);                   // ...and it is not a document edit
 
     // `loop` IS document state, so toggling it must be saved and undoable.
@@ -310,6 +328,45 @@ static void test_flipbook_controls() {
     CHECK(scene_of(ws).find("noloop") != std::string::npos);
     cmd_undo(ws);
     CHECK(scene_of(ws).find("noloop") == std::string::npos);
+}
+
+// ---- 4b. the speaker: silence is not something you stream ------------------
+namespace fake {
+int  g_calls = 0, g_samples = 0;
+bool open() { return true; }
+int  rate() { return 8000; }
+void play(const std::int16_t*, int n) { ++g_calls; g_samples += n; }
+} // namespace fake
+
+static void test_sound_bank_only_streams_when_something_plays() {
+    studioshell::set_audio_device({&fake::open, &fake::rate, &fake::play});
+    fake::g_calls = 0;
+    {
+        studioshell::SoundBank bank;
+        bank.pump();
+        bank.pump();
+        CHECK(fake::g_calls == 0);           // nothing playing: leave the device alone
+        CHECK(bank.voices() == 0);
+
+        bank.play(studioshell::Workspace::SoundRequest{440.0f, 50.0f, 0.8f});
+        CHECK(bank.device_ok());
+        CHECK(bank.voices() == 1);
+        bank.pump();
+        CHECK(fake::g_calls == 1);
+
+        // A clip is cached by (hz, ms) — the mixer holds pointers into it, so the same
+        // request twice must not resynthesise and must not move what it handed out.
+        bank.play(studioshell::Workspace::SoundRequest{440.0f, 50.0f, 0.4f});
+        CHECK(bank.voices() == 2);
+
+        // 8000 Hz for 50 ms is 400 samples; a 133-sample chunk drains it in 4 pumps.
+        for (int i = 0; i < 8; ++i) bank.pump();
+        CHECK(bank.voices() == 0);
+        const int settled = fake::g_calls;
+        bank.pump();
+        CHECK(fake::g_calls == settled);     // ...and it goes quiet again
+    }
+    studioshell::set_audio_device({});
 }
 
 // ---- 5. a frame for a human to look at -------------------------------------
@@ -346,6 +403,7 @@ int main() {
     test_scrolled_body_does_not_eat_the_header();
     test_sound_reaches_the_host_during_play();
     test_flipbook_controls();
+    test_sound_bank_only_streams_when_something_plays();
     test_screenshot();
 
     assets::set_base_path(".");

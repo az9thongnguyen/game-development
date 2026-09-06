@@ -238,6 +238,16 @@ static void test_light_roundtrip_and_follows() {
     w.tick(1.0f);
     CHECK(approx(w.reg.get<Transform2D>(e)->x, 110.0));   // the light's position IS this
 
+    // A ONE-field light keeps both remaining defaults. Zeroing what the text does not
+    // mention would make `light=90` an invisible light with intensity 0, which reads
+    // as "the component does nothing" rather than "the file said less than it could".
+    World w3 = from_scene("sandbox1\nbounds 640 360\ne x=1 y=1 color=ffffff w=8 h=8 light=90\n");
+    ecs::Entity le3{};
+    w3.reg.view<Light>([&](ecs::Entity h, Light&) { le3 = h; });
+    const Light* L3 = w3.reg.get<Light>(le3);
+    CHECK(L3 != nullptr);
+    if (L3) { CHECK(approx(L3->radius, 90.0)); CHECK(approx(L3->intensity, Light{}.intensity)); }
+
     // A colour-less light keeps its default; "the text after the last comma" would
     // read the intensity as a colour and dye it black.
     World w2 = from_scene("sandbox1\nbounds 640 360\ne x=1 y=1 color=ffffff w=8 h=8 light=90,2\n");
@@ -288,6 +298,13 @@ static void test_flipbook_clock() {
     const float before = w.reg.get<Sprite>(e)->t;
     w.tick(0.25f);
     CHECK(approx(w.reg.get<Sprite>(e)->t, before));
+
+    // A STILL sprite never writes `noloop`, whatever its loop flag says: looping is
+    // meaningless without frames, and writing it would move the bytes of every scene
+    // file that has a plain coloured square in it.
+    Archetype still; still.frames = 1; still.loop = false;
+    World w1; w1.spawn(still, 0, 0);
+    CHECK(to_scene(w1).find("noloop") == std::string::npos);
 
     Archetype once; once.frames = 4; once.fps = 8.0f; once.loop = false;
     ecs::Entity o = w.spawn(once, 0, 0);

@@ -484,13 +484,14 @@ add_test(NAME pixel_workspace COMMAND test_pixel_workspace)
 # whose questions are about REACH: a control below the fold of a scrolling inspector.
 add_executable(test_scene_workspace tests/test_scene_workspace.cpp
   src/games/studio_shell/scene_workspace.cpp
+  src/games/studio_shell/sound_bank.cpp
   src/engine/renderer2d.cpp
   src/engine/assets.cpp
   src/engine/image.cpp
 )
 target_include_directories(test_scene_workspace PRIVATE src)
 target_link_libraries(test_scene_workspace PRIVATE
-  sandbox_core ecs_core commands_core document_core ui_core text_core light_core engine_flags)
+  sandbox_core ecs_core commands_core document_core ui_core text_core light_core audio_core engine_flags)
 add_test(NAME scene_workspace COMMAND test_scene_workspace)
 
 add_executable(test_map_workspace tests/test_map_workspace.cpp
