@@ -115,7 +115,10 @@ StudioShellScene::StudioShellScene(std::string project_path,
       known_entries_(std::move(known_entries)),
       map_(asset_of(project_path_, known_entries_, "map")),
       scene_(asset_of(project_path_, known_entries_, "scene")),
-      pixels_(assets_of(project_path_, known_entries_, "texture")) {
+      // The manifest goes in too: a sheet created here is declared in the project
+      // that is open, which is the whole difference between making a file and
+      // adding an asset.
+      pixels_(assets_of(project_path_, known_entries_, "texture"), project_path_) {
     rebuild();
     workspaces_ = {&map_, &scene_, &pixels_};
     // Each workspace binds its own ids here, so the palette lists exactly what THIS
@@ -143,6 +146,9 @@ void StudioShellScene::rebuild() {
     hub_        = engine::build_hub_view(project_path_, known_entries_);
     inspection_ = engine::inspect(project_path_, known_entries_);
     history_    = engine::log();
+    // Computed here and not per frame: it walks the whole asset tree, which is cheap
+    // once and wasteful sixty times a second.
+    ledger_     = engine::scan_provenance();
 }
 
 void StudioShellScene::run(projectui::Op op) {
@@ -486,7 +492,7 @@ void StudioShellScene::render(const engine::Context& ctx) {
     if (section_ == Edit) {
         draw_edit_section(g, area);
     } else if (section_ == Project) {
-        run(projectui::draw_project_panel(ui_, g, inspection_, area, asset_sel_));
+        run(projectui::draw_project_panel(ui_, g, inspection_, ledger_, area, asset_sel_));
     } else if (section_ == Play) {
         draw_play_section(g, area, ctx.font, ctx.dt);
     } else if (section_ == Hub) {

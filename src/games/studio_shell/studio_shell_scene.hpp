@@ -23,6 +23,7 @@
 #include "engine/ui/ui.hpp"
 #include "games/hub/hub_panel.hpp"
 #include "games/studio_shell/map_workspace.hpp"
+#include "engine/asset/provenance.hpp"
 #include "engine/project/inspect.hpp"
 #include "games/studio_shell/palette.hpp"
 #include "games/studio_shell/play_viewport.hpp"
@@ -118,6 +119,7 @@ private:
     MapWorkspace                   map_;
     SceneWorkspace                 scene_;
     PixelWorkspace                 pixels_;
+    engine::Ledger                 ledger_{};   // where each picture came from
     // Concrete members, plus a vector of pointers to drive them through the interface.
     // ponytail: the set is fixed at construction, so no allocation and no ownership
     // question; it becomes unique_ptrs the day a workspace can be opened and closed.

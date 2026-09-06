@@ -44,9 +44,32 @@ constexpr gfx::Color kCheckB = 0xFF232833;
 
 // ---- construction ------------------------------------------------------------
 
-PixelWorkspace::PixelWorkspace(std::vector<std::string> texture_paths)
-    : paths_(std::move(texture_paths)) {
+PixelWorkspace::PixelWorkspace(std::vector<std::string> texture_paths,
+                               std::string project_path)
+    : paths_(std::move(texture_paths)), project_(std::move(project_path)) {
     load();
+}
+
+engine::OpResult PixelWorkspace::new_sheet(const std::string& name) {
+    // Same refusal as open_index, for the same reason: the new sheet OPENS, and
+    // opening drops unsaved pixels with no undo across it. Guards have a reverse
+    // direction — after a save this must go through, and the test says so.
+    if (dirty())
+        return {false, "save or undo first — a new sheet opens over this one"};
+
+    // The operation is `asset.new`, not a private copy of it. Everything it does —
+    // the source, the bake, the manifest line, the ledger — happens once, in a core,
+    // and this button is a caller.
+    engine::OpResult r = cmd::run("asset.new", {name, "16", "1", "1", project_});
+    if (!r.ok) return r;
+
+    const std::string dst = "textures/" + name + ".hrt";
+    paths_.push_back(dst);
+    const engine::OpResult opened = open_index(static_cast<int>(paths_.size()) - 1);
+    if (!opened.ok) return opened;   // created, but say plainly that it is not open
+
+    new_name_.clear();
+    return r;   // asset.new's message names every file it touched, which is the point
 }
 
 PixelWorkspace::~PixelWorkspace() {
@@ -174,6 +197,14 @@ void PixelWorkspace::register_commands() {
     // The same operation the inspector's texture list performs. A project has several
     // sheets and the keyboard has to reach them too — and routing both through
     // open_index is what stops the button and the command from drifting apart.
+    // Creating a sheet is an operation, so it is in the palette too — and both it and
+    // the inspector's Create button call new_sheet(), never asset.new directly.
+    cmd::register_command(cmd::Info{"pixel.new", "Pixels: new sheet", "", "<name>"},
+                          [this](const std::vector<std::string>& a) {
+                              if (a.empty() || a[0].empty())
+                                  return engine::OpResult{false, "usage: pixel.new <name>"};
+                              return new_sheet(a[0]);
+                          });
     cmd::register_command(cmd::Info{"pixel.next", "Pixels: next texture", "", ""},
                           [this](const std::vector<std::string>&) {
                               if (paths_.size() < 2) return engine::OpResult{false, "only one texture"};
@@ -279,6 +310,10 @@ void PixelWorkspace::update(double dt, const platform::InputState& in, bool inte
         want_mix_.reset();
     }
     if (want_colour_) { adopt(*want_colour_); want_colour_.reset(); }
+    if (want_new_) {
+        want_new_ = false;
+        message_  = new_sheet(new_name_);
+    }
     if (want_index_ >= 0) {
         const int next = want_index_;
         want_index_ = -1;
@@ -639,6 +674,29 @@ void PixelWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
         ui.skip();
     }
 
+    // ---- a sheet that does not exist yet ----
+    // The ceiling chapter 127 recorded: this workspace could change art and could not
+    // ADD any. Always drawn, unlike the list above — with one texture open there is
+    // no list, and "you may only create a second sheet once you have two" is not a
+    // rule anyone meant.
+    {
+        g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_xs).y, "NEW SHEET", th::text_muted);
+        ui.push_id("new");
+        const ui::Rect row = ui.slot(28);
+        const int      bw  = 74;
+        new_name_rect_     = ui::Rect{row.x, row.y, row.w - bw - th::space_xs, row.h};
+        new_button_rect_   = ui::Rect{row.x + row.w - bw, row.y, bw, row.h};
+        ui.text_input("name", new_name_rect_, new_name_, "name");
+        new_focused_ = (ui.focused() == ui.id_for("name"));
+        // Disabled with no name and while dirty — the two states new_sheet() refuses.
+        // A button that looks pressable and answers with an error is the chapter-126
+        // bug wearing a different hat.
+        if (ui.button(new_button_rect_, "Create", false, !new_name_.empty() && !dirty()))
+            want_new_ = true;
+        ui.pop_id();
+        ui.skip();
+    }
+
     // ---- history ----
     {
         const ui::Rect row = ui.slot(30);
@@ -657,6 +715,7 @@ void PixelWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
     // the loss is visible.
     const ui::Rect save_row = ui.slot(30);
     inspector_clipped_      = save_row.h < 30;
+    save_rect_              = save_row;
     if (ui.button(save_row, dirty() ? "Save  *" : "Save", dirty())) want_save_ = true;
 
     g.set_font_size(th::sz_caption);

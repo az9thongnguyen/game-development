@@ -459,7 +459,46 @@ void test_hex() {
 }
 } // namespace
 
+// A new sheet is TEXT, not a blank image, and that is a design decision worth
+// pinning: a `.hrt` written straight out would arrive with no origin — the exact
+// hole engine::scan_provenance refuses — and could never be edited as anything but
+// pixels. So the thing to check is that what comes out is a valid SOURCE.
+static void test_blank_sheet() {
+    const std::string s = paint::blank_sheet(8, 3, 2, "road");
+    CHECK(!s.empty());
+    CHECK(s.find("size 8\n") != std::string::npos);
+    CHECK(s.find("grid 3 2\n") != std::string::npos);
+    CHECK(s.find("road") != std::string::npos);           // the name is in the comment
+
+    // Every slot present: the parser refuses a grid with a hole in it, so a creation
+    // path emitting five of six tiles would produce a file its own parser rejects.
+    for (int i = 0; i < 6; ++i)
+        CHECK(s.find("tile " + std::to_string(i) + "\n") != std::string::npos);
+
+    std::string why;
+    const auto img = paint::bake_pixels(s, &why);
+    CHECK(img.has_value());
+    if (!img) std::printf("      why: %s\n", why.c_str());
+    if (img) {
+        CHECK(img->w == 24 && img->h == 16);
+        for (gfx::Color c : img->pixels) CHECK((c >> 24) == 0);
+    }
+
+    // Refusals, each its own reason to exist.
+    CHECK(paint::blank_sheet(0, 1, 1, "x").empty());
+    CHECK(paint::blank_sheet(8, 0, 1, "x").empty());
+    CHECK(paint::blank_sheet(8, 1, 0, "x").empty());
+    CHECK(paint::blank_sheet(-8, 1, 1, "x").empty());
+    // The cap is checked by DIVISION, before the multiply that would overflow.
+    CHECK(paint::blank_sheet(16, 99999, 99999, "x").empty());
+    CHECK(paint::blank_sheet(1000000, 1000000, 1, "x").empty());
+    // ...and the other direction of the guard: exactly at the cap is allowed.
+    CHECK(!paint::blank_sheet(16, 256, 1, "x", 4096).empty());
+    CHECK(paint::blank_sheet(16, 257, 1, "x", 4096).empty());
+}
+
 int main() {
+    test_blank_sheet();
     test_rect();
     test_fill();
     test_command();

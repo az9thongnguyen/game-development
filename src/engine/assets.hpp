@@ -53,6 +53,20 @@ bool rename(const std::string& from, const std::string& to);
 // and no caller has to know which filesystem it is standing on.
 std::vector<std::string> list_dir(const std::string& dir, const std::string& suffix = "");
 
+// Every file at or below `dir` (base-relative) whose name ends in `suffix`, returned
+// as paths relative to the BASE — so a result can be handed straight back to
+// load_file — sorted.
+//
+// list_dir answers "what is in this folder"; this answers "what is in this SUBTREE",
+// and the difference is whether a caller can be complete. A provenance ledger that
+// listed only `textures/` would have missed `pieces/` and `sprites/` and reported a
+// clean sheet — the same shape of hole as chapter 128's preload denylist, where the
+// thing that got through was the line nobody added.
+//
+// Directories are never returned, symlinks are not followed, and a missing directory
+// is an empty list, exactly as in list_dir.
+std::vector<std::string> list_tree(const std::string& dir, const std::string& suffix = "");
+
 // Last-modified time as implementation-defined ticks (for hot-reload change
 // detection), or 0 if the file is missing or the platform can't report it (e.g. the
 // web has no filesystem watch). Only meaningful when compared against a prior value.

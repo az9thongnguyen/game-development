@@ -91,17 +91,62 @@ Reproduce it with:
 ./build/demo --cmd asset.pixels textures/farm_path.pix textures/farm_path.hrt
 ```
 
-## Fonts
+## The ledger — generated, not remembered
 
-| | |
-|---|---|
-| **Inter**, **JetBrains Mono** | `assets/fonts/` — SIL Open Font License 1.1, licence text alongside the files |
+Everything above is prose: why a tile exists, which palette it borrows, what the
+`.recipe` means. A person writes that and a person should.
 
-## Everything else
+The **list** below is not prose, and a person should not write it. It is derived from
+what is actually on disk by `engine::scan_provenance`, because the three offline doors
+each leave a different mark — an `import` line in a `.pack`, a sibling `.recipe`, a
+sibling `.pix` — and a mark can be read. A `.hrt` with none of the three is
+`UNRECORDED`, `test_provenance` goes red, and `asset.attribution` exits non-zero.
 
-Every other pixel in `assets/` was produced by code in this repository — the Texture
-Lab (`--lab texture`), the sprite generators in the demos, or the Map/Scene
-workspaces. Art drawn there and art imported from a pack are the same format on disk
-(`.hrt`), which is what lets one be swapped for the other a tile at a time — and
-`assets/farm/theme.def` is the proof: two sheets with two origins, joined per tile id,
-and neither file knows the other exists.
+That is the difference this section exists to make. The rule in `CLAUDE.md` — *every
+new `.hrt` gains a line here in the same change* — was true and unenforced, and the
+proof is in the table: twenty of these files were, until this was written, covered by
+one closing sentence saying everything else came from code in this repo. Probably
+true. Not checkable, which is not evidence. They are now `declared` — named one by
+one in `ours.pack`, which is a weaker claim than a re-runnable bake and reads as such.
+
+Re-bake it with:
+
+```sh
+./build/demo --cmd asset.attribution ATTRIBUTION.md
+```
+
+<!-- BEGIN LEDGER (generated) -->
+
+| Asset | Origin | Source | Licence |
+|---|---|---|---|
+| `colony_agent.hrt` | declared | `ours.pack` | this repository |
+| `pieces/bB.hrt` | declared | `ours.pack` | this repository |
+| `pieces/bK.hrt` | declared | `ours.pack` | this repository |
+| `pieces/bN.hrt` | declared | `ours.pack` | this repository |
+| `pieces/bP.hrt` | declared | `ours.pack` | this repository |
+| `pieces/bQ.hrt` | declared | `ours.pack` | this repository |
+| `pieces/bR.hrt` | declared | `ours.pack` | this repository |
+| `pieces/wB.hrt` | declared | `ours.pack` | this repository |
+| `pieces/wK.hrt` | declared | `ours.pack` | this repository |
+| `pieces/wN.hrt` | declared | `ours.pack` | this repository |
+| `pieces/wP.hrt` | declared | `ours.pack` | this repository |
+| `pieces/wQ.hrt` | declared | `ours.pack` | this repository |
+| `pieces/wR.hrt` | declared | `ours.pack` | this repository |
+| `sprites/spin_8.hrt` | declared | `ours.pack` | this repository |
+| `textures/farm_path.hrt` | drawn | `textures/farm_path.pix` | this repository |
+| `textures/farm_water.hrt` | generated | `textures/farm_water.recipe` | this repository |
+| `textures/studio_00.hrt` | declared | `ours.pack` | this repository |
+| `textures/studio_01.hrt` | declared | `ours.pack` | this repository |
+| `textures/studio_02.hrt` | declared | `ours.pack` | this repository |
+| `textures/town.hrt` | imported | `textures/kenney_tiny_town.png` | CC0-1.0 |
+| `textures/wall_1.hrt` | declared | `ours.pack` | this repository |
+| `textures/wall_2.hrt` | declared | `ours.pack` | this repository |
+| `textures/wall_3.hrt` | declared | `ours.pack` | this repository |
+
+23 raster assets, 0 unrecorded.
+
+<!-- END LEDGER (generated) -->
+
+**Fonts** are not raster assets and are not in the table: `assets/fonts/` holds
+**Inter** and **JetBrains Mono** under the SIL Open Font License 1.1, with the licence
+text alongside the files.

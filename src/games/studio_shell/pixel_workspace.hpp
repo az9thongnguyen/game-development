@@ -54,7 +54,11 @@ public:
     // A LIST rather than one path because a project has several sheets and the whole
     // point of this workspace is moving between them — and because the one thing a
     // user must be able to do is edit the sheet that is NOT the imported one.
-    explicit PixelWorkspace(std::vector<std::string> texture_paths);
+    // `project_path` is the manifest a NEW sheet gets declared in. Empty is allowed
+    // and is not silently ignored: new_sheet() says the sheet exists and the project
+    // cannot see it, which is a state worth naming rather than one worth hiding.
+    explicit PixelWorkspace(std::vector<std::string> texture_paths,
+                            std::string project_path = "");
     ~PixelWorkspace() override;
 
     void register_commands() override;
@@ -125,6 +129,24 @@ public:
     // agree today (D-rule: an operation cannot exist in only one trigger).
     engine::OpResult open_index(int i);
 
+    // Create `textures/<name>.hrt` from a new blank `.pix`, declare it in the project,
+    // re-bake the ledger, and open it. Goes through the `asset.new` command rather
+    // than doing any of that here: the operation lives in a core and a trigger only
+    // calls it, so the Studio button and the CLI cannot become two implementations
+    // that agree today.
+    //
+    // Refused while dirty, for the reason open_index is: opening the new sheet would
+    // drop unsaved pixels with no undo across it.
+    engine::OpResult new_sheet(const std::string& name);
+
+    [[nodiscard]] const std::string& new_name() const { return new_name_; }
+    // Where the create controls landed, recorded by draw for the same reason the mix
+    // sliders are: a caller that recomputed them would test its own copy of the
+    // layout instead of the layout (ch. 126).
+    [[nodiscard]] ui::Rect new_name_rect() const { return new_name_rect_; }
+    [[nodiscard]] ui::Rect new_button_rect() const { return new_button_rect_; }
+    [[nodiscard]] ui::Rect save_rect() const { return save_rect_; }
+
 private:
     void load();
     void build_palette();
@@ -134,6 +156,7 @@ private:
     void adopt(gfx::Color c);
 
     std::vector<std::string> paths_;
+    std::string              project_;
     int                      index_ = 0;
     std::string              path_;
     std::string              problem_;
@@ -168,6 +191,13 @@ private:
     ui::Rect    mix_rect_[3]{};
     ui::Rect    hex_rect_{};
 
+    // The name being typed for a new sheet, and where its two controls are.
+    std::string new_name_;
+    bool        new_focused_ = false;
+    ui::Rect    new_name_rect_{};
+    ui::Rect    new_button_rect_{};
+    ui::Rect    save_rect_{};
+
     int  zoom_ = 8;                        // pixel art is unusable at 1:1
     int  pan_x_ = 0, pan_y_ = 0;
     bool centred_ = false;
@@ -198,6 +228,7 @@ private:
     std::optional<paint::Hsv>  want_mix_;      // a slider moved
     std::optional<gfx::Color>  want_colour_;   // a code was typed
     bool want_undo_ = false, want_redo_ = false, want_save_ = false;
+    bool want_new_  = false;
 };
 
 } // namespace studioshell

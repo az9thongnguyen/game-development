@@ -143,6 +143,30 @@ std::vector<std::string> list_dir(const std::string& dir, const std::string& suf
     return names;
 }
 
+std::vector<std::string> list_tree(const std::string& dir, const std::string& suffix) {
+    std::vector<std::string> paths;
+    std::error_code ec;
+    const std::filesystem::path root = std::filesystem::path(g_base) / dir;
+    // skip_permission_denied so one unreadable folder is not a whole empty answer;
+    // the ec overloads keep this exception-free like the rest of the seam.
+    std::filesystem::recursive_directory_iterator it(
+        root, std::filesystem::directory_options::skip_permission_denied, ec);
+    const std::filesystem::recursive_directory_iterator end;
+    for (; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        const std::string n = it->path().filename().string();
+        if (suffix.size() > n.size()) continue;
+        if (n.compare(n.size() - suffix.size(), suffix.size(), suffix) != 0) continue;
+        // Relative to the BASE, not to `dir`: the caller wants a path it can load.
+        std::error_code rel_ec;
+        auto rel = std::filesystem::relative(it->path(), g_base, rel_ec);
+        if (rel_ec) continue;
+        paths.push_back(rel.generic_string());
+    }
+    std::sort(paths.begin(), paths.end());
+    return paths;
+}
+
 std::int64_t mtime(const std::string& path) {
     const std::string full = g_base + "/" + path;
     std::error_code   ec;

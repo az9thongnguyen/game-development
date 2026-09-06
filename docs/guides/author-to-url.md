@@ -43,6 +43,38 @@ steps is the right next one, so you never have to remember the pipeline yourself
 **fix → publish → promote-to-preview → promote-to-production → in-sync** and names the first
 step that isn't done.
 
+## Adding art to the project (chapter 131)
+
+The loop above ships what a project already declares. Adding a picture to it is one
+command, and it is one command on purpose — it used to be four steps in three places,
+three of which were easy to forget:
+
+```sh
+# a new 16px tile, drawn: source + baked .hrt + a manifest line + the ledger
+./build/demo --cmd asset.new fence 16 1 1 projects/farm.gameproject
+# created textures/fence.pix -> textures/fence.hrt (16x16);
+#   declared in projects/farm.gameproject; ledger re-baked
+
+# ...then draw it: the Studio's Pixels tab, or --lab pixel
+./build/demo --shell projects/farm.gameproject
+```
+
+Bringing art in from outside still goes through its own door, and the licence goes in
+the `.pack` beside it:
+
+```sh
+./build/demo --cmd asset.import textures/pack.png textures/thing.hrt
+# then add an `import textures/pack.png textures/thing.hrt` line to a .pack, and:
+./build/demo --cmd asset.attribution ATTRIBUTION.md
+```
+
+**You do not maintain the list.** `assets/ATTRIBUTION.md` has a generated table between
+two markers; the prose around it is yours and survives every bake. If a `.hrt` arrives
+with no source and no `.pack` line, the command exits non-zero, the table says
+`UNRECORDED`, and `ctest -R provenance` goes red. That is the rule `CLAUDE.md` always
+stated and never enforced — by the time it was checked, twenty of twenty-three files had
+slipped past it.
+
 ## Why the loop has the shape it does
 
 - **Create validates before writing.** A scaffold that can't launch is a bug handed to a
