@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "engine/assets.hpp"
+#include "engine/commands/asset_commands.hpp"
 #include "engine/commands/registry.hpp"
 #include "engine/document/document.hpp"
 #include "engine/image.hpp"
@@ -146,6 +147,27 @@ ui::Input mouse(int x, int y, bool down, bool pressed) {
     u.down = down;
     u.pressed = pressed;
     return u;
+}
+
+// A RELEASE over (x,y). `ui::interact` activates a button on release-over, so a test
+// that only ever presses proves the widget was drawn and never that it can be
+// pressed — which is the ch.126 blind spot, and was true of every button in this file
+// until this helper existed.
+ui::Input release(int x, int y) {
+    ui::Input u{};
+    u.mx = x;
+    u.my = y;
+    u.released = true;
+    return u;
+}
+
+// Press then release over the centre of `r`, with a frame either side so update()
+// sees the intent the same way it does from a real hand.
+void click(Driver& d, studioshell::PixelWorkspace& ws, ui::Rect r) {
+    const int cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    d.panel(ws, mouse(cx, cy, true, true));
+    d.panel(ws, release(cx, cy));
+    d.panel(ws, ui::Input{});
 }
 
 // Mouse at the centre of image pixel (px,py). The workspace owns the pan/zoom
@@ -318,6 +340,118 @@ void test_switch_texture() {
     CHECK(ws.path() == kOther);
     CHECK(cmd::run("pixel.next").ok);         // wraps
     CHECK(ws.index() == 0);
+    cmd::clear();
+}
+
+// ---------------------------------------------------------------------------
+//  A sheet that did not exist. The ceiling chapter 127 recorded: this workspace
+//  could change art and could not ADD any, so every new tile still began in a text
+//  editor with three files to remember.
+//
+//  Driven through the CONTROL, not only through the function. Chapter 126's lesson
+//  is that every input test asks "can this be pressed" and none asks whether a drawn
+//  control is pressable — so the last block here types into the real field and clicks
+//  the real rect the inspector published.
+// ---------------------------------------------------------------------------
+void test_new_sheet() {
+    cmd::clear();
+    cmd::register_asset_commands();          // the operation the trigger calls
+
+    static const char kManifest[] = "gameproject1\nname T\nschema 1\nentry fps\n";
+    CHECK(assets::write_file("projects/t.gameproject",
+                             std::vector<std::uint8_t>(kManifest, kManifest + sizeof(kManifest) - 1)));
+
+    studioshell::PixelWorkspace ws({kPath}, "projects/t.gameproject");
+    ws.register_commands();
+    CHECK(cmd::exists("pixel.new"));
+    Driver d(PW, PH);
+    d.panel(ws, ui::Input{});                // publish the layout
+
+    // The name is a path. The refusal lives in asset.new and this must inherit it
+    // rather than re-implement a weaker version of it.
+    CHECK(!ws.new_sheet("../evil").ok);
+    CHECK(!ws.new_sheet("").ok);
+    CHECK(ws.count() == 1);
+
+    // ---- refused while dirty, and it really wrote nothing ----
+    platform::InputState in = at_pixel(ws, 2, 2, false);
+    in.mouse_down[static_cast<int>(platform::MouseButton::Right)] = true;
+    d.frame(ws, in);
+    in.mouse_down[static_cast<int>(platform::MouseButton::Right)] = false;
+    d.frame(ws, in);
+    CHECK(ws.dirty());
+
+    const engine::OpResult refused = cmd::run("pixel.new", {"signs"});
+    CHECK(!refused.ok);
+    CHECK(refused.message.find("save or undo") != std::string::npos);
+    CHECK(ws.count() == 1);
+    CHECK(!assets::load_file("textures/signs.pix"));   // a refusal that half-happened
+    CHECK(!assets::load_file("textures/signs.hrt"));   // is the bug this pins
+
+    // ---- the guard's OTHER direction: after a save it goes through ----
+    CHECK(ws.save().ok);
+    const engine::OpResult made = cmd::run("pixel.new", {"signs"});
+    CHECK(made.ok);
+    if (!made.ok) std::printf("      %s\n", made.message.c_str());
+    CHECK(ws.count() == 2);
+    CHECK(ws.index() == 1);                            // and it OPENED the new one
+    CHECK(ws.path() == "textures/signs.hrt");
+    CHECK(ws.image().w == 16 && ws.image().h == 16);
+    for (gfx::Color c : ws.image().pixels) CHECK((c >> 24) == 0);
+    CHECK(!ws.dirty());                                // a fresh sheet is not unsaved work
+    CHECK(assets::load_file("textures/signs.pix").has_value());   // born as a SOURCE
+
+    // Declared, or the project cannot see it.
+    const auto mf = assets::load_file("projects/t.gameproject");
+    CHECK(mf.has_value());
+    if (mf) CHECK(std::string(mf->begin(), mf->end()).find("asset texture textures/signs.hrt") !=
+                  std::string::npos);
+
+    // ---- drawn where it can be pressed ----
+    d.panel(ws, ui::Input{});
+    const ui::Rect field = ws.new_name_rect();
+    const ui::Rect btn   = ws.new_button_rect();
+    CHECK(field.w > 0 && field.h > 0);
+    CHECK(btn.w > 0 && btn.h > 0);
+    CHECK(btn.x >= field.x + field.w);                 // side by side, not stacked on top
+    CHECK(btn.x + btn.w <= PW);                        // and inside the panel
+
+    // Type a name into the real field, then click the real button. Nothing below
+    // touches new_sheet() directly: if the Create button ever stops being wired, or
+    // is drawn somewhere the hit test does not look, this is what goes red.
+    const int fx = field.x + field.w / 2, fy = field.y + field.h / 2;
+    d.panel(ws, mouse(fx, fy, true, true));
+    const std::string name = "fence";
+    ui::Input typing = mouse(fx, fy, false, false);
+    typing.text     = name.c_str();
+    typing.text_len = name.size();
+    d.panel(ws, typing);
+    CHECK(ws.new_name() == name);
+
+    click(d, ws, btn);
+    // A frame to look at: three chapters running, the bug was one only a screenshot
+    // could show. Counting pixels proves something was drawn; an eye says what.
+    dump_ppm(d.buf, d.w, d.h, "pixel_new_sheet.ppm");
+    CHECK(ws.count() == 3);
+    CHECK(ws.path() == "textures/fence.hrt");
+    CHECK(ws.new_name().empty());                      // the field clears on success
+    CHECK(assets::load_file("textures/fence.hrt").has_value());
+
+    // While the harness can finally press a button: Save was drawn in every frame of
+    // every test in this file and clicked in none of them. Pressing it is the only
+    // thing that would notice it being drawn somewhere the hit test does not look.
+    in = at_pixel(ws, 1, 1, false);
+    in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+    d.frame(ws, in);
+    in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = false;
+    d.frame(ws, in);
+    CHECK(ws.dirty());
+    d.panel(ws, ui::Input{});                 // publish the layout with Save enabled
+    const ui::Rect save = ws.save_rect();
+    CHECK(save.w > 0 && save.h > 0);
+    click(d, ws, save);
+    CHECK(!ws.dirty());                       // the click reached the operation
+
     cmd::clear();
 }
 
@@ -672,6 +806,8 @@ int main() {
     test_field_owns_the_letters();
     CHECK(write_image(kPath, fixture()));
     test_inspector_clipped();
+    CHECK(write_image(kPath, fixture()));
+    test_new_sheet();
 
     fs::remove_all(root);
     test_real_sheet();          // last: it repoints the asset root at the repository

@@ -13,6 +13,7 @@
 // =============================================================================
 #pragma once
 
+#include "engine/asset/provenance.hpp"
 #include "engine/project/inspect.hpp"
 #include "engine/ui/ui.hpp"
 
@@ -29,7 +30,14 @@ enum class Op {
 // Draw one project's content and verdict inside `area`; returns what was clicked.
 // `selected` is an index into in.assets, clamped by the panel (the asset list can
 // shrink between inspections, and a stale index would read off the end).
+//
+// `led` answers a different question from `in`, which is why it arrives separately
+// rather than inside InspectedAsset. `inspect()` asks "does this resolve and what is
+// its hash" and runs on every launch, package and publish; provenance asks "where did
+// this come from" and needs a walk of the whole tree. Folding the second into the
+// first would make every publish pay for a question only this panel asks.
 Op draw_project_panel(ui::Context& ui, gfx::Renderer2D& g,
-                      const engine::Inspection& in, ui::Rect area, int& selected);
+                      const engine::Inspection& in, const engine::Ledger& led,
+                      ui::Rect area, int& selected);
 
 } // namespace projectui

@@ -383,7 +383,10 @@ add_library(commands_core STATIC
   src/engine/commands/release_commands.cpp
 )
 target_include_directories(commands_core PUBLIC src)
-target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core provenance_core PRIVATE engine_flags)
+# project_core is PUBLIC because asset.new writes a manifest line: creating an asset
+# and declaring it are one act, and splitting them would give the Studio a way to make
+# a file the project cannot see.
+target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core provenance_core project_core PRIVATE engine_flags)
 
 # Compiles the spine sources directly (like test_release_ops) so the test binary owns
 # a complete assets:: implementation without linking a window or a backend.

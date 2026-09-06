@@ -867,6 +867,13 @@ int main() {
         // just as happily if known_entries were ignored entirely.
         CHECK(!engine::inspect("projects/farm.gameproject", {"fps"}).shippable());
 
+        // Provenance is a SEPARATE input to the panel, and the reason is in the
+        // header: `inspect()` runs on every launch and publish, a tree walk does not
+        // belong in it. Built here rather than scanned, so the states worth drawing
+        // — including the one the repository does not currently contain — exist.
+        engine::Ledger led;
+        led = engine::scan_provenance();
+
         // The panel is a pure function of an Inspection, so the states worth drawing
         // are built here rather than by breaking files on disk.
         const auto render_panel = [&](const engine::Inspection& in) {
@@ -878,7 +885,7 @@ int main() {
             ui::Context u;
             u.begin(&r, ui::Input{}, LW, LH);
             int sel = 0;
-            projectui::draw_project_panel(u, r, in, ui::Rect{224, 24, LW - 248, LH - 48}, sel);
+            projectui::draw_project_panel(u, r, in, led, ui::Rect{224, 24, LW - 248, LH - 48}, sel);
             u.end();
             return b;
         };
@@ -917,6 +924,48 @@ int main() {
         CHECK(count_near(bad_px, th::danger) > 200);     // the problem strip + the MISSING badge
         CHECK(count_near(bad_px, th::success) < count_near(good_px, th::success));
         dump_ppm(bad_px, PW, PH, "shell_project_missing.ppm");
+
+        // The card says where the picture came from. `town.hrt` is the imported one,
+        // so the healthy screen must carry the word — and this is the only assertion
+        // anywhere that the ledger reaches a human rather than a committed file.
+        {
+            // Selecting the imported asset means finding it, not guessing a row index:
+            // the manifest's order is content, and a test that hard-codes it starts
+            // passing for the wrong reason the day a line moves.
+            int town = -1;
+            for (std::size_t i = 0; i < good.assets.size(); ++i)
+                if (good.assets[i].path == "textures/town.hrt") town = static_cast<int>(i);
+            CHECK(town >= 0);
+
+            const auto render_sel = [&](const engine::Ledger& l, int row) {
+                std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+                platform::Framebuffer f{b.data(), PW, PH, PW};
+                gfx::Renderer2D r(f, SS);
+                r.set_font(font.get(), th::sz_body);
+                r.clear(th::bg);
+                ui::Context u;
+                u.begin(&r, ui::Input{}, LW, LH);
+                int sel = row;
+                projectui::draw_project_panel(u, r, good, l, ui::Rect{224, 24, LW - 248, LH - 48}, sel);
+                u.end();
+                return b;
+            };
+            const auto with = render_sel(led, town);
+            dump_ppm(with, PW, PH, "shell_project_origin.ppm");
+
+            // The negative control is what makes the picture above mean something: an
+            // EMPTY ledger must draw a different card. Without it, "the origin is on
+            // screen" would pass on a panel that never read the ledger at all.
+            const auto without = render_sel(engine::Ledger{}, town);
+            CHECK(with != without);
+
+            // ...and an UNRECORDED origin is drawn in the danger colour, because a
+            // picture nobody can account for is a problem, not a blank field.
+            engine::Ledger hole;
+            hole.files.push_back({"textures/town.hrt", engine::Origin::Unrecorded, "", "", ""});
+            const auto unknown = render_sel(hole, town);
+            CHECK(count_near(unknown, th::danger) > count_near(with, th::danger));
+        }
 
         // An unreadable project draws the reason, not an empty browser that looks like
         // a project with no content.

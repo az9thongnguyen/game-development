@@ -42,7 +42,8 @@ int field(gfx::Renderer2D& g, int x, int y, int w, const char* label, const std:
 }  // namespace
 
 Op draw_project_panel(ui::Context& ui, gfx::Renderer2D& g,
-                      const engine::Inspection& in, ui::Rect area, int& selected) {
+                      const engine::Inspection& in, const engine::Ledger& led,
+                      ui::Rect area, int& selected) {
     Op op = Op::None;
     const int n = static_cast<int>(in.assets.size());
     if (selected >= n) selected = n - 1;      // the list can shrink between inspections
@@ -174,6 +175,21 @@ Op draw_project_panel(ui::Context& ui, gfx::Renderer2D& g,
         if (a.present) {
             fy = field(g, fx, fy, fw, "CONTENT HASH", engine::hash_hex(a.hash), th::accent);
             fy = field(g, fx, fy, fw, "SIZE", human_bytes(a.bytes), th::text_dim);
+            // Where it came from, for the assets that have an answer. A raster asset
+            // with no line in the ledger reads UNRECORDED here rather than reading as
+            // nothing at all — the question "who is answerable for this picture" has a
+            // wrong answer and a missing answer, and they are not the same.
+            for (const auto& p : led.files) {
+                if (p.path != a.path) continue;
+                const bool hole = p.origin == engine::Origin::Unrecorded;
+                fy = field(g, fx, fy, fw, "ORIGIN", engine::origin_name(p.origin),
+                           hole ? th::danger : th::text);
+                if (!p.source.empty())
+                    fy = field(g, fx, fy, fw, "FROM", p.source, th::text_dim);
+                if (!p.licence.empty())
+                    fy = field(g, fx, fy, fw, "LICENCE", p.licence, th::text_dim);
+                break;
+            }
         } else {
             // No hash and no size, because there are no bytes. Printing "0" for a file
             // that is not there is the kind of confident wrong answer this panel exists

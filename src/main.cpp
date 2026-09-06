@@ -182,7 +182,8 @@ const std::vector<Entry>& labs() {
             // without editing the imported pack.
             return std::unique_ptr<engine::Scene>(new studioshell::WorkspaceHost(
                 std::make_unique<studioshell::PixelWorkspace>(
-                    std::vector<std::string>{"textures/farm_water.hrt", "textures/town.hrt"})));
+                    std::vector<std::string>{"textures/farm_water.hrt", "textures/town.hrt"},
+                    "projects/farm.gameproject")));
         }});
         v.push_back({"map", win("hand-engine — map lab", 960, 600, kAA), [] {
             // Still writes fpsmap1, still the only place entities/spawns can be
@@ -261,6 +262,8 @@ int usage(const std::string& unknown) {
     return unknown.empty() ? 0 : 2;
 }
 
+const std::vector<std::string>& known_entries();   // defined just below run_lab
+
 // `--lab` with no id lists what there is, the same way `--cmd` with no id does: a
 // door you cannot see through is a door nobody opens.
 int run_lab(const std::string& id) {
@@ -271,7 +274,15 @@ int run_lab(const std::string& id) {
         return 0;
     }
     for (const Entry& e : labs())
-        if (e.id == id) return run_window(e.cfg, e.make());
+        if (e.id == id) {
+            // The same registry the Studio fills before building its scene. A lab is
+            // the SAME workspace object as a tab (ch. 120), so an operation it can
+            // perform in one frame and not the other is the drift that rule exists to
+            // prevent — and `--lab pixel` creating no new sheet because nobody called
+            // this is exactly that, silently.
+            cmd::register_all(known_entries());
+            return run_window(e.cfg, e.make());
+        }
     std::fprintf(stderr, "unknown lab: %s   (run `demo --lab` to list them)\n", id.c_str());
     return 1;
 }
