@@ -118,9 +118,13 @@ StudioShellScene::StudioShellScene(std::string project_path,
       // The manifest goes in too: a sheet created here is declared in the project
       // that is open, which is the whole difference between making a file and
       // adding an asset.
-      pixels_(assets_of(project_path_, known_entries_, "texture"), project_path_) {
+      pixels_(assets_of(project_path_, known_entries_, "texture"), project_path_),
+      // The same texture list, read a different way: the Mixer opens the `.mix`
+      // SOURCES beside those artefacts, which is the sibling rule provenance_core
+      // already uses to call an asset `mixed`. One rule, two readers.
+      mixer_(assets_of(project_path_, known_entries_, "texture")) {
     rebuild();
-    workspaces_ = {&map_, &scene_, &pixels_};
+    workspaces_ = {&map_, &scene_, &pixels_, &mixer_};
     // Each workspace binds its own ids here, so the palette lists exactly what THIS
     // process can do. --cmd in a terminal sees the release commands and not these,
     // which is the truth: there is no document open in a terminal.
