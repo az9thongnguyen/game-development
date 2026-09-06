@@ -5,11 +5,24 @@
 
 #include <sstream>
 
+#include "engine/tilemap/autotile.hpp"
+
 namespace farm {
 
 const Theme::Art* Theme::find(const std::string& layer, int id) const {
     const auto it = art.find({layer, id});
     return it == art.end() ? nullptr : &it->second;
+}
+
+int line_piece(const tilemap::Map& map, const std::string& layer, std::int32_t id,
+               int x, int y) {
+    const auto same = [&](int nx, int ny) { return map.at(layer, nx, ny) == id; };
+    std::uint8_t m = 0;
+    if (same(x, y - 1)) m |= tilemap::kN;
+    if (same(x + 1, y)) m |= tilemap::kE;
+    if (same(x, y + 1)) m |= tilemap::kS;
+    if (same(x - 1, y)) m |= tilemap::kW;
+    return tilemap::autotile_line_index(m);
 }
 
 std::optional<Theme> parse_theme(const std::string& text) {

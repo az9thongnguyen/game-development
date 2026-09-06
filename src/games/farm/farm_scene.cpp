@@ -186,18 +186,6 @@ const tilemap::Tileset& FarmScene::sheet_of(const std::string& name) const {
     return it == tiles_.end() ? kNone : it->second;
 }
 
-int FarmScene::line_piece(const char* layer, std::int32_t id, int x, int y) const {
-    const auto same = [&](int nx, int ny) {
-        return map_.in_bounds(nx, ny) && map_.at(layer, nx, ny) == id;
-    };
-    std::uint8_t m = 0;
-    if (same(x, y - 1)) m |= tilemap::kN;
-    if (same(x + 1, y)) m |= tilemap::kE;
-    if (same(x, y + 1)) m |= tilemap::kS;
-    if (same(x - 1, y)) m |= tilemap::kW;
-    return tilemap::autotile_line_index(m);
-}
-
 bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int x, int y,
                           int px, int py) const {
     // No `id == 0` check: `parse_theme` refuses to map id 0 at all, so an empty cell
@@ -217,7 +205,7 @@ bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id
     // the pieces that do not exist, and Tileset already answers that with a null
     // sprite — so a half-drawn line set degrades to flat colour cell by cell instead
     // of drawing whatever tile happens to follow it.
-    const int index = a->index + (a->autotiled ? line_piece(layer, id, x, y) : 0);
+    const int index = a->index + (a->autotiled ? line_piece(map_, layer, id, x, y) : 0);
     const gfx::Sprite s = sheet_of(a->sheet).sprite(static_cast<std::size_t>(index));
     if (s.w == 0) return false;
     g.blit(s, px, py);

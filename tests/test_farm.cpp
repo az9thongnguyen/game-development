@@ -22,6 +22,7 @@
 #include "games/farm/cloud.hpp"
 #include "games/farm/controls.hpp"
 #include "engine/tilemap/autotile.hpp"
+#include "engine/tilemap/map2.hpp"
 #include "games/farm/theme.hpp"
 #include "games/studio/recipe.hpp"
 #include "games/studio/texture_gen.hpp"
@@ -705,6 +706,55 @@ static void test_theme() {
 }
 
 // -----------------------------------------------------------------------------
+//  Which piece a cell wears. Sixteen neighbourhoods, sixteen answers.
+//
+//  The scene test can only prove the picture CHANGES from cell to cell; it compares
+//  whole frames, because where a tile lands depends on the camera. That left two
+//  mutations alive — "never look north" and "any neighbour connects, not just the
+//  same id" — both of which still produce a picture that varies per cell, just the
+//  WRONG one. So the chooser is a pure function over a map, and this checks the
+//  answer rather than the variety.
+// -----------------------------------------------------------------------------
+static void test_line_piece() {
+    // A 3x3 map with the cell under test in the middle. Every DIAGONAL is set to the
+    // same id in all sixteen cases: for a line they carry no information, and a rule
+    // that quietly consulted one would answer sixteen different questions here.
+    const auto probe = [](int bits) {
+        const int n = bits & 1, e = bits & 2, sth = bits & 4, w = bits & 8;
+        std::string text = "map2 1\nname probe\nsize 3 3\ntile 16\nlayer ground tiles -\n";
+        text += std::string("row 2 ") + (n ? "2" : "1") + " 2\n";
+        text += std::string("row ") + (w ? "2" : "1") + " 2 " + (e ? "2" : "1") + "\n";
+        text += std::string("row 2 ") + (sth ? "2" : "1") + " 2\n";
+        const auto m = tilemap::load(text);
+        CHECK(m.has_value());
+        return m ? farm::line_piece(*m, "ground", 2, 1, 1) : -1;
+    };
+    for (int bits = 0; bits < 16; ++bits) CHECK(probe(bits) == bits);
+
+    // The farm's own path, at the five cells that make it a path rather than a row of
+    // squares. Read off assets/maps/farm_home.map2: a vertical run down column 4 from
+    // row 6, turning east along row 11 and ending at column 16.
+    assets::set_base_path(ASSET_ROOT "/assets");
+    const auto bytes = assets::load_file("maps/farm_home.map2");
+    CHECK(bytes.has_value());
+    if (!bytes) return;
+    const auto map = tilemap::load(std::string(bytes->begin(), bytes->end()));
+    CHECK(map.has_value());
+    if (!map) return;
+    const auto at = [&](int x, int y) { return farm::line_piece(*map, "ground", 2, x, y); };
+    CHECK(at(4, 6)   == 4);    // the north end cap: only south continues
+    CHECK(at(4, 8)   == 5);    // ...a straight vertical run
+    CHECK(at(4, 11)  == 3);    // the corner: north and east
+    CHECK(at(10, 11) == 10);   // ...a straight horizontal run
+    CHECK(at(16, 11) == 8);    // the east end cap
+
+    // Out of bounds does not connect, so a material touching the map edge gets an end
+    // cap rather than an arm running off the world. The grass fills the map, so cell
+    // (0,0) has grass east and south of it and nothing north or west.
+    CHECK(farm::line_piece(*map, "ground", 1, 0, 0) == (2 | 4));
+}
+
+// -----------------------------------------------------------------------------
 //  The path sheet: sixteen pieces that have to agree with each other.
 //
 //  A tile set is judged one tile at a time and FAILS between tiles. Every piece here
@@ -921,6 +971,7 @@ int main() {
     test_defs();
     test_theme();
     test_water_provenance();
+    test_line_piece();
     test_path_sheet();
     test_controls();
     test_the_crop_owns_the_price();
