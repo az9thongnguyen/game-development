@@ -1,0 +1,9 @@
+assetpack1
+name Kenney — Tiny Town 1.1
+author Kenney
+source https://kenney.nl/assets/tiny-town
+licence CC0-1.0
+licence_url http://creativecommons.org/publicdomain/zero/1.0/
+added 2026-09-04
+note CC0 requires no credit; the credit and the source PNG are here anyway so the import can be re-run rather than trusted.
+import textures/kenney_tiny_town.png textures/town.hrt

@@ -383,7 +383,7 @@ add_library(commands_core STATIC
   src/engine/commands/release_commands.cpp
 )
 target_include_directories(commands_core PUBLIC src)
-target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core PRIVATE engine_flags)
+target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core provenance_core PRIVATE engine_flags)
 
 # Compiles the spine sources directly (like test_release_ops) so the test binary owns
 # a complete assets:: implementation without linking a window or a backend.
@@ -398,6 +398,7 @@ add_executable(test_commands tests/test_commands.cpp
   src/engine/assets.cpp
   src/engine/commands/asset_commands.cpp
   src/engine/project/collection.cpp
+  src/engine/asset/provenance.cpp
   src/engine/image.cpp
 )
 target_include_directories(test_commands PRIVATE src)
@@ -707,6 +708,25 @@ add_test(NAME project COMMAND test_project)
 # which is how the committed assets/collection.json is held to being what the manifests
 # bake to, and how a project added without re-baking becomes a failing test rather than
 # a game missing from the page.
+# ---- Provenance: where every picture in this repo came from ------------------
+# The rule "every new .hrt gains an ATTRIBUTION line" had no enforcement and had
+# already been forgotten twenty times. This lib derives the answer from the marks the
+# three doors leave on disk, so forgetting is a red test rather than a silent hole.
+# assets.cpp is NOT listed here: the final target that links this provides it, the
+# same arrangement inspect_core/resource_core use.
+add_library(provenance_core STATIC src/engine/asset/provenance.cpp)
+target_include_directories(provenance_core PUBLIC src)
+target_link_libraries(provenance_core PRIVATE engine_flags)
+
+add_executable(test_provenance tests/test_provenance.cpp
+  src/engine/asset/provenance.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_provenance PRIVATE src)
+target_compile_definitions(test_provenance PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}/assets")
+target_link_libraries(test_provenance PRIVATE engine_flags)
+add_test(NAME provenance COMMAND test_provenance)
+
 add_executable(test_collection tests/test_collection.cpp
   src/engine/project/collection.cpp
   src/engine/project/inspect.cpp
