@@ -1116,6 +1116,12 @@ int main() {
             CHECK(sc.open_workspace() == 2);   // it really is the Pixels tab
             CHECK(sc.pixel_workspace().loaded());
             CHECK(sc.pixel_workspace().inspector_clipped() == !sz.fits);
+
+            // A screenshot of the tab at the Studio's own size, for a human. Every
+            // assertion above is about geometry that fits; whether the panel READS is
+            // a different question, and the only thing that answers it is a frame —
+            // which is how the COLOUR label was caught running off the panel edge.
+            if (sz.fits) dump_ppm(b, sz.w, sz.h, "shell_pixels.ppm");
         }
     }
 
