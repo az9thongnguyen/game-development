@@ -1,0 +1,49 @@
+# =============================================================================
+#  assets/creatures/species.def  —  eighteen species: six lines of three
+# =============================================================================
+#  Eighteen is not a pile. It is SIX evolution lines of three stages, one line per
+#  type, and that shape is what makes eighteen memorable instead of eighteen. It
+#  also makes `evolve=` load-bearing rather than decorative: every species but six
+#  of them is somebody's future.
+#
+#  Stat totals are 200 / 290 / 380 by stage, spent differently per type — fire is a
+#  glass cannon, rock is a wall that goes last, electric outruns everything and dies
+#  to a stiff breeze. Balance lives here, in text, for the same reason the farm's
+#  crop table does: the balance pass is the work, and the work must not need a build.
+#
+#  `sprite=` names an `.hrt` that NOBODY DREW. Each one is baked from a `.mix` over
+#  `textures/parts_creature.hrt` — a body, a face, a crest, a tail — plus two colour
+#  swaps. That is the fourth door into `.hrt` (chapter 135) meeting the case it was
+#  opened for: a cast of eighteen that looks like one world, out of an art budget of
+#  one sheet.
+# =============================================================================
+
+# ---- fire: fast, hits hard, folds ---------------------------------------------
+species 1  emberpup   type=fire     hp=39  atk=58  def=40  spd=63  catch=190 evolve=2@16  sprite=textures/creature_01.hrt moves=1:tackle,4:ember,12:bite,22:flamewheel
+species 2  blazehound type=fire     hp=58  atk=84  def=58  spd=90  catch=120 evolve=3@32  sprite=textures/creature_02.hrt moves=1:tackle,1:ember,14:bite,24:flamewheel,36:inferno
+species 3  pyrewolf   type=fire     hp=78  atk=110 def=75  spd=117 catch=45               sprite=textures/creature_03.hrt moves=1:tackle,1:flamewheel,26:bite,38:inferno,44:bodyslam
+
+# ---- water: the balanced line, and the one that moves first --------------------
+species 4  dripling   type=water    hp=48  atk=50  def=52  spd=50  catch=190 evolve=5@16  sprite=textures/creature_04.hrt moves=1:tackle,4:bubble,13:aquajet,24:bite
+species 5  tidefin    type=water    hp=70  atk=72  def=76  spd=72  catch=120 evolve=6@32  sprite=textures/creature_05.hrt moves=1:tackle,1:bubble,15:aquajet,26:bite,34:surge
+species 6  tsunamaw   type=water    hp=92  atk=95  def=100 spd=93  catch=45               sprite=textures/creature_06.hrt moves=1:aquajet,1:bubble,28:surge,40:bodyslam,46:bite
+
+# ---- grass: the wall, and the only line that puts you to sleep ------------------
+species 7  sprigling  type=grass    hp=45  atk=48  def=62  spd=45  catch=190 evolve=8@16  sprite=textures/creature_07.hrt moves=1:tackle,5:vinewhip,14:lullaby,25:razorleaf
+species 8  bramblet   type=grass    hp=66  atk=70  def=90  spd=64  catch=120 evolve=9@32  sprite=textures/creature_08.hrt moves=1:tackle,1:vinewhip,16:razorleaf,27:lullaby,35:solarbeam
+species 9  thornwood  type=grass    hp=88  atk=92  def=118 spd=82  catch=45               sprite=textures/creature_09.hrt moves=1:razorleaf,1:vinewhip,30:solarbeam,40:bodyslam,48:lullaby
+
+# ---- electric: outruns the whole dex, weak to a thrown rock ---------------------
+species 10 sparkit    type=electric hp=38  atk=52  def=40  spd=70  catch=190 evolve=11@16 sprite=textures/creature_10.hrt moves=1:tackle,4:spark,13:bite,23:thunderbolt
+species 11 voltmouse  type=electric hp=55  atk=76  def=57  spd=102 catch=120 evolve=12@32 sprite=textures/creature_11.hrt moves=1:tackle,1:spark,15:bite,25:thunderbolt,37:bodyslam
+species 12 thunderpaw type=electric hp=72  atk=100 def=75  spd=133 catch=45               sprite=textures/creature_12.hrt moves=1:spark,1:bite,27:thunderbolt,39:bodyslam
+
+# ---- rock: always goes last, and usually still standing -------------------------
+species 13 pebbling   type=rock     hp=52  atk=58  def=68  spd=22  catch=190 evolve=14@16 sprite=textures/creature_13.hrt moves=1:tackle,6:rockthrow,15:bite,26:rockslide
+species 14 bouldrin   type=rock     hp=76  atk=84  def=98  spd=32  catch=120 evolve=15@32 sprite=textures/creature_14.hrt moves=1:tackle,1:rockthrow,17:bite,28:rockslide,38:bodyslam
+species 15 cragtitan  type=rock     hp=100 atk=112 def=128 spd=40  catch=45               sprite=textures/creature_15.hrt moves=1:rockthrow,1:bite,30:rockslide,42:bodyslam
+
+# ---- normal: no weakness, no advantage, the most HP in the dex ------------------
+species 16 fluffkin   type=normal   hp=55  atk=48  def=48  spd=49  catch=190 evolve=17@16 sprite=textures/creature_16.hrt moves=1:tackle,5:lullaby,14:bite,24:bodyslam
+species 17 tuftail    type=normal   hp=80  atk=70  def=70  spd=70  catch=120 evolve=18@32 sprite=textures/creature_17.hrt moves=1:tackle,1:bite,16:lullaby,26:bodyslam,36:rockthrow
+species 18 grandmane  type=normal   hp=105 atk=92  def=92  spd=91  catch=45               sprite=textures/creature_18.hrt moves=1:bite,1:bodyslam,28:lullaby,40:rockthrow,48:thunderbolt

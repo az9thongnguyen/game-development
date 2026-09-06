@@ -1,0 +1,12 @@
+# emberpup — fire, stage 1 of 3: a body and a face.
+# a quadruped with a fierce face and a single horn.
+# Nobody drew this creature. It is four tiles of textures/parts_creature.pix
+# and two colour swaps, and its evolution is this file plus one more part.
+mix1
+name emberpup
+size 16 16
+sheet parts textures/parts_creature.hrt 16
+part parts 0 at 0 0    # body
+part parts 4 at 0 0    # face
+swap 6f7686 e05a2a    # body
+swap b9c0cf ffb347    # accent

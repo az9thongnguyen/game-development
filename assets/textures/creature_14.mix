@@ -1,0 +1,13 @@
+# bouldrin — rock, stage 2 of 3: the same, plus the line's crest.
+# the bulky body, horned, and it does not smile.
+# Nobody drew this creature. It is four tiles of textures/parts_creature.pix
+# and two colour swaps, and its evolution is this file plus one more part.
+mix1
+name bouldrin
+size 16 16
+sheet parts textures/parts_creature.hrt 16
+part parts 6 at 0 0    # crest
+part parts 2 at 0 0    # body
+part parts 4 at 0 0    # face
+swap 6f7686 8a8f99    # body
+swap b9c0cf d9dde4    # accent

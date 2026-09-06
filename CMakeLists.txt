@@ -577,6 +577,32 @@ target_compile_definitions(test_farm_scene PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DI
 target_link_libraries(test_farm_scene PRIVATE farm_core ui_core text_core gbaas_sdk engine_flags)
 add_test(NAME farm_scene COMMAND test_farm_scene)
 
+# ---- Creatures: the third game's simulation, and the first one that must REPLAY ---
+# No renderer, no clock, no I/O, and — the property the whole library exists for — no
+# floating point in the resolution path. A battle is `start state + list of actions`,
+# so `test_creature` plays a thousand random battles and asserts the replay reaches
+# the same hash, turn by turn. That test is the reason this is a library and not a
+# scene: a determinism claim you cannot run a thousand times is a hope.
+add_library(creature_core STATIC
+  src/games/creatures/defs.cpp
+  src/games/creatures/battle.cpp
+)
+target_include_directories(creature_core PUBLIC src)
+target_link_libraries(creature_core PRIVATE engine_flags)
+
+# Compiles assets.cpp so the test reads the REAL tables in assets/creatures/ rather
+# than a fixture: a balance file that stops parsing is a broken game, and only the
+# committed file can say so. Links mix_core for the art half — "evolution is the same
+# recipe plus one part" is a claim about eighteen committed `.mix` files, and it is
+# checkable, so it is checked rather than asserted in a comment.
+add_executable(test_creature tests/test_creature.cpp
+  src/engine/assets.cpp
+)
+target_include_directories(test_creature PRIVATE src)
+target_compile_definitions(test_creature PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_creature PRIVATE creature_core mix_core engine_flags)
+add_test(NAME creature COMMAND test_creature)
+
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
 # The "integration" deliverable — a game standing on the engine-core libs (B + C here;
 # A + D + F are used by its scene). Reuses iso_core's A*/TileMap (generic algorithms).

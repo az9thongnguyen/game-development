@@ -197,8 +197,8 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**28 of the 78 tests**: `ctest` here reports 78, a build configured without Drogon
-reports 50. Since chapter 129 CI has a `baas-test` job in the
+**28 of the 81 tests**: `ctest` here reports 81, a build configured without Drogon
+reports 53. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that
@@ -256,11 +256,13 @@ at all.
 
 ```
 src/platform/   the platform seam (platform.hpp) + backend_sdl.cpp
-src/engine/     hand-written core: math, renderer2d, renderer3d, geometry, camera,
+src/engine/     hand-written core: math, rand (THE deterministic RNG — xorshift64*,
+                because std::mt19937 is portable but its distributions are not),
+                renderer2d, renderer3d, geometry, camera,
                 assets, image, text, ui, ecs/, jobs/, memory/, physics/, anim/,
                 fx/, audio/ + the platform spine: project/, resource/, release/, hub/
-src/games/      one dir per scene/tool (chess, fps, iso, colony, studio, sandbox,
-                hub, studio_shell, fx, light, audio, anim, runner, …)
+src/games/      one dir per scene/tool (chess, fps, iso, colony, creatures, studio,
+                sandbox, hub, studio_shell, runner, …)
 docs/book/      the guidebook (read the chapter for the subsystem you touch)
 server/         hand-written HTTP server (POSIX sockets) — separate process, no engine code
 baas/           Drogon Game-BaaS backend — separate process, links no engine code
@@ -276,7 +278,12 @@ Understand these deliberate patterns before editing the build:
   cores `project_core`, `inspect_core` (one read+validate+hash, shared by launch,
   package, publish and the Studio), `provenance_core` (where every `.hrt` came from,
   derived from the marks the three doors leave — the attribution rule, as a boolean), `resource_core`, `release_core`, `release_ops_core`,
-  the game cores `farm_core` (day loop, crops, NPC schedules, dialogue, the pure
+  the game cores `creature_core` (a turn-based battle as INTEGER arithmetic —
+  types/moves/species as text, `step` returning string-free events, `hash` over the
+  whole state, and `play` over a start state plus a list of actions; no float in the
+  resolution path, the RNG is a hashed FIELD, and turn order is priority → speed →
+  one draw from the battle's own stream, never "side 0 first"),
+  `farm_core` (day loop, crops, NPC schedules, dialogue, the pure
   cloud-save verdict `decide_sync`, the art `theme` — NAMED sheets, so imported
   and self-drawn art never share a file, plus `line_piece`, which picks one of a
   16-piece autotile LINE set from a cell's four neighbours, and `controls`, which
