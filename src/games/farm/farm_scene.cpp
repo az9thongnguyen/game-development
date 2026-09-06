@@ -14,6 +14,7 @@
 #include "engine/document/document.hpp"
 #include "engine/image.hpp"
 #include "engine/renderer2d.hpp"
+#include "engine/tilemap/autotile.hpp"
 #include "engine/ui/theme.hpp"
 
 namespace farm {
@@ -185,7 +186,8 @@ const tilemap::Tileset& FarmScene::sheet_of(const std::string& name) const {
     return it == tiles_.end() ? kNone : it->second;
 }
 
-bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int px, int py) const {
+bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int x, int y,
+                          int px, int py) const {
     // No `id == 0` check: `parse_theme` refuses to map id 0 at all, so an empty cell
     // can never have a line, and find() returns nullptr for it like any other unmapped
     // id. The invariant lives in the parser; repeating it here was a guard a
@@ -197,7 +199,14 @@ bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id
     // sheet that would not load into an empty one. So a sheet nobody declared, a sheet
     // whose image is missing, and an index past the end of a real sheet all arrive as
     // the same w == 0 — and the tile falls back to flat colour instead of a hole.
-    const gfx::Sprite s = sheet_of(a->sheet).sprite(static_cast<std::size_t>(a->index));
+    // For a line set `index` is the base of sixteen consecutive pieces and the cell's
+    // own neighbours pick which. The out-of-range case needs no new branch: a base
+    // that leaves fewer than sixteen tiles in the sheet lands past the end for exactly
+    // the pieces that do not exist, and Tileset already answers that with a null
+    // sprite — so a half-drawn line set degrades to flat colour cell by cell instead
+    // of drawing whatever tile happens to follow it.
+    const int index = a->index + (a->autotiled ? line_piece(map_, layer, id, x, y) : 0);
+    const gfx::Sprite s = sheet_of(a->sheet).sprite(static_cast<std::size_t>(index));
     if (s.w == 0) return false;
     g.blit(s, px, py);
     return true;
@@ -680,7 +689,7 @@ void FarmScene::render(const engine::Context& ctx) {
     for (int y = y0; y <= y1; ++y) {
         for (int x = x0; x <= x1; ++x) {
             const int px = ox + x * kTile, py = oy + y * kTile;
-            if (!draw_tile(g, "ground", map_.at("ground", x, y), px, py))
+            if (!draw_tile(g, "ground", map_.at("ground", x, y), x, y, px, py))
                 g.fill_rect(px, py, kTile, kTile, ground_color(map_.at("ground", x, y)));
 
             if (const Soil* s = world_.at(x, y); s && s->tilled) {
@@ -697,7 +706,7 @@ void FarmScene::render(const engine::Context& ctx) {
                 }
             }
             if (const std::int32_t d = map_.at("decor", x, y); d != 0)
-                if (!draw_tile(g, "decor", d, px, py))
+                if (!draw_tile(g, "decor", d, x, y, px, py))
                     g.fill_rect(px + 1, py + 1, kTile - 2, kTile - 2, decor_color(d));
         }
     }

@@ -17,6 +17,7 @@
 #include "engine/document/command_stack.hpp"
 #include "engine/image.hpp"
 #include "engine/paint/paint.hpp"
+#include "engine/paint/pixel_source.hpp"
 
 static int g_failures = 0;
 #define CHECK(cond)                                                      \
@@ -227,6 +228,114 @@ void test_stroke_line() {
     CHECK(t.touched() == 8);
 }
 
+// -----------------------------------------------------------------------------
+//  The ASCII pixel source. What is under test is not "it makes an image" — it is
+//  that every way of getting it WRONG is refused. A pixel format that eats a typo
+//  produces a hole nobody looks at twice, which is exactly the bug this format was
+//  introduced to avoid in a sixteen-piece autotile set.
+// -----------------------------------------------------------------------------
+static const char* kGood =
+    "# a two-tile strip\n"
+    "size 2\n"
+    "grid 2 1\n"
+    "palette . 00000000\n"
+    "palette r ff0000\n"
+    "palette b 0000ff80\n"
+    "\n"
+    "tile 0\n"
+    "r.\n"
+    ".r\n"
+    "tile 1\n"
+    "bb\n"
+    "bb\n";
+
+static void test_pixels_good() {
+    std::string why = "untouched";
+    const auto img = paint::bake_pixels(kGood, &why);
+    CHECK(img.has_value());
+    if (!img) return;
+    CHECK(img->w == 4 && img->h == 2);
+    // Tile 0 goes left, tile 1 right — row-major over the grid.
+    CHECK(img->pixels[0] == gfx::rgba(255, 0, 0, 255));
+    CHECK(img->pixels[1] == 0u);                       // '.' is transparent, alpha 0
+    CHECK(img->pixels[2] == gfx::rgba(0, 0, 255, 128));
+    // Six hex digits means opaque; eight carries the alpha through untouched.
+    CHECK(gfx::a_of(img->pixels[0]) == 255);
+    CHECK(gfx::a_of(img->pixels[2]) == 128);
+    // The second row of tile 0 is offset by the SHEET width, not the tile width —
+    // the bug every sprite-sheet writer makes once.
+    CHECK(img->pixels[4] == 0u);
+    CHECK(img->pixels[5] == gfx::rgba(255, 0, 0, 255));
+    // A colour is BARE hex. '#' opens a comment, so `#10203040` is not a dark
+    // colour, it is an empty palette line — and that has to be refused loudly rather
+    // than defaulted, because the habit of writing '#rrggbb' is universal.
+    std::string hash_why;
+    CHECK(!paint::bake_pixels("size 1\ngrid 1 1\npalette x #10203040\ntile 0\nx\n", &hash_why));
+    const auto bare = paint::bake_pixels("size 1\ngrid 1 1\npalette x 10203040\ntile 0\nx\n");
+    CHECK(bare && bare->pixels[0] == gfx::rgba(0x10, 0x20, 0x30, 0x40));
+}
+
+// Every refusal, each with the line it happened on — an error that does not name the
+// line is a search, not a message.
+static void test_pixels_refusals() {
+    struct Case { const char* text; const char* what; };
+    const Case cases[] = {
+        {"size 2\ngrid 1 1\npalette . 00000000\ntile 0\n..\n..\nwidth 3\n", "unknown record"},
+        {"size 2\nsize 2\n", "duplicate size"},
+        {"size 2\ngrid 1 1\ngrid 1 1\n", "duplicate grid"},
+        {"size 0\n", "size zero"},
+        {"size 2\ngrid 0 1\n", "grid zero"},
+        {"size 1\ngrid 1 1\npalette . 00000000\npalette . ffffff\n", "duplicate palette key"},
+        {"size 1\ngrid 1 1\npalette ab 00000000\n", "two-character palette key"},
+        {"size 1\ngrid 1 1\npalette x zzz\n", "bad colour"},
+        {"size 1\ngrid 1 1\npalette x ffff\n", "colour of the wrong length"},
+        {"size 2\ngrid 1 1\npalette . 00000000\ntile 0\n...\n..\n", "row too long"},
+        {"size 2\ngrid 1 1\npalette . 00000000\ntile 0\n..\n", "tile short of rows"},
+        {"size 1\ngrid 1 1\npalette . 00000000\ntile 0\nq\n", "character not in the palette"},
+        {"size 1\ngrid 1 1\npalette . 00000000\ntile 1\n.\n", "tile index out of range"},
+        {"size 1\ngrid 1 1\npalette . 00000000\ntile 0\n.\ntile 0\n.\n", "tile drawn twice"},
+        {"size 1\ngrid 2 1\npalette . 00000000\ntile 0\n.\n", "a grid slot left undrawn"},
+        {"size 1\ngrid 1 1\npalette . 00000000\n", "no tiles at all"},
+        {"grid 1 1\n", "no size"},
+        {"size 1\n", "no grid"},
+        {"size 1\ngrid 1 1\npalette . 00000000\ntile\n", "tile with no index"},
+        {"size 1\ngrid 1 1\ntile 0\n.\n", "row before any palette line"},
+    };
+    for (const Case& c : cases) {
+        std::string why;
+        const auto img = paint::bake_pixels(c.text, &why);
+        if (img) std::printf("FAIL accepted: %s\n", c.what);
+        CHECK(!img);
+        // The message has to say WHERE. "line " is the whole contract.
+        if (!img) CHECK(why.rfind("line ", 0) == 0);
+    }
+}
+
+static void test_pixels_layout() {
+    // A comment mid-tile, blank lines between tiles, and indentation: all three are
+    // things a person writing sixteen tiles by hand actually does.
+    const auto img = paint::bake_pixels(
+        "size 2\n"
+        "grid 1 2\n"
+        "palette . 00000000\n"
+        "palette x 010203\n"
+        "tile 0   # the top one\n"
+        "  xx\n"
+        "  ..\n"
+        "\n"
+        "# and the bottom one\n"
+        "tile 1\n"
+        "..\n"
+        "xx\n");
+    CHECK(img.has_value());
+    if (!img) return;
+    CHECK(img->w == 2 && img->h == 4);
+    CHECK(img->pixels[0] == gfx::rgba(1, 2, 3, 255));   // tile 0 row 0
+    CHECK(img->pixels[2] == 0u);                        // tile 0 row 1
+    CHECK(img->pixels[4] == 0u);                        // tile 1 row 0
+    CHECK(img->pixels[6] == gfx::rgba(1, 2, 3, 255));   // tile 1 row 1
+}
+
 } // namespace
 
 int main() {
@@ -235,6 +344,9 @@ int main() {
     test_command();
     test_stroke();
     test_stroke_line();
+    test_pixels_good();
+    test_pixels_refusals();
+    test_pixels_layout();
     if (g_failures == 0) std::printf("paint: all tests passed\n");
     else std::printf("paint: %d FAILURE(S)\n", g_failures);
     return g_failures == 0 ? 0 : 1;

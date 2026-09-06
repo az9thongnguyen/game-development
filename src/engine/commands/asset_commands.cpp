@@ -9,6 +9,7 @@
 #include "engine/commands/registry.hpp"
 #include "engine/image.hpp"
 #include "engine/image_png.hpp"
+#include "engine/paint/pixel_source.hpp"
 #include "games/studio/recipe.hpp"
 #include "games/studio/texture_gen.hpp"
 
@@ -89,6 +90,36 @@ void register_asset_commands() {
 
             return {true, "baked " + src + " -> " + dst + "  (" + std::to_string(img.w) + "x" +
                               std::to_string(img.h) + ", " + std::to_string(applied) + " keys)"};
+        });
+
+    // The THIRD door, and the one a road needed. The other two bring pixels in from
+    // outside or compute them from twelve numbers; neither can place a corner piece.
+    // This one bakes an ASCII sheet a person wrote — the source stays in the repo,
+    // diffable, so a sixteen-piece set can be reviewed as the one design it is
+    // rather than as sixteen unrelated images. See pixel_source.hpp.
+    register_command(
+        {"asset.pixels", "Bake an ASCII pixel-art sheet into .hrt", "", "<src.pix> <dst.hrt>"},
+        [](const std::vector<std::string>& args) -> engine::OpResult {
+            if (args.size() < 2 || args[0].empty() || args[1].empty())
+                return {false, "usage: asset.pixels <src.pix> <dst.hrt>"};
+
+            const std::string& src = args[0];
+            const std::string& dst = args[1];
+            if (!ends_with(dst, ".hrt"))
+                return {false, "destination must end in .hrt (that is the format the engine reads)"};
+
+            const auto bytes = assets::load_file(src);
+            if (!bytes) return {false, "cannot read " + src};
+
+            std::string why;
+            const auto img = paint::bake_pixels(std::string(bytes->begin(), bytes->end()), &why);
+            if (!img) return {false, src + ": " + why};
+
+            if (!assets::write_file(dst, gfx::encode_hrt(*img)))
+                return {false, "cannot write " + dst};
+
+            return {true, "drew " + src + " -> " + dst + "  (" + std::to_string(img->w) + "x" +
+                              std::to_string(img->h) + ")"};
         });
 }
 

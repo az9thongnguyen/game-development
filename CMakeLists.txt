@@ -355,7 +355,7 @@ add_library(commands_core STATIC
   src/engine/commands/release_commands.cpp
 )
 target_include_directories(commands_core PUBLIC src)
-target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core PRIVATE engine_flags)
+target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core PRIVATE engine_flags)
 
 # Compiles the spine sources directly (like test_release_ops) so the test binary owns
 # a complete assets:: implementation without linking a window or a backend.
@@ -373,7 +373,7 @@ add_executable(test_commands tests/test_commands.cpp
 )
 target_include_directories(test_commands PRIVATE src)
 target_compile_definitions(test_commands PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
-target_link_libraries(test_commands PRIVATE png_core studio_core engine_flags)
+target_link_libraries(test_commands PRIVATE png_core studio_core paint_core engine_flags)
 add_test(NAME commands COMMAND test_commands)
 
 # ---- Paint: pixel edits as undoable commands --------------------------------------
@@ -383,6 +383,7 @@ add_test(NAME commands COMMAND test_commands)
 # PURE: an Image in, commands out. No renderer, no I/O, no UI.
 add_library(paint_core STATIC
   src/engine/paint/paint.cpp
+  src/engine/paint/pixel_source.cpp
 )
 target_include_directories(paint_core PUBLIC src)
 target_link_libraries(paint_core PUBLIC document_core PRIVATE engine_flags)

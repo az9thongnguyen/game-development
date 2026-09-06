@@ -49,4 +49,13 @@ std::uint8_t autotile_canonical(std::uint8_t mask) {
 int autotile_index(std::uint8_t mask) { return table().index[mask]; }
 int autotile_count()                  { return table().count; }
 
+int autotile_line_index(std::uint8_t mask) {
+    // Deliberately a bit shuffle and not a lookup table. The numbering is the sheet
+    // layout, so anything that hides it — a table, an enum of sixteen names — puts a
+    // step between "tile 5" in the art file and "north|south" in the code, and that
+    // step is where a piece ends up in the wrong slot.
+    return ((mask & kN) ? 1 : 0) | ((mask & kE) ? 2 : 0) |
+           ((mask & kS) ? 4 : 0) | ((mask & kW) ? 8 : 0);
+}
+
 } // namespace tilemap

@@ -123,7 +123,7 @@ private:
     void        say(std::string msg, double seconds = 3.0);
     void        facing(int& x, int& y) const;
     [[nodiscard]] const tilemap::Tileset& sheet_of(const std::string& name) const;
-    bool        draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id,
+    bool        draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int x, int y,
                           int px, int py) const;
 
     bool         ready_ = false;
