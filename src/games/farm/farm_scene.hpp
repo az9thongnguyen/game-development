@@ -89,6 +89,20 @@ public:
     // actually looking at rather than one where that button does not exist.
     [[nodiscard]] Layout controls() const { return layout(screen_w_, screen_h_, conflict_); }
 
+    // The dialogue panel for the frame most recently drawn, same rule and same reason:
+    // a test that recomputed these rectangles would agree with itself about a screen
+    // the player never saw. `talking()` goes with it — the state a test has to be able
+    // to see to prove the box can still be closed.
+    [[nodiscard]] bool talking() const { return talking_; }
+    [[nodiscard]] Talk talk_controls() const {
+        // No box when nobody is talking. `talk_layout(w, h, 0)` is a perfectly good
+        // panel for a line of PROSE, so returning it here would say "there is a
+        // dialogue on screen offering nothing" — which is a different thing, and the
+        // one a test would then believe.
+        if (!talking_) return Talk{};
+        return talk_layout(screen_w_, screen_h_, static_cast<int>(talk_.choices().size()));
+    }
+
     [[nodiscard]] std::size_t tile_count(const std::string& sheet) const {
         return sheet_of(sheet).count();
     }

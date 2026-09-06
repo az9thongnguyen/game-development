@@ -1124,6 +1124,102 @@ static void test_controls() {
     CHECK(farm::layout(960, 600, false).visible());
 }
 
+// -----------------------------------------------------------------------------
+//  The dialogue panel. Talking to Anna was a HARD LOCK by hand: the scene's dialogue
+//  branch returns before it reads the pointer, so once the box was up nothing on
+//  screen answered — no choice, no walking away, no saving. There was no scene test
+//  for the dialogue at all, which is why the freeze outlived the chapter that promised
+//  hand-playability without anyone noticing.
+// -----------------------------------------------------------------------------
+static void test_talk_layout() {
+    // Three options is what anna.dlg actually offers at its first node.
+    const farm::Talk t = farm::talk_layout(1280, 720, 3);
+    CHECK(t.visible());
+    CHECK(t.count == 3);
+    CHECK(t.row == 44);                 // a row you press, not a row you read
+
+    // The options stack, they are all inside the panel, and they do not overlap.
+    for (int i = 0; i < t.count; ++i) {
+        const farm::Box r = t.choice(i);
+        CHECK(!r.empty());
+        CHECK(r.x >= t.panel.x && r.x + r.w <= t.panel.x + t.panel.w);
+        CHECK(r.y >= t.panel.y && r.y + r.h <= t.panel.y + t.panel.h);
+        if (i > 0) CHECK(r.y == t.choice(i - 1).y + t.choice(i - 1).h);
+    }
+    // Out of range is an EMPTY box, not undefined behaviour and not clamped to a real
+    // row — a clamp would make option 9 select option 3.
+    CHECK(t.choice(-1).empty());
+    CHECK(t.choice(3).empty());
+    CHECK(t.choice(99).empty());
+
+    // The panel clears the hotbar. The tool and the seed count are exactly what a
+    // player checks while an NPC explains what grows here, and the panel used to be
+    // placed a fixed distance from the bottom edge — a number that cleared a 24px
+    // strip and covered a 44px one.
+    const farm::Layout l = farm::layout(1280, 720, false);
+    for (int i = 0; i < 4; ++i) {
+        const farm::Box& b = l.tool[i];
+        CHECK(!overlaps(t.panel, b));
+        CHECK(t.panel.y + t.panel.h <= b.y);
+    }
+
+    // A tap on an option picks THAT option — not the one the keyboard cursor was on.
+    for (int i = 0; i < t.count; ++i) {
+        const farm::TalkAction a = farm::read(t, at(t.choice(i), true, true));
+        CHECK(a.choice == i);
+        CHECK(!a.advance);
+    }
+    // ...and every option is inside the panel, so an implementation that tested the
+    // panel first would turn the whole box into one "next" button and answer the
+    // question for you. This is that check.
+    {
+        const farm::TalkAction a = farm::read(t, at(t.choice(1), true, true));
+        CHECK(a.choice == 1 && !a.advance);
+    }
+
+    // A tap on the panel but off every option advances the line and chooses nothing.
+    const farm::Pointer head{t.panel.x + t.panel.w / 2, t.panel.y + 6, true, true};
+    farm::TalkAction a = farm::read(t, head);
+    CHECK(a.advance && a.choice == -1);
+
+    // Edges only: a finger resting on the box must not advance sixty lines a second.
+    CHECK(!farm::read(t, farm::Pointer{head.x, head.y, true, false}).advance);
+    // Off the panel, and off the screen.
+    CHECK(!farm::read(t, farm::Pointer{5, 5, true, true}).advance);
+    CHECK(farm::read(t, farm::Pointer{5, 5, true, true}).choice == -1);
+    CHECK(!farm::read(t, farm::Pointer{-1, -1, true, true}).advance);
+
+    // A line of prose: a panel, no options, and a tap anywhere in it moves on.
+    const farm::Talk prose = farm::talk_layout(1280, 720, 0);
+    CHECK(prose.visible());
+    CHECK(prose.count == 0);
+    CHECK(prose.choice(0).empty());
+    CHECK(farm::read(prose, at(prose.panel, true, true)).advance);
+    CHECK(prose.panel.h < t.panel.h);      // it grows with the options, and shrinks back
+
+    // On the retro framebuffer the rows are read, not pressed, and the panel is the
+    // same size it has always been.
+    const farm::Talk retro = farm::talk_layout(480, 270, 3);
+    CHECK(retro.visible());
+    CHECK(retro.row == 18);
+
+    // A dialogue with more options than the screen can hold lays out NOTHING rather
+    // than a panel running off the top: the box is the one thing here that has to be
+    // readable, so it either fits or the keyboard is the honest answer.
+    CHECK(!farm::talk_layout(1280, 720, 40).visible());
+    CHECK(farm::read(farm::talk_layout(1280, 720, 40), farm::Pointer{600, 400, true, true})
+              .advance == false);
+
+    // ...and there is no cap on the option count short of that. Six used to be one,
+    // written into an array, and a ceiling nobody meets today is a ceiling nobody sees
+    // when they finally do.
+    const farm::Talk many = farm::talk_layout(1280, 720, 9);
+    CHECK(many.visible());
+    CHECK(many.count == 9);
+    CHECK(!many.choice(8).empty());
+    CHECK(farm::read(many, at(many.choice(8), true, true)).choice == 8);
+}
+
 int main() {
     test_defs();
     test_theme();
@@ -1132,6 +1228,7 @@ int main() {
     test_path_sheet();
     test_controls();
     test_controls_geometry();
+    test_talk_layout();
     test_the_crop_owns_the_price();
     test_overrides();
     test_sync_decision();

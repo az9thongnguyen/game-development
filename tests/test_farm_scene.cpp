@@ -737,6 +737,119 @@ int main() {
         CHECK(scene.world().soil.size() == after);
     }
 
+    // ---- talking to Anna, entirely by thumb -----------------------------------
+    // There was no scene test for the dialogue at all, which is why this went five
+    // chapters without surfacing: the dialogue branch of update() RETURNS before it
+    // reads the pointer, so a player without a keyboard who opened the box could not
+    // answer it, could not walk away and could not save. A frozen game whose only exit
+    // is force-quit — and the screen looked completely normal the whole time.
+    {
+        // Two scenes from one save: the first says where Anna stands at that minute,
+        // the second puts the player directly north of her. The schedule is a function
+        // of the world clock, which both saves share, so she does not move in between.
+        clear_file("saves/farm/slot1.sync");
+        write_text("saves/farm/slot1.sav", save_text(1, 0, 2, 2));
+        int ax = 0, ay = 0;
+        {
+            farm::FarmScene probe{farm::FarmScene::default_config(),
+                                  std::make_unique<gbaas::OfflineTransport>()};
+            CHECK(!probe.world().npcs.empty());
+            ax = probe.world().npcs[0].x;
+            ay = probe.world().npcs[0].y;
+        }
+        write_text("saves/farm/slot1.sav", save_text(1, 0, ax, ay - 1));
+        farm::FarmScene sc{farm::FarmScene::default_config(),
+                           std::make_unique<gbaas::OfflineTransport>()};
+        CHECK(sc.world().px == ax && sc.world().py == ay - 1);
+        CHECK(!sc.talking());
+
+        draw(sc, idle);                                   // publish the screen size
+        sc.update(1.0 / 60.0, key(platform::Key::Z));     // facing down by default: Anna
+        CHECK(sc.talking());
+
+        draw(sc, idle);
+        const farm::Talk tk = sc.talk_controls();
+        CHECK(tk.visible());
+        CHECK(tk.count == 3);                             // anna.dlg's first node
+        CHECK(ink(buf, tk.panel.x * SS, tk.panel.y * SS, tk.panel.w * SS, tk.panel.h * SS) > 0);
+        dump_ppm(buf, "farm_dialogue.ppm");
+
+        const auto tap = [&](const farm::Box& b) {
+            platform::InputState in{};
+            in.mouse_x = b.x + b.w / 2;
+            in.mouse_y = b.y + b.h / 2;
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+            return in;
+        };
+
+        // A tap on the panel but off every option is not an answer: it finishes the
+        // prompt and leaves the question standing. Getting this wrong would mean a
+        // stray tap anywhere in the box silently picks whatever was highlighted.
+        const std::size_t soil_before = sc.world().soil.size();
+        const int         px_before   = sc.world().px;
+        sc.update(1.0 / 60.0, tap(farm::Box{tk.panel.x, tk.panel.y, tk.panel.w, 20}));
+        CHECK(sc.talking());
+        CHECK(sc.talk_controls().count == 3);
+
+        // ...and an option answers it. "Ask about the town" is the second, so a
+        // mapping that is off by one still moves the conversation along and this test
+        // has to go looking for the difference.
+        sc.update(1.0 / 60.0, tap(tk.choice(1)));
+        draw(sc, idle);
+        CHECK(sc.talking());
+        CHECK(sc.talk_controls().count == 0);             // the branch is prose from here
+
+        // NOTHING ELSE ON SCREEN REACTS TO THE POINTER while the box is up. update()
+        // returns before it reads the pad, so every one of those buttons is dead — and
+        // a dead control that still lights up under a thumb is the founding bug of
+        // `controls.hpp` arriving from the other direction.
+        //
+        // Held, not pressed, so the dialogue itself ignores it (it answers edges); and
+        // dt = 0 so the typewriter does not advance between the two frames and turn a
+        // real difference into an unreadable one.
+        {
+            const farm::Box& b = sc.controls().use;
+            CHECK(!b.empty());
+            platform::InputState hold{};
+            hold.mouse_x = b.x + b.w / 2;
+            hold.mouse_y = b.y + b.h / 2;
+            hold.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            sc.update(0.0, hold);
+            draw(sc, idle);
+            const std::uint64_t with_pointer = fingerprint(buf);
+            sc.update(0.0, platform::InputState{});
+            draw(sc, idle);
+            CHECK(fingerprint(buf) == with_pointer);
+            CHECK(sc.talking());                          // and neither frame answered it
+        }
+
+        // The box CLOSES. This is the whole claim: before chapter 126 this loop ran out
+        // and `talking()` was still true, for ever.
+        int taps = 0;
+        for (; taps < 20 && sc.talking(); ++taps) {
+            const farm::Talk now = sc.talk_controls();
+            CHECK(now.visible());
+            sc.update(1.0 / 60.0, tap(now.panel));
+            draw(sc, idle);
+        }
+        CHECK(!sc.talking());
+        CHECK(taps < 20);
+
+        // None of it touched the world. A dialogue that also hoes the tile you are
+        // standing on is the `consumed` bug wearing a different hat.
+        CHECK(sc.world().soil.size() == soil_before);
+        CHECK(sc.world().px == px_before);
+
+        // ...and the game is playable again straight afterwards: the pad is back, and
+        // the panel is gone rather than merely transparent.
+        draw(sc, idle);
+        CHECK(!sc.talk_controls().visible());
+        const farm::Layout back = sc.controls();
+        CHECK(back.visible());
+        clear_file("saves/farm/slot1.sav");
+    }
+
     // ---- save, by thumb ------------------------------------------------------
     // F5 has been the only way to write the file since the farm existed. A phone has
     // no F5, so a phone had no save at all — the day survived only if you slept.

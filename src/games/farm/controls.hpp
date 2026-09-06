@@ -94,4 +94,54 @@ struct Action {
 
 Action read(const Layout& l, const Pointer& p);
 
+// -----------------------------------------------------------------------------
+//  The dialogue panel
+// -----------------------------------------------------------------------------
+//  Talking to the one NPC on the map was a HARD LOCK by hand, found while writing
+//  chapter 126: the scene's dialogue branch returns before it reads the pointer, so
+//  once the box was up nothing on screen did anything — you could not answer, could
+//  not walk away, could not save. Not an inconvenience; a frozen game with a
+//  force-quit as the only exit.
+//
+//  So the panel is laid out here, with everything else that answers a tap, and it
+//  brings the same rule: the renderer draws these rectangles and the hit test reads
+//  them. Its geometry used to be four expressions inside render(), which was fine
+//  while it was only a picture — the same story as the hotbar, one file over.
+//
+//  A modal needs no new buttons. Tap an option to pick it; tap the panel to finish
+//  the line and move on. That is what a text box on a phone has always meant, and it
+//  costs nothing on the desktop, where the keys still work.
+// -----------------------------------------------------------------------------
+
+struct Talk {
+    Box panel;       // tap here (off every option) to finish/advance the line
+    Box first;       // the first option's row; the rest are `row` apart below it
+    int row   = 0;   // pitch between option rows, and their height
+    int count = 0;   // how many options are being offered
+
+    [[nodiscard]] bool visible() const { return !panel.empty(); }
+    // Option `i`'s row. Derived rather than stored, so there is no cap on how many a
+    // dialogue may offer and no array to run off the end of — a fixed six would have
+    // been a ceiling nobody meets today and nobody sees when they do.
+    [[nodiscard]] Box choice(int i) const {
+        if (i < 0 || i >= count) return Box{};
+        return Box{first.x, first.y + i * row, first.w, first.h};
+    }
+};
+
+// Lay the panel out for the `choices` options it is offering right now — 0 means a
+// line of prose waiting to be advanced. The panel GROWS with them, because a row a
+// thumb can hit is 44 tall and a row that only has to be read is 18, and which one
+// this is depends on the same question the rest of the file already asks. A dialogue
+// with so many options that the panel would not fit lays out NOTHING, and the keyboard
+// is the honest answer there — the same rule the pad follows.
+Talk talk_layout(int w, int h, int choices);
+
+struct TalkAction {
+    bool advance = false;   // a tap on the panel, off every option
+    int  choice  = -1;      // ...or on one of them
+};
+
+TalkAction read(const Talk& t, const Pointer& p);
+
 } // namespace farm

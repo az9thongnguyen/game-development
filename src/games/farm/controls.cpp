@@ -56,8 +56,8 @@ bool pad_fits(int w, int h) {
     return true;
 }
 
-// How tall the hotbar strip is on this screen — 44 when it has to be hit, 24 when it
-// only has to be read. One function, because it is one fact.
+// How tall the hotbar strip is on this screen. Asked by the panel too, so the one
+// place that decides it is the one place that has to change.
 int hud_height(int w, int h) { return pad_fits(w, h) ? kBtn : kSlotH; }
 
 } // namespace
@@ -149,6 +149,48 @@ Action read(const Layout& l, const Pointer& p) {
         for (int i = 0; i < 4; ++i)
             if (l.tool[i].contains(p.x, p.y)) a.tool = i;
     }
+    return a;
+}
+
+// -----------------------------------------------------------------------------
+//  The dialogue panel
+// -----------------------------------------------------------------------------
+
+Talk talk_layout(int w, int h, int choices) {
+    Talk t;
+    t.count = choices > 0 ? choices : 0;
+
+    // A row is 44 when it has to be HIT and 18 when it only has to be READ — the same
+    // question the hotbar asks, answered from the same fact, so a screen never ends up
+    // with a thumb-sized hotbar above a hair-thin option list.
+    const int row   = pad_fits(w, h) ? kBtn : 18;
+    const int head  = 60;                     // speaker + the line, above the options
+    const int box_h = head + kSlotPad + t.count * row;
+    // Above the hotbar strip, not a fixed distance from the bottom edge. The panel used
+    // to sit at `h - box_h - 12`, which cleared a 24 px hotbar and covers a 44 px one —
+    // and the tool and seed count are exactly what a player checks while an NPC is
+    // telling them what grows here.
+    const int by    = h - hud_height(w, h) - kSlotPad * 2 - box_h;
+    // No room for the panel is not an error and not a smaller panel: the box is the
+    // one thing on this screen that must be readable, so it either fits or the
+    // keyboard is the honest answer. Same rule as the pad, one screen up.
+    if (by < kMargin || w < kMargin * 6) return Talk{};
+
+    t.panel = Box{kMargin, by, w - kMargin * 2, box_h};
+    t.row   = row;
+    t.first = Box{t.panel.x + kSlotPad, by + head, t.panel.w - kSlotPad * 2, row};
+    return t;
+}
+
+TalkAction read(const Talk& t, const Pointer& p) {
+    TalkAction a;
+    if (!t.visible() || p.x < 0 || p.y < 0 || !p.pressed) return a;
+    // An option wins over the panel it sits in. Every option is INSIDE the panel, so
+    // testing the panel first would swallow every answer and turn the whole box into
+    // one "next" button — which is what a first draft of this did.
+    for (int i = 0; i < t.count; ++i)
+        if (t.choice(i).contains(p.x, p.y)) { a.choice = i; return a; }
+    if (t.panel.contains(p.x, p.y)) a.advance = true;
     return a;
 }
 

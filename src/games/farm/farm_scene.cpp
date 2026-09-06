@@ -557,25 +557,47 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     if (message_t_ > 0) message_t_ -= dt;
     if (step_cooldown_ > 0) step_cooldown_ -= dt;
 
+    // Where the pointer is, built once. The dialogue reads it too — it has to, because
+    // this branch RETURNS, and for five chapters that meant a phone player who opened
+    // the dialogue box could not answer it, walk away or save. A hard lock, not a
+    // missing convenience.
+    const Pointer ptr{in.mouse_x, in.mouse_y,
+                      in.down(platform::MouseButton::Left),
+                      in.pressed(platform::MouseButton::Left)};
+
     // ---- dialogue owns the input while it is up ----
     if (talking_) {
         typed_ += dt * kTypeCharsPerSecond;
-        const auto& choices = talk_.choices();
+        const auto&      choices = talk_.choices();
+        const TalkAction ta =
+            read(talk_layout(screen_w_, screen_h_, static_cast<int>(choices.size())), ptr);
+        const bool confirm = in.pressed(platform::Key::Z) ||
+                             in.pressed(platform::Key::Space) ||
+                             in.pressed(platform::Key::Enter);
+        const auto finish_line = [&] { typed_ = static_cast<double>(talk_.text().size()); };
+
         if (!choices.empty()) {
             if (in.pressed(platform::Key::Up) && choice_ > 0) --choice_;
             if (in.pressed(platform::Key::Down) && choice_ + 1 < choices.size()) ++choice_;
-            if (in.pressed(platform::Key::Z) || in.pressed(platform::Key::Space) ||
-                in.pressed(platform::Key::Enter)) {
+            // A tap picks the option it landed on, so it MOVES the cursor before
+            // choosing rather than choosing whatever the keyboard last highlighted:
+            // otherwise the thing that lights up and the thing that happens disagree.
+            if (ta.choice >= 0 && static_cast<std::size_t>(ta.choice) < choices.size())
+                choice_ = static_cast<std::size_t>(ta.choice);
+            if (confirm || ta.choice >= 0) {
                 talk_.choose(choice_);
                 choice_ = 0;
                 typed_ = 0.0;
+            } else if (ta.advance) {
+                // A tap on the panel but off the options is not an answer. It finishes
+                // the prompt, which is the one thing a reader wants from it.
+                finish_line();
             }
-        } else if (in.pressed(platform::Key::Z) || in.pressed(platform::Key::Space) ||
-                   in.pressed(platform::Key::Enter)) {
+        } else if (confirm || ta.advance) {
             // The first press finishes the line rather than skipping it — otherwise a
             // fast reader and a fast presser lose text they never saw.
             if (typed_ < static_cast<double>(talk_.text().size())) {
-                typed_ = static_cast<double>(talk_.text().size());
+                finish_line();
             } else {
                 talk_.advance();
                 typed_ = 0.0;
@@ -593,11 +615,8 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     // Read before movement so a thumb and the arrow keys reach the same code. It uses
     // the POINTER, because SDL synthesizes a mouse from a finger — one implementation
     // for a tap, a click and a trackpad, and no new event type at the platform seam.
-    const Layout  pad = layout(screen_w_, screen_h_, conflict_);
-    const Pointer ptr{in.mouse_x, in.mouse_y,
-                      in.down(platform::MouseButton::Left),
-                      in.pressed(platform::MouseButton::Left)};
-    const Action  act = read(pad, ptr);
+    const Layout pad = layout(screen_w_, screen_h_, conflict_);
+    const Action act = read(pad, ptr);
 
     // ---- movement ----
     int dx = 0, dy = 0;
@@ -861,7 +880,11 @@ void FarmScene::render(const engine::Context& ctx) {
     // touch device" — SDL hands us a mouse either way, by design — so the choice is
     // between guessing and showing. It is drawn faint enough to ignore, and a mouse
     // player gains a second way to walk rather than losing anything.
-    if (pad.visible()) {
+    // ...and NOT while the dialogue owns the input. update() returns before it reads
+    // the pad, so every one of these buttons is dead for as long as the box is up —
+    // and a control that is drawn and does nothing is the precise bug this whole file
+    // is arranged to prevent, just arrived from the other direction.
+    if (pad.visible() && !talking_) {
         const bool over = in_.mouse_x >= 0;
         const auto button = [&](const Box& b, const char* glyph) {
             // An empty box is a control that is not there this frame — `save` during a
@@ -907,27 +930,39 @@ void FarmScene::render(const engine::Context& ctx) {
     }
 
     // ---- dialogue box ----
+    // Drawn from talk_layout(), the same rectangles the hit test reads. Before chapter
+    // 126 the geometry was four expressions right here and nothing read it, which was
+    // fine while the box was only a picture — and became a hard lock the moment a
+    // player without a keyboard opened one.
     if (talking_) {
         const auto& choices = talk_.choices();
-        const int box_h = 70 + static_cast<int>(choices.size()) * 18;
-        const int by = H - box_h - th::space_md;
-        g.fill_round_rect(th::space_md, by, W - th::space_md * 2, box_h, th::radius_md, 0xF01B1B2B);
-        g.draw_round_rect(th::space_md, by, W - th::space_md * 2, box_h, th::radius_md, 0xFFF4F1DE);
-        g.set_font_size(th::sz_caption);
-        g.draw_text(th::space_md + th::space_md, by + th::space_sm, talk_.speaker().c_str(),
-                    th::warn);
-        g.set_font_size(th::sz_body);
-        const std::string full = talk_.text();
-        const std::size_t shown = std::min(full.size(), static_cast<std::size_t>(std::max(0.0, typed_)));
-        g.draw_text(th::space_md + th::space_md, by + th::space_sm + th::sz_caption + th::space_xs,
-                    full.substr(0, shown).c_str(), th::text);
-        int cy = by + 60;
-        for (std::size_t i = 0; i < choices.size(); ++i) {
-            const bool sel = i == choice_;
-            g.draw_text(th::space_md + th::space_xl, cy,
-                        ((sel ? "> " : "  ") + choices[i].text).c_str(),
-                        sel ? th::accent : th::text_dim);
-            cy += 18;
+        const Talk  tk = talk_layout(W, H, static_cast<int>(choices.size()));
+        if (tk.visible()) {
+            const Box& b = tk.panel;
+            g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md, 0xF01B1B2B);
+            g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md, 0xFFF4F1DE);
+            g.set_font_size(th::sz_caption);
+            g.draw_text(b.x + th::space_md, b.y + th::space_sm, talk_.speaker().c_str(), th::warn);
+            g.set_font_size(th::sz_body);
+            const std::string full = talk_.text();
+            const std::size_t shown =
+                std::min(full.size(), static_cast<std::size_t>(std::max(0.0, typed_)));
+            g.draw_text(b.x + th::space_md, b.y + th::space_sm + th::sz_caption + th::space_xs,
+                        full.substr(0, shown).c_str(), th::text);
+            for (int i = 0; i < tk.count; ++i) {
+                const Box  r   = tk.choice(i);
+                const bool sel = static_cast<std::size_t>(i) == choice_;
+                const bool hot = in_.mouse_x >= 0 && r.contains(in_.mouse_x, in_.mouse_y);
+                // The ROW lights up, because the row is what you press. An arrow in
+                // front of the text says "a key moved a cursor here" and says nothing
+                // at all about where to put a thumb.
+                if (sel || hot)
+                    g.fill_round_rect(r.x, r.y, r.w, r.h, th::radius_sm,
+                                      sel ? 0x602A3040 : 0x30202838);
+                g.draw_text(r.x + th::space_md, r.y + (r.h - th::sz_body) / 2,
+                            ((sel ? "> " : "  ") + choices[static_cast<std::size_t>(i)].text).c_str(),
+                            sel ? th::accent : th::text_dim);
+            }
         }
     }
 }
