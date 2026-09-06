@@ -402,6 +402,7 @@ add_executable(test_commands tests/test_commands.cpp
   src/engine/asset/provenance.cpp
   src/engine/image.cpp
   src/engine/tilemap/map2.cpp
+  src/engine/tilemap/autotile.cpp   # map2's rule_piece resolves through it
 )
 target_include_directories(test_commands PRIVATE src)
 target_compile_definitions(test_commands PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")

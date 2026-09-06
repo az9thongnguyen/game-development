@@ -200,13 +200,14 @@ bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id
     // sheet that would not load into an empty one. So a sheet nobody declared, a sheet
     // whose image is missing, and an index past the end of a real sheet all arrive as
     // the same w == 0 — and the tile falls back to flat colour instead of a hole.
-    // For a line set `index` is the base of sixteen consecutive pieces and the cell's
-    // own neighbours pick which. The out-of-range case needs no new branch: a base
-    // that leaves fewer than sixteen tiles in the sheet lands past the end for exactly
-    // the pieces that do not exist, and Tileset already answers that with a null
-    // sprite — so a half-drawn line set degrades to flat colour cell by cell instead
-    // of drawing whatever tile happens to follow it.
-    const int index = a->index + (a->autotiled ? line_piece(map_, layer, id, x, y) : 0);
+    // When the MAP gives this id a rule, `index` is the base of a set of consecutive
+    // pieces and the cell's own neighbours pick which; rule_piece answers 0 when there
+    // is no rule, so there is no branch here at all. The out-of-range case needs no new
+    // branch either: a base that leaves fewer tiles in the sheet than the set has lands
+    // past the end for exactly the pieces that do not exist, and Tileset already answers
+    // that with a null sprite — so a half-drawn set degrades to flat colour cell by cell
+    // instead of drawing whatever tile happens to follow it.
+    const int index = a->index + tilemap::rule_piece(map_, layer, x, y);
     const gfx::Sprite s = sheet_of(a->sheet).sprite(static_cast<std::size_t>(index));
     if (s.w == 0) return false;
     g.blit(s, px, py);

@@ -5,24 +5,11 @@
 
 #include <sstream>
 
-#include "engine/tilemap/autotile.hpp"
-
 namespace farm {
 
 const Theme::Art* Theme::find(const std::string& layer, int id) const {
     const auto it = art.find({layer, id});
     return it == art.end() ? nullptr : &it->second;
-}
-
-int line_piece(const tilemap::Map& map, const std::string& layer, std::int32_t id,
-               int x, int y) {
-    const auto same = [&](int nx, int ny) { return map.at(layer, nx, ny) == id; };
-    std::uint8_t m = 0;
-    if (same(x, y - 1)) m |= tilemap::kN;
-    if (same(x + 1, y)) m |= tilemap::kE;
-    if (same(x, y + 1)) m |= tilemap::kS;
-    if (same(x - 1, y)) m |= tilemap::kW;
-    return tilemap::autotile_line_index(m);
 }
 
 std::optional<Theme> parse_theme(const std::string& text) {
@@ -44,18 +31,16 @@ std::optional<Theme> parse_theme(const std::string& text) {
             // Two lines claiming one name means one of them silently loses, and which
             // one depends on file order. That is a typo, not a redefinition.
             if (!t.sheets.emplace(name, s).second) return std::nullopt;
-        } else if (kind == "tile" || kind == "autotile") {
+        } else if (kind == "tile") {
             std::string layer;
             int         id = 0;
             Theme::Art  a;
-            a.autotiled = kind == "autotile";
             if (!(ln >> layer >> id >> a.sheet >> a.index)) return std::nullopt;
             // A negative index would be an index; 0 is the first tile of the sheet.
             if (id <= 0 || a.index < 0) return std::nullopt;
             if (t.sheets.find(a.sheet) == t.sheets.end()) return std::nullopt;
             // Two lines for one id is the same typo as two sheets for one name: one of
-            // them wins by file order, and which one is invisible. It matters more
-            // here, because `tile` and `autotile` disagree about what `index` MEANS.
+            // them wins by file order, and which one is invisible.
             if (!t.art.emplace(std::make_pair(layer, id), a).second) return std::nullopt;
         } else {
             return std::nullopt;   // an unknown record here is a typo, not a future field

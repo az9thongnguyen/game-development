@@ -3,6 +3,8 @@
 // =============================================================================
 #include "engine/tilemap/map2.hpp"
 
+#include "engine/tilemap/autotile.hpp"
+
 #include <sstream>
 
 namespace tilemap {
@@ -34,6 +36,43 @@ void write_props(std::string& s, const std::vector<Property>& props) {
 }
 
 } // namespace
+
+RuleKind Layer::rule_for(std::int32_t value) const {
+    for (const Rule& r : rules)
+        if (r.value == value) return r.kind;
+    return RuleKind::None;
+}
+
+RuleKind Map::rule_for(const std::string& layer_name, std::int32_t value) const {
+    const Layer* l = layer(layer_name);
+    return l ? l->rule_for(value) : RuleKind::None;
+}
+
+std::uint8_t neighbour_mask(const Map& m, const std::string& layer, int x, int y) {
+    const std::int32_t id = m.at(layer, x, y);
+    const auto same = [&](int nx, int ny) {
+        return m.in_bounds(nx, ny) && m.at(layer, nx, ny) == id;
+    };
+    std::uint8_t mask = 0;
+    if (same(x,     y - 1)) mask |= kN;
+    if (same(x + 1, y - 1)) mask |= kNE;
+    if (same(x + 1, y    )) mask |= kE;
+    if (same(x + 1, y + 1)) mask |= kSE;
+    if (same(x,     y + 1)) mask |= kS;
+    if (same(x - 1, y + 1)) mask |= kSW;
+    if (same(x - 1, y    )) mask |= kW;
+    if (same(x - 1, y - 1)) mask |= kNW;
+    return mask;
+}
+
+int rule_piece(const Map& m, const std::string& layer, int x, int y) {
+    switch (m.rule_for(layer, m.at(layer, x, y))) {
+        case RuleKind::Line: return autotile_line_index(neighbour_mask(m, layer, x, y));
+        case RuleKind::Blob: return autotile_index(neighbour_mask(m, layer, x, y));
+        case RuleKind::None: break;
+    }
+    return 0;
+}
 
 std::string prop(const std::vector<Property>& props, const std::string& key,
                  const std::string& fallback) {
@@ -92,7 +131,11 @@ const Entity* Map::entity(const std::string& n) const {
 }
 
 std::string to_text(const Map& m) {
-    std::string s = "map2 " + std::to_string(kFormatVersion) + "\n";
+    // The lowest version that can express this map (see kFormatVersion): a map with
+    // no rules stays a v1 file and its bytes do not move for a feature it does not use.
+    bool has_rules = false;
+    for (const auto& l : m.layers) has_rules = has_rules || !l.rules.empty();
+    std::string s = "map2 " + std::to_string(has_rules ? 2 : 1) + "\n";
     s += "name " + (m.name.empty() ? std::string("untitled") : m.name) + "\n";
     s += "size " + std::to_string(m.w) + " " + std::to_string(m.h) + "\n";
     s += "tile " + std::to_string(m.tile) + "\n";
@@ -108,6 +151,11 @@ std::string to_text(const Map& m) {
                  ? std::string("mask")
                  : ("tiles " + (l.tileset.empty() ? std::string("-") : l.tileset));
         s += "\n";
+        // Rules before the grid: they say what the numbers in it MEAN, and a reader
+        // that met them afterwards would have had to hold the grid to reinterpret it.
+        for (const Rule& r : l.rules)
+            s += "rule " + std::to_string(r.value) + " " +
+                 (r.kind == RuleKind::Line ? "line" : "blob") + "\n";
         for (int y = 0; y < m.h; ++y) {
             s += "row";
             for (int x = 0; x < m.w; ++x)
@@ -169,14 +217,35 @@ std::optional<Map> parse_map2(std::istringstream& in) {
                 return std::nullopt;
             }
             l.cells.assign(static_cast<std::size_t>(m.w) * m.h, 0);
-            for (int y = 0; y < m.h; ++y) {
-                std::string row;
-                if (!(in >> row) || row != "row") return std::nullopt;
+            // Zero or more `rule` lines, then exactly h `row` lines. A rule after the
+            // first row is refused rather than accepted late: the file would then have
+            // meant two different things in its two halves.
+            for (int y = 0; y < m.h;) {
+                std::string word;
+                if (!(in >> word)) return std::nullopt;
+                if (word == "rule") {
+                    if (y != 0) return std::nullopt;
+                    Rule r;
+                    std::string k;
+                    if (!(in >> r.value >> k)) return std::nullopt;
+                    if      (k == "line") r.kind = RuleKind::Line;
+                    else if (k == "blob") r.kind = RuleKind::Blob;
+                    else return std::nullopt;
+                    // 0 is "empty", not a material; and a second rule for one value is
+                    // a contradiction whose winner would depend on file order.
+                    if (r.value == 0) return std::nullopt;
+                    for (const Rule& e : l.rules)
+                        if (e.value == r.value) return std::nullopt;
+                    l.rules.push_back(r);
+                    continue;
+                }
+                if (word != "row") return std::nullopt;
                 for (int x = 0; x < m.w; ++x) {
                     long long v = 0;
                     if (!(in >> v)) return std::nullopt;
                     l.cells[static_cast<std::size_t>(y) * m.w + x] = static_cast<std::int32_t>(v);
                 }
+                ++y;
             }
             m.layers.push_back(std::move(l));
         } else if (tok == "entity") {

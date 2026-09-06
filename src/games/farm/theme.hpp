@@ -47,12 +47,13 @@ struct Theme {
     };
     struct Art {
         std::string sheet;       // a key of `sheets` — parse_theme refuses any other
-        int         index = 0;   // into that sheet, cut left-to-right, top-to-bottom
-        // When set, `index` is the FIRST of tilemap::kLinePieces consecutive tiles and
-        // the one actually drawn is chosen per cell from its four neighbours. The map
-        // still stores one id: which corner piece a cell wears is a consequence of the
-        // map, never a thing an author renumbers by hand — that is the whole point.
-        bool autotiled = false;
+        // Into that sheet, cut left-to-right, top-to-bottom. When the MAP gives this
+        // id an autotile rule, `index` is the FIRST of the set's consecutive pieces
+        // and the one actually drawn is chosen per cell from its neighbours — see
+        // tilemap::rule_piece. Which it is, is not written here: whether a material is
+        // a road or a region is a fact about the world, and it lives in the map where
+        // an editor can see it (chapter 134). The theme says only where the pixels are.
+        int index = 0;
     };
 
     std::map<std::string, Sheet>              sheets;   // name -> where the pixels are
@@ -64,31 +65,26 @@ struct Theme {
 
 // Parse a theme file:
 //
-//     sheet    <name> <path> [tile]           declare where pixels come from
-//     tile     <layer> <id> <sheet> <index>   join a semantic id to one of them
-//     autotile <layer> <id> <sheet> <base>    ...to a 16-piece LINE set at <base>
+//     sheet <name> <path> [tile]           declare where pixels come from
+//     tile  <layer> <id> <sheet> <index>   join a semantic id to one of them
+//
+// There used to be an `autotile` record here carrying the same fields; chapter 134
+// moved that decision into the map, so a `tile` whose id has a rule is a base and one
+// whose id has none is a single picture. An `autotile` line is now an unknown record
+// and refused LOUDLY — a theme that still has one has lost nothing silently.
 //
 // Returns nullopt when the text is unusable: no sheet, a malformed line, an unknown
 // record, a duplicate sheet name, a second line for an id already mapped, or a
-// `tile`/`autotile` line naming a sheet that was never declared. That last one is the failure this format introduced, and it is the one
-// that must not be silent — a typo in a sheet name would otherwise read exactly like
-// "this tile has no art yet" and quietly lose the art.
+// `tile` line naming a sheet that was never declared. That last one is the failure
+// this format introduced, and it is the one that must not be silent — a typo in a
+// sheet name would otherwise read exactly like "this tile has no art yet" and quietly
+// lose the art.
 //
 // A theme that declares a sheet and maps nothing is legal and means "no art yet".
 std::optional<Theme> parse_theme(const std::string& text);
 
-// Which of a line set's sixteen pieces cell (x,y) wears, from its four neighbours on
-// the same layer — `tilemap::autotile_line_index` of "which sides continue".
-//
-// PURE, and a free function rather than a method on the scene, because that is the
-// only shape in which it can be checked against a real map without a renderer. It is
-// also the D-rule the platform spine follows everywhere else: the operation lives in
-// the core and the trigger only calls it.
-//
-// Out of bounds does NOT connect — Map::at answers 0 there and parse_theme refuses to
-// map id 0 — so a path that stops at the map edge gets an end cap. That is the truth;
-// the alternative pretends the world continues and draws a road running into nothing.
-int line_piece(const tilemap::Map& map, const std::string& layer, std::int32_t id,
-               int x, int y);
+// `line_piece` used to live here. It is `tilemap::rule_piece` now — the same neighbour
+// scan, in the map module, where the Map workspace can call it too. A copy of it here
+// is why the editor drew a flat square for a road it had no idea was a road.
 
 } // namespace farm
