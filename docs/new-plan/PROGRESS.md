@@ -980,18 +980,27 @@ tệ hơn. "Ô nhập giữ phím tắt" đúng; "và không bao giờ trả l�
 
 ## Việc kế tiếp
 
-**S19 — chưa chốt.** Ba ứng viên, theo thứ tự tôi thấy đáng làm:
+**Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
+thay cho T1–T10 của `PLAN-v2.md` (tóm tắt: T1 và T2 đã xong ~85%, và bốn chương 124–127 đã
+làm chín T6).
 
-1. **Tạo file mới trong Pixel workspace.** Đây là **trần cuối cùng** giữa "có editor" và
-   "vẽ được art mới ngay trong Studio": chương 127 đã mở cửa màu, nhưng workspace vẫn chỉ
-   sửa được texture **manifest đã khai**. Vẽ một tile mới vẫn phải tự thêm dòng
-   `asset texture` và đặt sẵn một `.hrt` rỗng bên cạnh. Nó chạm `project_core` (sửa
-   manifest) nên là một slice thật, không phải một nút.
-2. **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`) — và nó là chỗ *đầu tiên*
-   thấy được autotile chạy **khi vẽ**: sửa đường trong editor, mảnh tự đổi theo.
-3. **Đa chạm thật ở platform seam.** Chương 126 đóng hết động từ, nhưng vẫn **một ngón**:
-   không vừa giữ hướng vừa bấm hành động. Đây là ràng buộc còn lại của "chơi được bằng
-   tay", và nó nằm ở seam chứ không ở game — nên nó phục vụ mọi surface, không riêng farm.
+| # | Slice | Size |
+|---|---|---|
+| **S19** | **Trang web thật + chứng minh chạm** — `shell.html` hiện là debug page **0 dòng touch**, trong khi ch.126 vừa làm farm chơi được bằng ngón tay | M |
+| S20 | CI chạy 23 test BaaS (container Drogon) — cả bộ đang **tối** | S |
+| S21 | Collection page + `cover`/`summary` trong manifest + README template | S/M |
+| S22 | Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card | M |
+| S23 | Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1` | L |
+| S24 | Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene | M |
+| S25 | IntGrid + rule autotile trong Map workspace | L |
+| S26 | Mixer workspace (cửa **thứ tư** vào `.hrt` — phải sửa `CLAUDE.md` có chủ ý) | L |
+| S27 | **Creatures** — game thứ hai (MVP) | XL |
+| S28 | Replay + PvP realtime + ELO — consumer thật đầu tiên của realtime | L |
+| S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |
+| S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
+
+Điểm dừng show được: **sau S21** (mở link trên điện thoại, chọn game, chơi) và **sau S28**
+(hai game + PvP).
 
 Sau đó (chưa xếp thứ tự):
 

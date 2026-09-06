@@ -1,5 +1,12 @@
 # PLAN — Cải tổ UI/UX và hoàn thiện game-development
 
+> **DEPRECATED (2026-09-06).** Lộ trình S1–S13 dưới đây đã chạy tới S18 và mặt bằng đã
+> đổi. Bản thay thế: **`PLAN-v2.md`**, và **bắt buộc đọc `PLAN-v2-CORRECTIONS.md`
+> trước** — PLAN v2 cũng được viết mà chưa đọc `src/`, và hai slice nó xếp đầu đã xong
+> ~85%. Giữ file này vì §1 (giả định A1–A11) và §6 (nguyên tắc thực thi) vẫn đúng, và vì
+> lịch sử ý tưởng gốc đáng giữ nguyên vẹn.
+
+
 **Ngày:** 2026-09-04 · **Trạng thái gốc:** `main` @ `81d3a81` (282 commits, 61 test suites xanh)
 **Đọc kèm:** `SPEC.md` (spec kỹ thuật từng slice) — **đọc `SPEC.md §0` trước**: nó
 liệt kê mọi chỗ bản gốc đoán sai về code. File này trả lời *làm gì, theo thứ tự nào,

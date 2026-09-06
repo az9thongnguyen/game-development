@@ -1,6 +1,10 @@
 # SPEC — Đặc tả kỹ thuật chi tiết
 
 **Đi kèm:** `PLAN.md` (thứ tự và tiêu chí xong). Số mục dưới đây được PLAN tham chiếu (vd "SPEC §2.9").
+**Cập nhật 2026-09-06:** các delta từ `RESEARCH-kenney-assets.md` đã được nhập vào §3.4
+(`.pack`), §3.9 (**Mixer**), §7.2 (README template) — xem `PLAN-v2-CORRECTIONS.md` §4 để
+biết mỗi mục rơi vào slice nào.
+
 **Trạng thái:** bản gốc được viết **trước khi đọc `src/`**. Ngày 2026-09-04 toàn bộ
 spec đã được đối chiếu với code; §0 dưới đây liệt kê mọi chỗ sai và cách sửa. Các
 đoạn đã kiểm được đánh dấu `[verified]`, các đoạn bị sửa đánh dấu `[corrected]`.
@@ -355,7 +359,13 @@ SDL: `SDL_StartTextInput`, `SDL_SetCursor`, `SDL_GetClipboardText`. Web: clipboa
 
 Layout lưu `assets/studio.layout` (text: `layout 1`, `inspector_w 300`, `bottom_h 180`, `last_workspace map`).
 
-### 3.2 `studio_core`
+### 3.2 `studio_core` `[corrected — tên thật là `document_core`]`
+
+Thư viện này **đã tồn tại** với tên `document_core` (`src/engine/document/`), và
+`Workspace` đã tồn tại là `studioshell::Workspace` (`src/games/studio_shell/workspace.hpp`)
+với chữ ký khác đề xuất dưới đây — khi triển khai, **đối chiếu interface thật**, đừng đổi
+tên cái đang chạy.
+
 
 ```cpp
 struct Command { std::string label; std::function<void()> apply, revert; uint64_t merge_key = 0; };
@@ -394,6 +404,33 @@ std::span<const CommandInfo> all();
 - Kéo asset vào canvas → `Workspace::on_asset_dropped`. Chuột phải: Add to project / Remove / Reveal path / Copy path.
 - Search box lọc theo tên.
 
+**Format `.pack` (thêm 2026-09-06, RESEARCH-K §3.1).** Một pack asset ngoài mang theo
+provenance của chính nó, thay vì để người import nhớ:
+
+```
+pack 1
+name Tiny Farm
+author Kenney
+source https://kenney.nl/assets/tiny-farm
+license CC0-1.0
+version 1.0
+category 2D
+series Tiny
+tags farm rpg map pixel
+tile 16
+preview preview.png
+file tilemap.png tileset
+file characters.png sheet fw=16 fh=16
+```
+
+- Card của asset browser hiển thị badge `category / series / license`, tile size, số file.
+- `--cmd asset.license-report` **sinh** `assets/ATTRIBUTION.md` từ mọi `.pack` dưới asset
+  root. Hôm nay file đó gõ tay và `CLAUDE.md` biến nó thành *một luật phải nhớ*; sinh ra
+  thì không quên được. Art tự vẽ (`.recipe` / `.pix`) giữ nguyên dòng tay — provenance của
+  chúng là chính file source.
+- `resource_core` tính hash cả `.pack` → đổi pack thì đổi release id, đúng triết lý
+  content-addressed.
+
 ### 3.5 Validation panel
 
 Chạy `project_core` doctor + `resource_core` closure khi: mở project, sau mỗi save, khi bấm Validate. Mỗi issue: `severity badge · message · [Jump]`. Jump chuyển workspace và chọn asset/actor liên quan.
@@ -424,6 +461,30 @@ Chung: zoom 25–800% (wheel), pan (space+drag / chuột giữa), grid + snap to
 Map: tool `paint/erase/fill/rect/pick`, layer list (ẩn/khoá), tileset panel (chọn tile, autotile toggle), entity tool, trigger tool.
 
 ### 3.9 Asset tooling (S7)
+
+**Mixer** `[thêm 2026-09-06, RESEARCH-K §3.2 — ưu tiên TRƯỚC phần còn lại của Pixel
+editor]` — sinh sprite từ *bộ phận + hoán màu theo index + frame*, data-driven:
+
+```
+mixer 1
+name creature
+size 32 32
+frames 4 fps 6
+palette base #3a2f2a #6b4f3a #c58f5a #e9d7b8
+slot body   layer 0 required
+slot wings  layer 3 optional
+part body slime parts/body_slime.hrt anchor 16 24
+rule wings requires body:not slime
+```
+
+- UI: tab theo slot, lưới part có preview, ramp palette bên phải, Random / seed, xem frame.
+- Output: `.hrt` (+ `.anim`) + một dòng `asset` vào manifest; **`.mix` là *source*** — nằm
+  ngoài manifest, giống `.recipe` và `.pix`, và một test re-bake so byte.
+- Đây sẽ là **cửa offline thứ tư** vào `.hrt` (`--cmd asset.mix`). Câu "đúng ba cửa" trong
+  `CLAUDE.md` phải được sửa **có chủ ý** trong cùng slice, kèm đúng hai luật của ba cửa
+  kia: một dòng `ATTRIBUTION.md`, và một test bake-lại-so-byte.
+- Ràng buộc **là** tính năng (Kenney Shape 64×64/16 màu): người dùng không cần vẽ giỏi,
+  cần một bộ part tốt.
 
 **Pixel editor** `[corrected]` — document **`.hrt`** (+ sidecar `.pxd` giữ
 layer/palette, text versioned). **Không dùng PNG**: repo không có encoder *lẫn*
@@ -574,6 +635,11 @@ Battle screen 640×360: sprite hai bên, HP bar, menu 4 ô (Fight/Bag/Party/Run)
 - Nguồn: quét `assets/projects/*.gameproject` + `cover` (thêm dòng `cover <png>` và `summary "<text>"` vào manifest schema v2 với migration).
 - Card: cover 320×180, tên, summary, badge channel production hash, nút **Play** (→ `demo.html?mode=project&project=…&channel=production`), nút "Read chapter".
 - Trang này cũng là landing của README (link trong README).
+- **README template kiểu Starter Kit** (RESEARCH-K §3.3) cho *mỗi* `.gameproject`, render
+  trên trang chi tiết: `Features` (5–8 gạch đầu dòng, chỉ thứ chơi được) · `Screenshot/GIF`
+  · `Controls` (bảng Key | Touch | Command) · `Instructions` (thêm crop/creature ở file
+  nào, thêm map ở workspace nào, save/cloud save, publish) · `License` (code MIT · asset
+  xem `ATTRIBUTION.md`) · link chapter tương ứng.
 
 ### 7.3 Webserver
 Thêm: `Content-Encoding: gzip` nếu có file `.gz` sẵn bên cạnh (pre-compressed ở build, không nén runtime); cache header cho `.wasm`; route `/collection`. Test: `test_webserver` mở rộng.
