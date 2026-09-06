@@ -100,6 +100,9 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --cmd asset.import  <src.png>    <dst.hrt>  # bring foreign art in (offline)
 ./build/demo --cmd asset.texture <src.recipe> <dst.hrt>  # bake GENERATED art (offline)
 ./build/demo --cmd asset.pixels  <src.pix>    <dst.hrt>  # bake DRAWN art, an ASCII sheet
+./build/demo --cmd collection.index projects collection.json  # bake the game LIST a page reads
+                                              # (assets/collection.json is committed; a test
+                                              #  re-bakes it and compares bytes, like a .recipe)
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
@@ -174,7 +177,12 @@ cd build-web && python3 -m http.server 8765   # open http://localhost:8765/demo.
 ```
 
 Pick the scene with `?mode=` (`gui`, `farm`, `project`, `shell`, `hubui`, `colony`, …)
-or point straight at a manifest with `?project=projects/farm.gameproject`. Serving it
+or point straight at a manifest with `?project=projects/farm.gameproject`. **`collection.html`
+is the page you send someone**: it lists every `*.gameproject` as a card (cover, one line,
+Play), decodes the `.hrt` cover in JavaScript, and renders the README beside the manifest.
+The web build copies it, `assets/collection.json` and an ALLOWLIST of asset subdirectories
+(`textures`, `projects`) next to `demo.html` — an allowlist, because `assets/` also holds
+this machine's `saves/`. Serving it
 from the BaaS instead (`./build/baas/baas --static build-web`) puts the page and the API
 on one origin, which is what the SDK's relative base URL expects — the games that talk
 to the backend only work that way.
@@ -266,7 +274,10 @@ is the thing most likely to be broken by a careless edit:
 
 1. **`game.project` manifest** (`project_core`) — a versioned text file that declares
    identity, an `entry` (which game to launch), and its content as `asset <type> <path>`
-   lines. `--project` launches from it; `src/main.cpp`'s `launch_entry` seam maps an
+   lines, plus the optional `summary` and `cover` a LIST of games needs and a launcher
+   does not. A `cover` joins the resource closure (it ships, so it is hashed) unless the
+   manifest already declared that same path — one file, one hash, or the release id moves
+   without the content moving. `--project` launches from it; `src/main.cpp`'s `launch_entry` seam maps an
    entry name to a scene, so a new game needs no new CLI flag. **The farm game is the
    proof**: `projects/farm.gameproject` added a game with a manifest and a scene, and
    inspect/package/publish/hub all worked on it unchanged.
