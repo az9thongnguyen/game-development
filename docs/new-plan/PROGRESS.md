@@ -1432,6 +1432,91 @@ id farm đổi đúng như phải đổi (`db6959279af1cb80`: hai asset mới) �
 bài kiểm trình duyệt PASS · ba khung đã render và **đã nhìn** (parts + hai sprite, farm
 lúc chơi, và Mixer workspace — khung thứ ba tìm ra nền carô nuốt mất đôi chân).
 
+### S27a — `creature_core`: một trận đánh REPLAY được ✅ 2026-09-07 · chương 136
+
+Merge `feat/s27a-creature-core`. S27 là XL nên chia đôi đúng như `PLAN.md` đã xếp
+(ch.119–120 trong bản gốc): **136 = thư viện + 18 loài**, **137 = game**.
+
+**Vì sao Creatures đáng làm, và lý do KHÔNG phải "hai game hơn một game."** Đây là
+thứ đầu tiên trong repo buộc phải cho **cùng một kết quả trên hai máy khác nhau**.
+Farm không cần: save là ảnh chụp, day roll là cục bộ, hai người chơi có parsnip khác
+nhau thì không ai biết. Một trận đánh thì khác ngay khi nó được **xem lại, lưu lại,
+hay chia sẻ**: replay chỉ là *bằng chứng* nếu chạy lại ra đúng nó; một lượt PvP qua
+mạng là **bốn byte**; và desync phải **bị phát hiện**, nếu không hai người lặng lẽ
+đánh xong hai trận khác nhau và một người được báo là thua.
+
+**Ba luật, mỗi luật là một điều thư viện TỪ CHỐI làm:**
+
+1. **Không float trong đường resolve.** Hiệu quả hệ là *phần trăm*, STAB là
+   `*150/100`, roll sát thương là `*85..100/100`. Một `float` sẽ đúng trên cả hai
+   máy *gần như luôn luôn*, và "gần như" chính là toàn bộ vấn đề.
+2. **RNG là STATE, không phải dịch vụ.** `Battle::rng` là một field, nó nằm trong
+   hash, và chỉ `step` đẩy nó đi.
+3. **Thứ tự lượt suy ra từ state**: priority → speed → một lần tung đồng xu lấy từ
+   chính stream của trận. Không bao giờ "side 0 trước" — bản rẻ tiền đó chạy đúng
+   cho tới khi side 0 và side 1 là hai cái máy.
+
+`step` trả **event không có chuỗi** (`{kind, side, a, b}`): core thuần phải biên dịch
+được vào test headless, và cùng một trận phải kể bằng một ngôn ngữ trên màn hình và
+bằng một dòng log ở chỗ khác.
+
+**`engine/rand.hpp`** — vừa là thêm vừa là xoá. Câu "std::mt19937 portable nhưng
+distribution của nó thì KHÔNG" đã phải đúng ở nơi thứ ba, nên nó thôi làm một đoạn
+comment chép vào từng game. `farm::Rng` giờ là alias; particles giữ xorshift32 riêng
+**có chủ ý** (seed theo emitter, không phải đồng ý với ai).
+
+**Bảng hệ chỉ ghi NGOẠI LỆ.** 6×6 = ba mươi sáu số viết ra là ba mươi sáu cơ hội đặt
+`200` vào chỗ `50` — và tệ hơn, người đọc không phân biệt được một `100` cố ý với một
+`100` bị quên. 18 loài là **sáu dòng tiến hoá ba giai đoạn**, mỗi hệ một dòng, nên
+`evolve=` là thứ chịu lực chứ không phải trang trí.
+
+**Không ai vẽ một con nào trong mười tám.** `parts_creature.pix` là **mười hai ô và
+không ô nào là một sinh vật**: ba thân, ba mặt, ba mào, ba đuôi. **Tiến hoá = cùng
+công thức cộng một part** — và câu đó được *kiểm*, không phải được *tuyên bố*: test
+đọc ba file `.mix` của từng dòng và khẳng định mỗi giai đoạn là giai đoạn trước cộng
+đúng một part, mọi part cũ còn nguyên, cặp swap không đổi.
+
+| Commit | Việc |
+|---|---|
+| `e81b2a9` | `creature_core` + `engine/rand.hpp` (farm dùng chung, xoá bản sao) + ba file `.def` + `test_creature` |
+| `0c2e089` | `parts_creature.pix` + 18 `.mix`/`.hrt` + **quét re-bake cả ba cửa** trong `test_commands` |
+| `6456828` | Mười một lỗ test do mutation lộ ra |
+
+**Sheet đầu tiên VÔ HÌNH.** Thân bắt đầu ở hàng 3, mào ở hàng 1–4 → thân (ghép
+**sau cùng**) chôn mất mào: stage 2 và stage 3 của dòng nước ra **giống hệt từng pixel**
+stage 1. Mọi file parse được, mọi mix compose được, mọi test xanh, và **claim duy nhất
+tấm sheet tồn tại để nói** thì vô hình trong bản render. Sửa bằng một *hợp đồng bố
+cục* viết thẳng vào file: mào hàng 0–4, thân hàng 5–15, đuôi cột 11–15.
+
+**Một luật là "quét" cho một cửa và "ba cái tên" cho ba cửa kia.** `CLAUDE.md` nói
+mọi nguồn `.hrt` đều được test bake lại và so byte. Đúng với `.pack` import (quét cả
+cây từ ch.131). Với ba cửa còn lại thì chỉ đúng theo nghĩa **một `.recipe`, một
+`.pix`, một `.mix` được gọi tên bằng tay** — trung thực khi repo có ba nguồn, không
+còn trung thực khi một commit thêm mười chín. Giờ `test_commands` quét toàn bộ cây
+(24 nguồn), bake lại từng cái, so với `.hrt` đã commit, và **từ chối pass trên danh
+sách rỗng**. Đã kiểm hai chiều: lật một byte trong `creature_05.hrt` → đỏ và gọi tên
+file. Đây là lần **thứ ba** dự án gặp đúng hình dạng này (ch.128 denylist preload,
+ch.131 luật attribution): *luật đúng, kiểm tra phủ một thể hiện của nó, và lỗ hổng
+vô hình cho tới khi số lượng tăng.*
+
+**✅ Đã chạy:** `ctest` **81/81** (80 → 81: `creature`; **53** khi không có Drogon, đã
+đo) · **32/32 mutation** sau khi vá mười một, baseline sau restore GREEN, nguồn sạch ·
+ASan+UBSan xanh trên `test_creature`/`test_commands`/`test_farm` · golden path xanh,
+`--project-verify` exit 0, **0 rò `.tmp`** · web build (Emscripten) xanh · **đã nhìn
+hai khung render**: bảng 18 loài (bắt được lỗi mào bị chôn) và bản phóng to 12× của
+dòng cỏ + dòng thường.
+
+**⚠️ Chưa xác minh:** **chưa có game** — chưa overworld, chưa encounter, chưa manifest,
+chưa `--project`; ch.137 là consumer, và điều này chỉ chấp nhận được *vì* nó là slice
+ngay kế tiếp (đúng thoả thuận ch.111 đã ghi) · **tất định mới chứng minh trên một
+máy** — 1000 trận replay khớp dưới compiler này, RNG có golden sequence, nhưng **chưa
+có trận nào replay trên bản web**, mà đó lại chính là nền tảng luật "không float" tồn
+tại vì nó · **mọi chiêu đều vật lý** (chưa có tách special/physical) · không stat
+stage, không item, không thời tiết, không multi-hit · **ngủ mất luôn lượt tỉnh dậy**
+(cố ý, hành vi Gen-1, nhưng chưa ai chơi thử) · AI là *một luật và một tiebreak* ·
+bắt được thì kết thúc trận và không gì khác (chưa có box, chưa nhập party) · 18 con
+**không animation, không sprite lưng** · `encounters.def`/trainer/gym **chưa tồn tại**.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1448,7 +1533,8 @@ làm chín T6).
 | ~~S24~~ | ~~Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene~~ — **XONG**, chương 133 (13 lab → 9) | M |
 | ~~S25~~ | ~~IntGrid + rule autotile trong Map workspace~~ — **XONG**, chương 134 (rule vào map, `farm::line_piece` bị xoá) | L |
 | ~~S26~~ | ~~Mixer workspace (cửa **thứ tư** vào `.hrt`)~~ — **XONG**, chương 135; số cửa 3 → 4 đã đổi có chủ ý | L |
-| S27 | **Creatures** — game thứ hai (MVP) | XL |
+| ~~S27a~~ | ~~`creature_core` + 18 loài dựng từ Mixer~~ — **XONG**, chương 136 | L |
+| S27b | **Creatures** — game (overworld, battle screen, manifest, controls) | L |
 | S28 | Replay + PvP realtime + ELO — consumer thật đầu tiên của realtime | L |
 | S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |
 | S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
