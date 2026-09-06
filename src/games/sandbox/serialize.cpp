@@ -3,6 +3,7 @@
 // =============================================================================
 #include "games/sandbox/serialize.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -56,6 +57,32 @@ gfx::Color parse_hex(const std::string& s) {
     return gfx::rgb((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
 }
 
+// A comma-separated float list, short-read tolerant: missing fields keep the caller's
+// default. Same forgiveness as every other token here — an old scene must still load.
+std::vector<std::string> parts_of(const std::string& v) {
+    std::vector<std::string> out;
+    std::size_t i = 0;
+    while (true) {
+        const std::size_t c = v.find(',', i);
+        out.push_back(v.substr(i, c == std::string::npos ? std::string::npos : c - i));
+        if (c == std::string::npos) break;
+        i = c + 1;
+    }
+    return out;
+}
+std::vector<float> floats_of(const std::string& v) {
+    std::vector<float> out;
+    for (const std::string& piece : parts_of(v))
+        if (!piece.empty()) out.push_back(to_f(piece));
+    return out;
+}
+template <typename... F>
+void assign_floats(const std::vector<float>& v, F&... fields) {
+    float* dst[] = {&fields...};
+    const std::size_t n = sizeof...(F);
+    for (std::size_t i = 0; i < n && i < v.size(); ++i) *dst[i] = v[i];
+}
+
 // Content between the first '[' and the last ']', or "" if unbracketed.
 std::string strip_brackets(const std::string& s) {
     const auto a = s.find('[');
@@ -77,6 +104,8 @@ std::string archetype_tokens(const Archetype& a) {
     if (a.lifetime) s += " lifetime=" + fmt_f(a.ttl);
     if (!a.texture.empty()) s += " tex=" + a.texture;
     if (a.frames > 1)       s += " frames=" + std::to_string(a.frames) + " fps=" + fmt_f(a.fps);
+    if (a.frames > 1 && !a.loop) s += " noloop";   // looping is the default, so only
+                                                   // the one-shot needs to be written
     return s;
 }
 
@@ -101,6 +130,7 @@ Archetype parse_archetype(const std::string& tokens) {
         else if (k == "tex")     a.texture = v;
         else if (k == "frames")  a.frames = to_i(v);
         else if (k == "fps")     a.fps = to_f(v);
+        else if (k == "noloop")  a.loop = false;
     }
     return a;
 }
@@ -115,7 +145,7 @@ std::string to_scene(const World& w) {
     mw.reg.view<Transform2D>([&](ecs::Entity e, Transform2D& t) {
         Archetype a;
         if (Body*    b = mw.reg.get<Body>(e))    { a.w = b->w; a.h = b->h; }
-        if (Sprite*  s = mw.reg.get<Sprite>(e))  { a.color = s->color; a.round = s->round; a.texture = s->texture; a.frames = s->frames; a.fps = s->fps; }
+        if (Sprite*  s = mw.reg.get<Sprite>(e))  { a.color = s->color; a.round = s->round; a.texture = s->texture; a.frames = s->frames; a.fps = s->fps; a.loop = s->loop; }
         if (Mover*   m = mw.reg.get<Mover>(e))   { a.mover = true; a.vx = m->vx; a.vy = m->vy; }
         if (Spinner* s = mw.reg.get<Spinner>(e)) { a.spinner = true; a.omega = s->omega; }
         if (mw.reg.has<Bouncer>(e))              a.bouncer = true;
@@ -124,6 +154,18 @@ std::string to_scene(const World& w) {
 
         std::string line = "e x=" + fmt_f(t.x) + " y=" + fmt_f(t.y) + " rot=" + fmt_f(t.rot)
                          + " " + archetype_tokens(a);
+        // The effect components ride on the entity, not the Archetype: a Spawner's proto
+        // is an Archetype, and a proto that could carry an emitter would nest a particle
+        // system inside a template that spawns copies of itself.
+        if (Emitter* em = mw.reg.get<Emitter>(e))
+            line += " emitter=" + fmt_f(em->cfg.rate) + "," + fmt_f(em->cfg.speed) + ","
+                  + fmt_f(em->cfg.spread) + "," + fmt_f(em->cfg.gravity) + ","
+                  + fmt_f(em->cfg.life) + "," + fmt_f(em->cfg.dir);
+        if (Light* L = mw.reg.get<Light>(e))
+            line += " light=" + fmt_f(L->radius) + "," + fmt_f(L->intensity) + ","
+                  + hex_of(L->color);
+        if (Sound* sd = mw.reg.get<Sound>(e))
+            line += " sound=" + fmt_f(sd->freq) + "," + fmt_f(sd->ms) + "," + fmt_f(sd->gain);
         if (Spawner* sp = mw.reg.get<Spawner>(e))
             line += " spawner=" + fmt_f(sp->interval) + ":[" + archetype_tokens(sp->proto) + "]";
         if (OnOverlap* o = mw.reg.get<OnOverlap>(e)) {
@@ -139,6 +181,7 @@ std::string to_scene(const World& w) {
 
 World from_scene(const std::string& text) {
     World w;
+    std::uint32_t emitter_seed = 0;
     std::size_t pos = 0;
     while (pos < text.size()) {
         std::size_t nl = text.find('\n', pos);
@@ -161,6 +204,9 @@ World from_scene(const std::string& text) {
         std::string arch;                          // plain archetype tokens
         bool has_sp = false; Spawner sp;
         bool has_ov = false; OnOverlap ov;
+        bool has_em = false; Emitter em;
+        bool has_li = false; Light li;
+        bool has_sd = false; Sound sd;
 
         for (std::size_t i = 1; i < toks.size(); ++i) {
             const std::string k = key_of(toks[i]), v = val_of(toks[i]);
@@ -172,6 +218,23 @@ World from_scene(const std::string& text) {
                 const auto colon = v.find(':');
                 sp.interval = to_f(v.substr(0, colon));
                 sp.proto = parse_archetype(strip_brackets(v));
+            }
+            else if (k == "emitter") {
+                has_em = true;
+                assign_floats(floats_of(v), em.cfg.rate, em.cfg.speed, em.cfg.spread,
+                              em.cfg.gravity, em.cfg.life, em.cfg.dir);
+            }
+            else if (k == "light") {
+                has_li = true;
+                const std::vector<std::string> f = parts_of(v);
+                assign_floats(floats_of(v), li.radius, li.intensity);
+                // By POSITION, not "whatever follows the last comma": `light=200,1` has a
+                // last comma too, and reading a colour out of it dyes the light black.
+                if (f.size() > 2 && !f[2].empty()) li.color = parse_hex(f[2]);
+            }
+            else if (k == "sound") {
+                has_sd = true;
+                assign_floats(floats_of(v), sd.freq, sd.ms, sd.gain);
             }
             else if (k == "onoverlap") {
                 has_ov = true;
@@ -192,6 +255,14 @@ World from_scene(const std::string& text) {
         if (rot != 0) w.reg.get<Transform2D>(e)->rot = rot;
         if (has_sp) w.reg.add<Spawner>(e, sp);
         if (has_ov) w.reg.add<OnOverlap>(e, ov);
+        if (has_em) {
+            // Seed by load order, not a constant: two emitters sharing seed 1 emit the
+            // same stream frame for frame, which reads as one effect drawn twice.
+            em.sys = fx::ParticleSystem(++emitter_seed);
+            w.reg.add<Emitter>(e, em);
+        }
+        if (has_li) w.reg.add<Light>(e, li);
+        if (has_sd) w.reg.add<Sound>(e, sd);
     }
     return w;
 }

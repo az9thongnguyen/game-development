@@ -601,7 +601,9 @@ add_library(sandbox_core STATIC
   src/games/sandbox/serialize.cpp
 )
 target_include_directories(sandbox_core PUBLIC src)
-target_link_libraries(sandbox_core PRIVATE engine_flags)
+# PUBLIC: an Emitter component OWNS a fx::ParticleSystem and a Sprite's frame comes
+# from anim::Flipbook, so anything that links the sandbox needs both (chapter 133).
+target_link_libraries(sandbox_core PUBLIC particles_core tween_core PRIVATE engine_flags)
 
 # test_sandbox compiles registry.cpp directly (ecs::Registry's non-template ops) to
 # stay dependency-free — the tick/serializer round-trips use only in-memory state.
@@ -609,6 +611,8 @@ add_executable(test_sandbox tests/test_sandbox.cpp
   src/games/sandbox/world.cpp
   src/games/sandbox/serialize.cpp
   src/engine/ecs/registry.cpp
+  src/engine/fx/particles.cpp
+  src/engine/anim/flipbook.cpp
 )
 target_include_directories(test_sandbox PRIVATE src)
 target_link_libraries(test_sandbox PRIVATE engine_flags)
@@ -858,6 +862,8 @@ add_executable(test_runner tests/test_runner.cpp
   src/games/runner/runner.cpp
   src/games/sandbox/world.cpp
   src/games/sandbox/serialize.cpp
+  src/engine/fx/particles.cpp
+  src/engine/anim/flipbook.cpp
   src/engine/ecs/registry.cpp
 )
 target_include_directories(test_runner PRIVATE src)

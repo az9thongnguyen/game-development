@@ -10,6 +10,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <string>
+#include <vector>
 
 using namespace sandbox;
 
@@ -170,6 +172,138 @@ static void test_snapshot_restore() {
     CHECK(to_scene(restored) == snap);                  // Stop restores the placed state
 }
 
+// ---- chapter 133: the four effect labs, as components ----------------------
+
+// An Emitter's config is scene data, so it must survive a save/load byte for byte —
+// including `dir`, the only one with no slider (it is set by the gizmo, not typed).
+static void test_emitter_roundtrip() {
+    World w;
+    Archetype a; a.name = "fountain";
+    ecs::Entity e = w.spawn(a, 100, 200);
+    Emitter em;
+    em.cfg.rate = 240; em.cfg.speed = 180; em.cfg.spread = 0.4f;
+    em.cfg.gravity = 320; em.cfg.life = 1.7f; em.cfg.dir = -1.2f;
+    w.reg.add<Emitter>(e, em);
+
+    const std::string text = to_scene(w);
+    CHECK(text.find("emitter=240,180,0.4,320,1.7,-1.2") != std::string::npos);
+    World back = from_scene(text);
+    CHECK(to_scene(back) == text);
+    ecs::Entity be{};
+    back.reg.view<Emitter>([&](ecs::Entity h, Emitter&) { be = h; });
+    Emitter* got = back.reg.get<Emitter>(be);
+    CHECK(got != nullptr);
+    if (got) CHECK(approx(got->cfg.gravity, 320.0));
+}
+
+// The emitter has to actually emit — a config that round-trips and produces nothing
+// is a slider wired to a number nobody reads (chapters 123, 130 and 132, three times).
+static void test_emitter_emits_at_the_actor() {
+    World w;
+    Archetype a;
+    ecs::Entity e = w.spawn(a, 50, 60);
+    Emitter em; em.cfg.rate = 100; em.cfg.gravity = 0; em.cfg.speed = 0; em.cfg.speed_var = 0;
+    w.reg.add<Emitter>(e, em);
+    CHECK(w.reg.get<Emitter>(e)->sys.alive() == 0);
+    w.tick(0.1f);                                    // 100/s for 0.1 s = 10 particles
+    const Emitter* live = w.reg.get<Emitter>(e);
+    CHECK(live->sys.alive() == 10);
+    // At the ACTOR, not the origin: the emitter rides whatever it is attached to.
+    if (live->sys.alive() > 0) {
+        CHECK(approx(live->sys.particles()[0].x, 50.0, 1e-2));
+        CHECK(approx(live->sys.particles()[0].y, 60.0, 1e-2));
+    }
+    // Two emitters must not share a stream. Seeded by load order, so they differ.
+    World two = from_scene("sandbox1\nbounds 640 360\n"
+                           "e x=10 y=10 color=ffffff w=8 h=8 emitter=100,90,0.5,0,1.2,-1.5708\n"
+                           "e x=10 y=10 color=ffffff w=8 h=8 emitter=100,90,0.5,0,1.2,-1.5708\n");
+    two.tick(0.1f);
+    std::vector<float> vx;
+    two.reg.view<Emitter>([&](ecs::Entity, Emitter& m) {
+        if (!m.sys.particles().empty()) vx.push_back(m.sys.particles()[0].vx);
+    });
+    CHECK(vx.size() == 2);
+    if (vx.size() == 2) CHECK(vx[0] != vx[1]);
+}
+
+// A light rides its actor: that is the one thing the light lab could not do.
+static void test_light_roundtrip_and_follows() {
+    World w;
+    Archetype a; a.mover = true; a.vx = 100; a.vy = 0;
+    ecs::Entity e = w.spawn(a, 10, 20);
+    w.reg.add<Light>(e, Light{200.0f, gfx::rgb(0xff, 0xaa, 0x5a), 1.5f});
+    const std::string text = to_scene(w);
+    CHECK(text.find("light=200,1.5,ffaa5a") != std::string::npos);
+    CHECK(to_scene(from_scene(text)) == text);
+    w.tick(1.0f);
+    CHECK(approx(w.reg.get<Transform2D>(e)->x, 110.0));   // the light's position IS this
+
+    // A colour-less light keeps its default; "the text after the last comma" would
+    // read the intensity as a colour and dye it black.
+    World w2 = from_scene("sandbox1\nbounds 640 360\ne x=1 y=1 color=ffffff w=8 h=8 light=90,2\n");
+    ecs::Entity le{};
+    w2.reg.view<Light>([&](ecs::Entity h, Light&) { le = h; });
+    const Light* L = w2.reg.get<Light>(le);
+    CHECK(L != nullptr);
+    if (L) { CHECK(approx(L->radius, 90.0)); CHECK(approx(L->intensity, 2.0));
+             CHECK(L->color == Light{}.color); }
+}
+
+// The model has no audio device and must not have one: a destroyed actor RECORDS
+// what should be heard, and the host with the device drains it.
+static void test_sound_recorded_on_destroy() {
+    World w;
+    Archetype coin; coin.tag = 1; coin.w = coin.h = 16;
+    ecs::Entity c = w.spawn(coin, 100, 100);
+    w.reg.add<Sound>(c, Sound{523.0f, 200.0f, 0.5f});
+    Archetype eater; eater.w = eater.h = 20; eater.mover = true;
+    ecs::Entity ev = w.spawn(eater, 100, 100);
+    w.reg.add<OnOverlap>(ev, OnOverlap{1, Action::DestroyOther, {}});
+
+    CHECK(w.sounds.empty());
+    w.tick(0.016f);
+    CHECK(w.sounds.size() == 1);
+    if (w.sounds.size() == 1) CHECK(approx(w.sounds[0].freq, 523.0));
+    w.tick(0.016f);
+    CHECK(w.sounds.empty());          // one tick's worth, then cleared
+
+    const std::string text = to_scene(from_scene(
+        "sandbox1\nbounds 640 360\ne x=1 y=1 color=ffffff w=8 h=8 sound=523,200,0.5\n"));
+    CHECK(text.find("sound=523,200,0.5") != std::string::npos);
+}
+
+// The sprite-animation lab, as a component: one clock, advanced by animate(), that
+// loops or holds — and a stopped editor still animates, which is why it is not tick().
+static void test_flipbook_clock() {
+    World w;
+    Archetype a; a.frames = 4; a.fps = 8.0f;
+    ecs::Entity e = w.spawn(a, 0, 0);
+    CHECK(sprite_frame(*w.reg.get<Sprite>(e)) == 0);
+    w.animate(0.25f);                                     // 2 frames at 8 fps
+    CHECK(sprite_frame(*w.reg.get<Sprite>(e)) == 2);
+    w.animate(0.5f);                                      // wraps: 4 more frames
+    CHECK(sprite_frame(*w.reg.get<Sprite>(e)) == 2);
+    // tick() must NOT advance it — two clocks for one number is the drift this split
+    // exists to prevent.
+    const float before = w.reg.get<Sprite>(e)->t;
+    w.tick(0.25f);
+    CHECK(approx(w.reg.get<Sprite>(e)->t, before));
+
+    Archetype once; once.frames = 4; once.fps = 8.0f; once.loop = false;
+    ecs::Entity o = w.spawn(once, 0, 0);
+    w.animate(10.0f);
+    CHECK(sprite_frame(*w.reg.get<Sprite>(o)) == 3);      // one-shot holds the last frame
+    const std::string text = to_scene(w);
+    CHECK(text.find("noloop") != std::string::npos);
+    CHECK(to_scene(from_scene(text)) == text);
+    // Looping is the default, so it is never written — a scene file that says nothing
+    // about looping means "loop", the way every scene written before today does.
+    World old = from_scene("sandbox1\nbounds 9 9\ne x=0 y=0 color=ffffff w=8 h=8 frames=4 fps=8\n");
+    int looping = 0;
+    old.reg.view<Sprite>([&](ecs::Entity, Sprite& s) { if (s.loop) ++looping; });
+    CHECK(looping == 1);
+}
+
 int main() {
     test_spawn_attaches();
     test_mover_integrates_and_deterministic();
@@ -186,6 +320,11 @@ int main() {
     test_scene_roundtrip_texture();
     test_animated_sprite_roundtrip();
     test_snapshot_restore();
+    test_emitter_roundtrip();
+    test_emitter_emits_at_the_actor();
+    test_light_roundtrip_and_follows();
+    test_sound_recorded_on_destroy();
+    test_flipbook_clock();
     if (g_failures == 0) std::printf("sandbox: all tests passed\n");
     else                 std::printf("sandbox: %d FAILURE(S)\n", g_failures);
     return g_failures;
