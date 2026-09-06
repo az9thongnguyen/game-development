@@ -148,3 +148,21 @@ jobs:
             exit 1
           fi
           echo "preloaded entries: $(grep -oc 'filename:"' build-web/demo.js || true)"
+
+      # -----------------------------------------------------------------------
+      #  ...and now it RUNS. Building proves the link; this proves the page.
+      #
+      #  The farm has been "playable by hand" since chapter 126 and it ships on a
+      #  browser page that had never been driven by a finger. So: a real
+      #  Input.dispatchTouchEvent on a 390x844 viewport, aimed at the button the
+      #  game itself printed, checked by reading the player's tile back out of the
+      #  save the game wrote. Not a screenshot — a value.
+      # -----------------------------------------------------------------------
+      - name: The page runs, and a finger can drive it
+        run: |
+          # ubuntu-latest ships Google Chrome; say so out loud, because a missing
+          # browser and a broken page fail in the same place otherwise.
+          which google-chrome || which chromium-browser || which chromium
+          google-chrome --version || true
+          node --version
+          node scripts/web_touch_check.mjs --dir build-web

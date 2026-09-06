@@ -1,48 +1,136 @@
 <!doctype html>
 <!-- =========================================================================
-     web/shell.html  —  the page Emscripten wraps the WASM build in (M5)
+     web/shell.html  —  the page Emscripten wraps the WASM build in
      ----------------------------------------------------------------------- -->
 <!-- emcc substitutes {{{ SCRIPT }}} with the loader for demo.js/demo.wasm. The
      ONLY app-specific thing here is `Module.arguments`, which become argv[1..]
      in our unchanged main.cpp — that is how the web build picks which scene to
-     run WITHOUT a recompile or any engine/game change. Edit the array to switch
-     scenes:  ?mode=gui (chess) | ?project=<manifest> (a game) | ?shell=<manifest> (the
-     Studio) | ?mode=lab-<id> (a lab: fx, light, iso, 3d, …) | (none = M0 demo)
+     run WITHOUT a recompile or any engine/game change:
+       ?mode=gui (chess) | ?project=<manifest> | ?shell=<manifest> (the Studio)
+       | ?mode=lab-<id> | (none = chess)
+
+     Chapter 128 turned this from a debug page into the page the games ship on.
+     What the page must do, and did not: fill the screen, keep the game's SHAPE,
+     and let a finger through.
+
+       fit()                the load-bearing one. See its comment — Emscripten sets
+                            inline width/height styles, and after that the two axes
+                            clamp independently and the picture stretches.
+       touch-action: none   declared intent. A held finger DOES reach the game
+                            without it, and the automated check cannot say more
+                            than that: CDP's synthetic touch ignores touch-action
+                            entirely (measured — a drag scrolled a scrollable page
+                            by the same 110 px with `none` and with `auto`). It
+                            stays for pinch-zoom, double-tap-zoom, and the day this
+                            layout starts to scroll.
+       overscroll-behavior  no pull-to-refresh in the middle of walking east.
+       user-select: none    a long press is a button hold, not a text selection.
+
+     What is NOT here, deliberately: integer scaling. The farm's canvas is
+     1280x720 and a phone is 390 CSS px wide, so an integer scale would need a
+     phone four times wider than any phone. Fitting the stage while keeping the
+     ratio is the constraint that actually matters.
      ========================================================================= -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>hand-engine — WebAssembly</title>
+  <!-- viewport-fit=cover + the safe-area insets below: on a notched phone the game
+       may use the full screen, and the padding keeps the d-pad off the home bar. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0f1116">
+  <title>hand-engine</title>
   <!-- Inline, so the page does not 404 on /favicon.ico. A 404 in the console of a
        page whose whole job is to prove the build works is noise that hides signal. -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%234e7a3c'/></svg>">
   <style>
-    html, body { margin: 0; background: #15171e; color: #c8d0dc;
-                 font-family: ui-monospace, Menlo, monospace; }
-    .wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; }
-    h1 { font-size: 15px; font-weight: 600; color: #9fb4d6; margin: 4px 0; }
-    /* Both maxima, with width/height left auto: a canvas is a replaced element, so the
-       browser shrinks it preserving its aspect ratio. Without the height cap a
-       1280x720 game is cut off below the fold on a laptop — which is how the first
-       browser screenshot of the farm lost its hotbar. */
-    canvas { background: #000; border: 1px solid #2a2f3a; image-rendering: auto;
-             max-width: 100%; max-height: 78vh; }
-    #status { font-size: 12px; color: #7f8aa0; min-height: 1em; }
-    #log { white-space: pre-wrap; font-size: 11px; color: #66708a;
-           width: min(960px, 92vw); max-height: 110px; overflow: auto; }
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0; height: 100%;
+      background: #0f1116; color: #c8d0dc;
+      font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+      /* No pull-to-refresh, no rubber-banding: both of them end a drag that the
+         game was in the middle of reading. */
+      overscroll-behavior: none;
+    }
+    body {
+      display: flex; flex-direction: column;
+      /* dvh, not vh: on a phone `100vh` is the height with the URL bar HIDDEN, so a
+         vh-sized page is taller than the screen until the user scrolls — and this
+         page must not scroll. */
+      height: 100dvh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+      box-sizing: border-box;
+    }
+    #bar {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+      padding: 6px 10px; min-height: 28px;
+      border-bottom: 1px solid #1e2330;
+    }
+    #title { color: #8fa2c4; font-weight: 600; white-space: nowrap;
+             overflow: hidden; text-overflow: ellipsis; }
+    #status { color: #6b7590; font-size: 12px; white-space: nowrap; }
+    #hint   { color: #c9a227; font-size: 12px; white-space: nowrap; }
+    .spacer { flex: 1 1 auto; }
+    button {
+      font: inherit; font-size: 12px; color: #c8d0dc;
+      background: #1a1f2b; border: 1px solid #2a3140; border-radius: 6px;
+      padding: 4px 10px; cursor: pointer;
+    }
+    button:hover { background: #222836; }
+    #stage {
+      flex: 1 1 auto; min-height: 0;
+      display: grid; place-items: center;
+      /* The stage, not the canvas, is what goes fullscreen: fullscreening the canvas
+         makes the browser stretch it to the screen's aspect ratio. */
+      background: #0b0d12;
+    }
+    canvas {
+      display: block; background: #000;
+      /* Sized in JS by fit(), NOT by these — see the comment there. They remain as the
+         floor: before the first fit, and if the script ever fails, the canvas is still
+         inside the stage rather than pushing the page open. */
+      max-width: 100%; max-height: 100%;
+      /* Declared intent; see the top of this file for what is and is not proved. */
+      touch-action: none;
+      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+      outline: none;
+    }
+    #log {
+      flex: 0 0 auto; display: none;
+      white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace;
+      font-size: 11px; color: #66708a; background: #0b0d12;
+      max-height: 28vh; overflow: auto; padding: 6px 10px;
+      border-top: 1px solid #1e2330;
+    }
+    body.logging #log { display: block; }
+    /* In fullscreen the page chrome is not chrome, it is a strip of wasted screen. */
+    #stage:fullscreen { background: #000; }
+    body:fullscreen #bar, body:fullscreen #log { display: none; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>hand-written C++ game engine → WebAssembly</h1>
-    <div id="status">loading WASM…</div>
-    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
-    <div id="log"></div>
+  <div id="bar">
+    <span id="title">hand-engine</span>
+    <span id="status">loading…</span>
+    <span id="hint"></span>
+    <span class="spacer"></span>
+    <button id="logbtn" type="button" title="show the runtime log">log</button>
+    <button id="fsbtn" type="button" title="fill the screen">fullscreen</button>
   </div>
+  <div id="stage">
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
+  </div>
+  <div id="log"></div>
   <script>
     var statusEl = document.getElementById('status');
     var logEl    = document.getElementById('log');
+    var titleEl  = document.getElementById('title');
+    var stageEl  = document.getElementById('stage');
+    var canvasEl = document.getElementById('canvas');
+    var hintEl   = document.getElementById('hint');
+
     // Pick the scene from ?mode=… so one WASM build can run any demo without a
     // recompile (default: chess, the M5 acceptance scene).
     var argsByMode = {
@@ -70,11 +158,54 @@
     // modes used to sit here, one per flag, and they went stale the moment main.cpp
     // changed — the page should not be a second copy of the lab table.
     if (mode.indexOf('lab-') === 0) argsByMode[mode] = ['--lab', mode.slice(4)];
-    var canvasEl = document.getElementById('canvas');
-    // Clicking the game must also return focus to it: clicking the page chrome (the
-    // log, the heading) moves focus away, and the keyboard would go quiet again with
-    // nothing on screen to say why.
-    canvasEl.addEventListener('mousedown', function () { canvasEl.focus(); });
+    titleEl.textContent = project || shellOf || mode;
+
+    // Clicking or touching the game must also return focus to it: touching the page
+    // chrome moves focus away, and SDL2's Emscripten backend delivers keys to the
+    // CANVAS — so the keyboard goes quiet with nothing on screen to say why (ch. 123).
+    // Keep the canvas's DISPLAY size in step with its DRAWING size.
+    //
+    // Emscripten sets `canvas.style.width/height` itself, in CSS pixels, to the size SDL
+    // asked for. Once those inline styles exist, `max-width: 100%` and `max-height: 100%`
+    // clamp the two axes INDEPENDENTLY — the intrinsic-ratio rules that make a plain
+    // <canvas> shrink proportionally no longer apply. On a 390px-wide phone that made a
+    // 1280x720 game 390x720: every assertion passed, touch landed on the right tile
+    // (SDL maps through the same box), and the picture was stretched to two and a half
+    // times its height. Only a screenshot said so.
+    function fit() {
+      var box = stageEl.getBoundingClientRect();
+      var w = canvasEl.width, h = canvasEl.height;      // the drawing buffer IS the ratio
+      if (!w || !h || !box.width || !box.height) return;
+      var k = Math.min(box.width / w, box.height / h);
+      canvasEl.style.width  = Math.max(1, Math.floor(w * k)) + 'px';
+      canvasEl.style.height = Math.max(1, Math.floor(h * k)) + 'px';
+      // A 16:9 game on a 9:19.5 phone is a stamp in portrait. Say so, once, in the bar —
+      // rather than stretching the picture to fill a shape the game does not have.
+      var portrait = box.height > box.width && w > h;
+      hintEl.textContent = portrait ? 'rotate for a bigger picture' : '';
+    }
+    // The stage changes with the window; the drawing buffer changes when SDL sets it,
+    // which happens after this script runs and again on any resize the app asks for.
+    new ResizeObserver(fit).observe(stageEl);
+    new MutationObserver(fit).observe(canvasEl, { attributes: true,
+                                                  attributeFilter: ['width', 'height'] });
+    addEventListener('resize', fit);
+
+    var refocus = function () { canvasEl.focus(); };
+    canvasEl.addEventListener('mousedown', refocus);
+    canvasEl.addEventListener('touchstart', refocus, { passive: true });
+
+    document.getElementById('logbtn').addEventListener('click', function () {
+      document.body.classList.toggle('logging');
+      refocus();
+    });
+    document.getElementById('fsbtn').addEventListener('click', function () {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (stageEl.requestFullscreen) stageEl.requestFullscreen({ navigationUI: 'hide' });
+      // Fullscreen moves focus to the fullscreen element; the game needs it back.
+      setTimeout(refocus, 50);
+    });
+
     var Module = {
       arguments: argsByMode[mode] || argsByMode.gui,
       // The preloaded asset tree is MEMFS: it lives in this tab and dies with it. That
@@ -102,11 +233,12 @@
         }
       }],
       canvas: canvasEl,
-      setStatus: function (t) { statusEl.textContent = t; },
+      setStatus: function (t) { if (t) statusEl.textContent = t; },
       print:    function (t) { logEl.textContent += t + "\n"; logEl.scrollTop = logEl.scrollHeight; },
       printErr: function (t) { logEl.textContent += t + "\n"; },
       onRuntimeInitialized: function () {
         statusEl.textContent = 'running';
+        fit();                       // SDL has set the drawing buffer by now
         // FOCUS THE CANVAS. SDL2's Emscripten backend listens for key events on the
         // canvas element, so with focus anywhere else (the body, by default) the build
         // receives no keyboard input AT ALL — no WASD, no Cmd+S, no tool shortcuts.
