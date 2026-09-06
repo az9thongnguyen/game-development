@@ -593,7 +593,7 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     // Read before movement so a thumb and the arrow keys reach the same code. It uses
     // the POINTER, because SDL synthesizes a mouse from a finger — one implementation
     // for a tap, a click and a trackpad, and no new event type at the platform seam.
-    const Layout  pad = layout(screen_w_, screen_h_);
+    const Layout  pad = layout(screen_w_, screen_h_, conflict_);
     const Pointer ptr{in.mouse_x, in.mouse_y,
                       in.down(platform::MouseButton::Left),
                       in.pressed(platform::MouseButton::Left)};
@@ -642,20 +642,33 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     }
 
     // ---- tools, seeds, actions ----
+    // Every line below reaches the same verb from a key and from a tap, and the two
+    // are written on ONE line each on purpose: a second path that has to be kept in
+    // step with the first is how a phone build ends up a version behind the keyboard.
     if (in.pressed(platform::Key::Num1)) tool_ = Tab::Hoe;
     if (in.pressed(platform::Key::Num2)) tool_ = Tab::Water;
     if (in.pressed(platform::Key::Num3)) tool_ = Tab::Seed;
     if (in.pressed(platform::Key::Num4)) tool_ = Tab::Harvest;
+    // The hotbar was a picture of this state for five chapters. Now it is the control
+    // for it, and it is the SAME four rectangles — read() answers from the boxes
+    // render() draws, so the slot that lights up is the slot that was hit.
+    if (act.tool >= 0) tool_ = static_cast<Tab>(act.tool);
     if ((in.pressed(platform::Key::Q) || act.seed) && !defs_.crops.empty())
         seed_ = (seed_ + 1) % static_cast<int>(defs_.crops.size());
     if (in.pressed(platform::Key::Z) || in.pressed(platform::Key::Space) || act.use) interact();
-    if (in.pressed(platform::Key::F5)) save_game();
+    if (in.pressed(platform::Key::F5) || act.save) save_game();
+    // F9 has no button. Loading DISCARDS the day you are holding, and the farm has no
+    // modal to ask twice with — so on a surface where the verbs are 44px squares under
+    // a thumb, the destructive one stays behind a key you have to mean. Named in the
+    // chapter as a ceiling, not left out and forgotten.
     if (in.pressed(platform::Key::F9)) load_game();
     // The conflict is OFFERED, never resolved for the player — the same rule the
     // Studio's autosave recovery follows, for the same reason: the machine cannot
-    // know which evening's play matters.
-    if (conflict_ && in.pressed(platform::Key::F6)) { conflict_ = false; push_save(); }
-    if (conflict_ && in.pressed(platform::Key::F7)) adopt_cloud();
+    // know which evening's play matters. Reachable by thumb since chapter 126: the
+    // chip has always named two keys, and a phone has neither, so a player who opened
+    // the farm on a second device met a question they could not answer.
+    if (conflict_ && (in.pressed(platform::Key::F6) || act.keep)) { conflict_ = false; push_save(); }
+    if (conflict_ && (in.pressed(platform::Key::F7) || act.take)) adopt_cloud();
 
     update_npcs(world_, map_, schedules_);
 
@@ -765,46 +778,78 @@ void FarmScene::render(const engine::Context& ctx) {
     // ---- hotbar -----------------------------------------------------------------
     // The tool used to be a word in the corner. Four slots say the same thing and one
     // more: what you are NOT holding, which is the half a word cannot show.
+    //
+    // Since chapter 126 the slots are also the CONTROL for it, and their geometry now
+    // comes from controls.hpp with everything else on this screen. It used to be four
+    // local constants here — which was fine while the hotbar was a picture, and became
+    // the exact "drawn in one place, hit in another" bug the moment it answered a tap.
     static const char* kToolNames[] = {"Hoe", "Water", "Seed", "Harvest"};
-    {
-        constexpr int kSlotW = 62, kSlotH = 24;
-        const int     y = H - kSlotH - th::space_sm;
+    const Layout pad = layout(W, H, conflict_);
+    // Where the HUD strip begins, whether or not there is a hotbar in it. Anything
+    // that sits above the hotbar has to keep sitting above it on the one screen too
+    // small to have one, or a warning disappears exactly where it is hardest to spot.
+    const int hud_top = pad.tool[0].empty() ? H - th::space_sm : pad.tool[0].y;
+    // Two anchors, because the two things that float above the HUD are aligned
+    // differently and only one of them meets the pad.
+    //
+    // The toast is CENTRED, so it clears the d-pad's column on its own and wants to sit
+    // as close to the strip as it can.
+    //
+    // The config chip is LEFT-ALIGNED, which is straight into the d-pad — and a d-pad
+    // button sitting on top of the one line an operator has to be able to read is the
+    // same mistake as two buttons sharing a pixel, with the loss on the other side. It
+    // was exactly that in the first cut of this chapter, and a screenshot is what said
+    // so; neither a test nor the compiler had an opinion.
+    const int toast_top = hud_top;
+    int       chip_y    = pad.visible() ? pad.up.y : hud_top;
+    if (!pad.tool[0].empty()) {
         for (int i = 0; i < 4; ++i) {
-            const int  x   = th::space_sm + i * (kSlotW + th::space_xs);
+            const Box& b   = pad.tool[i];
             const bool on  = i == static_cast<int>(tool_);
-            g.fill_round_rect(x, y, kSlotW, kSlotH, th::radius_sm, on ? 0xF02A3040 : 0xC0161A24);
-            if (on) g.draw_round_rect(x, y, kSlotW, kSlotH, th::radius_sm, th::accent);
+            const bool hot = in_.mouse_x >= 0 && b.contains(in_.mouse_x, in_.mouse_y) &&
+                             in_.down(platform::MouseButton::Left);
+            g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_sm,
+                              on ? 0xF02A3040 : (hot ? 0xD0242C3C : 0xC0161A24));
+            if (on) g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_sm, th::accent);
             g.set_font_size(th::sz_caption);
-            g.draw_text(x + 4, y + 3, std::to_string(i + 1).c_str(), th::text_dim);
-            g.draw_text(x + 14, y + 3, kToolNames[i], on ? th::text : th::text_muted);
+            // Two caption rows, centred in whatever height the slot got: 24 on the
+            // retro framebuffer, a thumb-sized 44 where it is tappable. Text pinned to
+            // the top edge read fine at 24 and floats in the tall one.
+            const bool sub = i == 2 && !defs_.crops.empty();
+            const int  ty  = b.y + (b.h - (sub ? 20 : 10)) / 2;
+            g.draw_text(b.x + 4, ty, std::to_string(i + 1).c_str(), th::text_dim);
+            g.draw_text(b.x + 14, ty, kToolNames[i], on ? th::text : th::text_muted);
             // The seed slot carries what would be planted and how many are left — the
             // one number a player checks before walking to the far field.
-            if (i == 2 && !defs_.crops.empty()) {
+            if (sub) {
                 const CropDef& c = defs_.crops[static_cast<std::size_t>(
                     std::clamp(seed_, 0, static_cast<int>(defs_.crops.size()) - 1))];
                 const auto have = world_.inventory.find(seed_item(c.name));
-                const std::string sub = c.name + " x" +
+                const std::string sv = c.name + " x" +
                     std::to_string(have == world_.inventory.end() ? 0 : have->second);
-                g.draw_text(x + 4, y + 13, sub.c_str(), on ? th::accent : th::text_dim);
+                g.draw_text(b.x + 4, ty + 10, sv.c_str(), on ? th::accent : th::text_dim);
             }
         }
+        const Box& last = pad.tool[3];
+        const int  hx   = last.x + last.w + th::space_md;
+        const int  hy   = last.y + (last.h - 20) / 2;
         g.set_font_size(th::sz_caption);
-        g.draw_text(th::space_sm + 4 * (kSlotW + th::space_xs) + th::space_md, y + 3,
-                    "WASD move   Z use   Q seed", th::text_muted);
-        g.draw_text(th::space_sm + 4 * (kSlotW + th::space_xs) + th::space_md, y + 13,
-                    "F5/F9 save/load", th::text_muted);
-        // An operator's typo in remote config has to be visible to whoever is playing
-        // the build, or the only symptom is a price that quietly did not change.
-        if (!config_problem_.empty()) {
-            // On its own chip, not straight onto the field: warn-coloured text over a
-            // green tile is a colour nobody can read, and this is the one line an
-            // operator needs to be able to read from across the room.
-            const int pw = g.text_width(config_problem_.c_str());
-            const int py = y - th::sz_caption - th::space_sm - 2;
-            g.fill_round_rect(th::space_sm - th::space_xs, py, pw + th::space_sm,
-                              th::sz_caption + th::space_sm, th::radius_sm, kProblemChip);
-            g.draw_text(th::space_sm, py + th::space_xs, config_problem_.c_str(), th::warn);
-        }
+        g.draw_text(hx, hy,      "WASD move   Z use   Q seed", th::text_muted);
+        g.draw_text(hx, hy + 10, "F5/F9 save/load", th::text_muted);
+    }
+    // An operator's typo in remote config has to be visible to whoever is playing
+    // the build, or the only symptom is a price that quietly did not change.
+    if (!config_problem_.empty()) {
+        // On its own chip, not straight onto the field: warn-coloured text over a
+        // green tile is a colour nobody can read, and this is the one line an
+        // operator needs to be able to read from across the room.
+        g.set_font_size(th::sz_caption);
+        const int pw = g.text_width(config_problem_.c_str());
+        const int ch = th::sz_caption + th::space_sm;
+        chip_y -= ch + th::space_xs;
+        g.fill_round_rect(th::space_sm - th::space_xs, chip_y, pw + th::space_sm,
+                          ch, th::radius_sm, kProblemChip);
+        g.draw_text(th::space_sm, chip_y + th::space_xs, config_problem_.c_str(), th::warn);
     }
 
     // ---- on-screen controls ------------------------------------------------------
@@ -816,37 +861,49 @@ void FarmScene::render(const engine::Context& ctx) {
     // touch device" — SDL hands us a mouse either way, by design — so the choice is
     // between guessing and showing. It is drawn faint enough to ignore, and a mouse
     // player gains a second way to walk rather than losing anything.
-    {
-        const Layout pad = layout(W, H);
-        if (pad.visible()) {
-            const bool over = in_.mouse_x >= 0;
-            const auto button = [&](const Box& b, const char* glyph) {
-                const bool hot = over && b.contains(in_.mouse_x, in_.mouse_y) &&
-                                 in_.down(platform::MouseButton::Left);
-                g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
-                                  hot ? 0xB03A4560 : 0x60202838);
-                g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
-                                  hot ? th::accent : 0x50FFFFFF);
-                g.set_font_size(th::sz_body);
-                const int tw = g.text_width(glyph);
-                g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_body) / 2 + 1, glyph,
-                            hot ? th::text : 0xC0FFFFFF);
-            };
-            button(pad.up, "^");
-            button(pad.down, "v");
-            button(pad.left, "<");
-            button(pad.right, ">");
-            button(pad.use, "Z");
-            button(pad.seed, "Q");
-        }
+    if (pad.visible()) {
+        const bool over = in_.mouse_x >= 0;
+        const auto button = [&](const Box& b, const char* glyph) {
+            // An empty box is a control that is not there this frame — `save` during a
+            // conflict, `keep`/`take` outside one. Skipping it here is the same rule
+            // read() follows by construction, said once.
+            if (b.empty()) return;
+            const bool hot = over && b.contains(in_.mouse_x, in_.mouse_y) &&
+                             in_.down(platform::MouseButton::Left);
+            g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
+                              hot ? 0xB03A4560 : 0x60202838);
+            g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
+                              hot ? th::accent : 0x50FFFFFF);
+            g.set_font_size(th::sz_body);
+            const int tw = g.text_width(glyph);
+            g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_body) / 2 + 1, glyph,
+                        hot ? th::text : 0xC0FFFFFF);
+        };
+        button(pad.up, "^");
+        button(pad.down, "v");
+        button(pad.left, "<");
+        button(pad.right, ">");
+        button(pad.use, "Z");
+        button(pad.seed, "Q");
+        // Each button is labelled with the KEY it duplicates, like Z and Q above. That
+        // is not decoration: it is what makes the two input paths teach each other —
+        // and the cloud chip that has always read "F6 keep yours / F7 take cloud" is,
+        // with no change at all, the legend for the two buttons that appear under it.
+        button(pad.save, "F5");
+        button(pad.keep, "F6");
+        button(pad.take, "F7");
     }
 
     if (message_t_ > 0 && !message_.empty()) {
         g.set_font_size(th::sz_body);
         const int tw = g.text_width(message_.c_str());
-        g.fill_round_rect((W - tw) / 2 - th::space_md, H - 60, tw + th::space_md * 2, 26,
+        // Anchored ABOVE the hotbar rather than to a distance from the bottom edge.
+        // It used to be `H - 60`, which sat clear of a 24 px strip and lands inside a
+        // 44 px one — a number that was right about a layout it did not ask.
+        const int my = toast_top - 26 - th::space_sm;
+        g.fill_round_rect((W - tw) / 2 - th::space_md, my, tw + th::space_md * 2, 26,
                           th::radius_sm, 0xE01B1E28);
-        g.draw_text((W - tw) / 2, H - 54, message_.c_str(), th::text);
+        g.draw_text((W - tw) / 2, my + 6, message_.c_str(), th::text);
     }
 
     // ---- dialogue box ----
