@@ -1292,6 +1292,77 @@ kéo được) · **effect không vào được Archetype**, nên `Spawner` khô
 test** (asset root của test rỗng) · Sound chỉ nghe khi actor **bị huỷ** · hạt chỉ bay khi
 Play · deposit đèn vẫn O(radius²)/đèn/khung như lab cũ.
 
+## S25 — một con đường là một con đường, và bản đồ phải nói ra (chương 134) — XONG 2026-09-07
+
+Merge `feat/s25-intgrid-rules`.
+
+**Một dòng, sai chỗ.** `assets/farm/theme.def` ghi `autotile ground 2 path 0`: ô mang
+id 2 là đường, đường là bộ 16 mảnh, bộ bắt đầu ở index 0 của sheet `path`. Dòng đó
+đúng — nhưng nó nằm trong **file art của một game**. Nên mở đúng bản đồ đó trong Map
+workspace (trình sửa map DUY NHẤT từ ch.132) thì editor vẽ ô vuông phẳng, vì nó chưa
+bao giờ nghe nói tới `theme.def`. Bạn vẽ đường bằng cách tô ô vuông rồi **thoát editor,
+chạy game** mới biết đường trông thế nào.
+
+**Cắt đôi đúng chỗ.** *"Vật liệu này là đường, không phải vùng"* là sự thật về **thế
+giới** → vào map (`rule 2 line`). *"Bộ bắt đầu ở index 0 sheet path"* là sự thật về
+**art** → ở nguyên theme. Không trùng lặp; renderer cầm cả hai và cộng lại.
+
+| Commit | Việc |
+|---|---|
+| `1935efb` | `RuleKind`/`Rule` trong `map2`, `rule_piece` + `neighbour_mask`, serialize, và **farm migrate**: xoá `farm::line_piece` và từ khoá `autotile` của theme. |
+| `e33775b` | Nút `Rule none/line/blob` trong Map workspace + `mapedit::set_rule` undo được + canvas vẽ **connector**. |
+| *(tiếp)* | Sáu mutation sống sót → năm test mới; chương 134 + docs. |
+
+**Một implementation, cuối cùng.** `farm::line_piece` là **bản sao**: chỉ biết line (luật
+47 mảnh nằm ở `tilemap/autotile.hpp`, nó không với tới), và nằm ở `games/farm` nơi không
+editor nào gọi được. Giờ là `tilemap::rule_piece`, **trả 0 khi giá trị không có rule** —
+nên renderer viết `base + rule_piece(...)` **không cần rẽ nhánh**. Nhánh không biến mất,
+nó chuyển vào trong hàm, một lần, nơi hai luật vốn đã nằm cạnh nhau.
+
+**Hai quyết định về format:** file được ghi ở **version THẤP NHẤT đủ diễn tả nó** — map
+không có rule vẫn là `map2 1`, byte không đổi, release id không đổi vì một tính năng nó
+không dùng · rule **trước lưới**, và bị từ chối nếu đứng sau: chúng nói lưới NGHĨA LÀ GÌ.
+
+**Nhìn thấy được.** Map workspace không có tileset renderer (id vẽ thành màu phẳng — thành
+thật về những gì editor biết). Nên ô có rule vẽ **kết nối**: một cuống về phía mỗi hàng
+xóm nối tiếp, và với vùng thì thêm một chấm ở góc mà mảnh **thật sự** bẻ. Chấm lấy từ
+`autotile_canonical` chứ không phải mask thô — một đường chéo mà hai cạnh kề không đỡ thì
+không đổi được mảnh, vẽ nó là hứa một khác biệt renderer sẽ không tạo ra.
+
+**Mutation, và cái guard được test một cách tình cờ.** 22 phép, năm sống sót lượt đầu:
+· *"rule sau lưới được chấp nhận"* — test dùng map **cao một hàng**, nên khi dòng `rule`
+lạc xuất hiện thì lưới đã xong và **parser vòng ngoài** từ chối nó vì lý do khác. Guard
+thật sự cần map cao ≥2 hàng. Test mà chủ thể không bao giờ chạy là loại xanh đắt nhất.
+· *"ngoài biên thì nối"* — `Map::at` trả 0 ngoài map và 0 không bao giờ mang rule, nên với
+mọi ô `rule_piece` hỏi tới thì guard không đổi gì. **Nhưng không thừa**: `neighbour_mask`
+là hàm public và hợp đồng của nó nói về ô RỖNG, nơi 0 == 0 sẽ báo khoảng không ngoài rìa
+là "cùng vật liệu". Giữ guard, và viết cái test hợp đồng chưa từng có.
+· *"brush 0 được mang rule"* — guard chỉ tồn tại **trong widget**. Nút bị disable nên bỏ
+kiểm tra trong `cycle_rule` là vô hình — qua nút. Command palette và bàn phím **không đi
+qua nút**. D-rule từ ch.111.
+· **Hai cái sống sót thuần thị giác** — và câu trả lời không phải thêm một so sánh cả
+khung (nó chỉ chứng minh ảnh *đổi*, không chứng minh *đúng*), mà là **ba pixel cụ thể**:
+tâm ô không rule là màu của chính nó, tâm ô có rule là mực, góc ô có đường chéo không
+được hai cạnh đỡ **không** phải mực.
+
+**Số liệu:** 78/78 ctest · **22/22 mutation** sau khi vá năm cái, baseline sau restore
+GREEN · golden path xanh, 0 rò `.tmp`, release id farm đổi đúng như phải đổi
+(`d4ad8b0e72d4e530`: map đổi byte) · web build xanh + hai bài kiểm trình duyệt PASS ·
+một khung đã render và **đã nhìn** (nó là lý do có ba assertion pixel ở trên).
+
+**Một cổng CI bị flaky, và đã được vá đúng cách nó đáng được vá:** `web_touch_check.mjs`
+hỏng 1/5 lần với người chơi không di chuyển, rồi PASS khi chạy lại với **đúng cùng một
+giá trị** (`px 4 -> 8`) — là một cú khựng, không phải regression. Giờ nó giữ nút **tối đa
+ba lần** và **báo cáo số lần**, nên khẳng định trở thành "giữ nút thì người chơi đi" chứ
+không phải "nó đi trong đúng cửa sổ 700 ms này". Nguyên nhân khựng **chưa được chẩn đoán**.
+
+**Chưa xác minh / trần:** **không có art 47 mảnh nào trong repo** — rule `blob` đặt được,
+lưu được, xem trước được, `rule_piece` giải được, nhưng **chưa gì vẽ được một bộ vùng**;
+vật liệu duy nhất có rule khi ship vẫn là đường (line) của farm · Map workspace vẫn không
+có tileset renderer (vẽ kết nối, không vẽ art) · rule theo (layer, value), **các vật liệu
+không biết nhau** (không có "cỏ gặp cát") · không override từng mảnh · `iso` và raycaster
+không đọc rule · lớp `decor` của farm không có rule nào.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1306,7 +1377,7 @@ làm chín T6).
 | ~~S22~~ | ~~Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card~~ — **XONG**, chương 131 | M |
 | ~~S23~~ | ~~Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1`~~ — **XONG**, chương 132 | L |
 | ~~S24~~ | ~~Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene~~ — **XONG**, chương 133 (13 lab → 9) | M |
-| S25 | IntGrid + rule autotile trong Map workspace | L |
+| ~~S25~~ | ~~IntGrid + rule autotile trong Map workspace~~ — **XONG**, chương 134 (rule vào map, `farm::line_piece` bị xoá) | L |
 | S26 | Mixer workspace (cửa **thứ tư** vào `.hrt` — phải sửa `CLAUDE.md` có chủ ý) | L |
 | S27 | **Creatures** — game thứ hai (MVP) | XL |
 | S28 | Replay + PvP realtime + ELO — consumer thật đầu tiên của realtime | L |

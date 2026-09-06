@@ -16,12 +16,14 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/assets.hpp"
 #include "engine/commands/registry.hpp"
 #include "engine/document/document.hpp"
 #include "engine/renderer2d.hpp"
+#include "engine/ui/theme.hpp"
 #include "engine/ui/ui.hpp"
 #include "games/fps/map.hpp"
 #include "games/studio_shell/map_workspace.hpp"
@@ -551,6 +553,13 @@ static void test_rule_button() {
     click(d, ws, ws.rule_rect());
     CHECK(!ws.take_message().has_value());
     CHECK(ws.map().rule_for("ground", 0) == tilemap::RuleKind::None);
+    // ...and the operation refuses on its own, not merely because the button is off.
+    // A guard that only exists in the widget is a guard the command palette and the
+    // keyboard walk straight past (D-rule: the operation lives in the core).
+    const engine::OpResult refused = ws.cycle_rule();
+    CHECK(!refused.ok);
+    CHECK(refused.message.find("empty") != std::string::npos);
+    CHECK(ws.map().rule_for("ground", 0) == tilemap::RuleKind::None);
 
     // ...and the rule survives the file, which is the whole reason it lives in the map.
     CHECK(ws.save().ok);
@@ -595,6 +604,37 @@ static void test_rule_button() {
         d.panel(ws);
         d.panel(ws);
         dump_ppm(d.buf, SW, SH, "map_rules.ppm");
+
+        // And what the eye saw, pinned to pixels. A whole-frame comparison would only
+        // prove the picture changed; these are three specific claims about three
+        // specific cells (the memory: frame diffs prove variety, not correctness).
+        const gfx::Color ink = ui::theme::bg;
+        const auto at_px = [&](int px, int py) {
+            return d.buf[static_cast<std::size_t>(py) * SW + static_cast<std::size_t>(px)]
+                   & 0x00FFFFFFu;
+        };
+        const auto centre_of = [&](int tx, int ty) {
+            const ui::Rect r = ws.tile_rect(tx, ty);
+            return std::pair<int, int>{r.x + r.w / 2, r.y + r.h / 2};
+        };
+
+        // 1. A cell with NO rule draws no connector at all — its centre is its colour.
+        const auto plain = centre_of(0, 5);
+        CHECK(at_px(plain.first, plain.second) ==
+              (studioshell::tile_color(5) & 0x00FFFFFFu));
+
+        // 2. A ruled cell DOES: the hub is drawn in ink at its centre.
+        const auto road = centre_of(1, 2);
+        CHECK(at_px(road.first, road.second) == (ink & 0x00FFFFFFu));
+
+        // 3. The pip that canonicalisation drops. Cell (6,3) hangs below the block, so
+        //    its north-west diagonal (5,2) is a region cell — but WEST of it, (5,3), is
+        //    empty, so that diagonal cannot change which of the 47 pieces it wears.
+        //    Drawing a pip there would promise a difference the renderer will not make.
+        CHECK(ws.map().at("ground", 5, 2) == 3);      // the diagonal IS the material
+        CHECK(ws.map().at("ground", 5, 3) != 3);      // ...and its cardinal is not
+        const ui::Rect c63 = ws.tile_rect(6, 3);
+        CHECK(at_px(c63.x + 1, c63.y + 1) != (ink & 0x00FFFFFFu));
     }
     cmd::clear();
 }

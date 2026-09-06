@@ -464,6 +464,12 @@ static void test_rules_roundtrip_and_version() {
     CHECK(!load(std::string(head) + "rule 0 line\nrow 1 1\n").has_value());       // 0 is empty
     CHECK(!load(std::string(head) + "rule 2 blob\nrule 2 line\nrow 1 1\n").has_value());
     CHECK(!load(std::string(head) + "rule 2 spiral\nrow 1 1\n").has_value());
+    // A rule BETWEEN rows. The map has to be taller than one row for this to be the
+    // case it means: with a single row the grid is already complete when the rule
+    // appears, and the outer parser refuses it as an unknown directive for a
+    // different reason — which made this look tested when it was not.
+    CHECK(!load("map2 2\nname x\nsize 1 2\ntile 8\nlayer g tiles -\n"
+                "row 1\nrule 2 line\nrow 1\n").has_value());
     CHECK(!load(std::string(head) + "row 1 1\nrule 2 line\n").has_value());       // after the grid
     // ...and a v1 file with no rules still loads, because that is most of them.
     CHECK(load("map2 1\nname x\nsize 2 1\ntile 8\nlayer g tiles -\nrow 1 1\n").has_value());
@@ -489,6 +495,12 @@ static void test_rule_piece() {
     CHECK(rule_piece(m, "ground", 0, 1) == 2);          // east only
     CHECK(rule_piece(m, "ground", 0, 0) == 0);          // an empty cell: nothing
     CHECK(neighbour_mask(m, "ground", 1, 1) == (kN | kE | kS | kW));
+
+    // The contract for an EMPTY cell, which is the one place the bounds check earns
+    // its keep: Map::at answers 0 off the map, so without it a hole in the middle of
+    // nothing would report the void beyond the edge as more of itself.
+    CHECK(m.at("ground", 0, 0) == 0);
+    CHECK((neighbour_mask(m, "ground", 0, 0) & (kN | kW | kNW | kNE | kSW)) == 0);
 
     // Drop the rule and every one of those becomes 0 — the number a caller adds to a
     // base without asking whether there was a rule.
