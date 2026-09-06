@@ -128,10 +128,6 @@ add_executable(demo
   src/games/editor/editor_scene.cpp
   src/games/colony/colony_scene.cpp
   src/games/studio/studio_scene.cpp
-  src/games/fx/fx_scene.cpp
-  src/games/light/light_scene.cpp
-  src/games/audio/audio_scene.cpp
-  src/games/anim/anim_scene.cpp
   src/games/hub/hub_panel.cpp
   src/games/farm/farm_scene.cpp
   src/games/studio_shell/studio_shell_scene.cpp
