@@ -1,0 +1,26 @@
+{
+  "games": [
+    {
+      "manifest": "projects/creator.gameproject",
+      "name": "Creator Demo (FPS + Labs)",
+      "summary": "A hand-written raycaster walking a level this project drew.",
+      "entry": "fps",
+      "cover": "textures/wall_1.hrt",
+      "readme": "",
+      "package": "cd1c2864f8315bff",
+      "playable": true,
+      "problems": []
+    },
+    {
+      "manifest": "projects/farm.gameproject",
+      "name": "Farm",
+      "summary": "Plant, water, sell, sleep — a day at a time, and it remembers.",
+      "entry": "farm",
+      "cover": "textures/town.hrt",
+      "readme": "projects/farm.md",
+      "package": "9436b7c3bccf553d",
+      "playable": true,
+      "problems": []
+    }
+  ]
+}

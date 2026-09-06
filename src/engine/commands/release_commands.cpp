@@ -3,7 +3,9 @@
 // =============================================================================
 #include "engine/commands/release_commands.hpp"
 
+#include "engine/assets.hpp"
 #include "engine/commands/registry.hpp"
+#include "engine/project/collection.hpp"
 #include "engine/project/inspect.hpp"
 #include "engine/resource/resource.hpp"
 
@@ -107,6 +109,38 @@ void register_release_commands(const std::vector<std::string>& known_entries) {
                        (e.reason.empty() ? "" : "  # " + e.reason);
             }
             return engine::OpResult{true, msg};
+        });
+
+    // The collection index: what a page needs so a link can lead to a LIST of games
+    // rather than to one game whose query string somebody had to be told.
+    //
+    // A command rather than a build step, for the reason every operation here is one:
+    // the Studio will want a button, and an operation that exists in only one trigger
+    // is how a CLI and a GUI drift. Mutating, so it refuses blank arguments (D17) —
+    // an index written to "" is not a default, it is a missing decision.
+    register_command(
+        Info{"collection.index", "Bake the game list a page can read", "",
+             "<projects-dir> <out.json>"},
+        [known_entries](const std::vector<std::string>& a) {
+            if (auto e = need(a, 2, "collection.index <projects-dir> <out.json>"); !e.ok) return e;
+            const auto items = engine::build_collection(a[0], known_entries);
+            if (items.empty())
+                return engine::OpResult{false, "no *.gameproject found in '" + a[0] + "'"};
+
+            const std::string json = engine::to_json(items);
+            const std::vector<std::uint8_t> bytes(json.begin(), json.end());
+            if (!assets::write_file(a[1], bytes))
+                return engine::OpResult{false, "cannot write " + a[1]};
+
+            // Say how many are BROKEN, not just how many there are. An index that
+            // silently lists an unplayable game reads exactly like one that does not.
+            std::size_t broken = 0;
+            for (const auto& e : items) broken += e.playable ? 0 : 1;
+            std::string msg = "indexed " + std::to_string(items.size()) + " project(s) -> " + a[1];
+            if (broken) msg += "   (" + std::to_string(broken) + " not playable)";
+            for (const auto& e : items)
+                if (!e.playable) msg += "\n  - " + e.manifest + ": " + e.problems.front();
+            return engine::OpResult{broken == 0, msg};
         });
 }
 
