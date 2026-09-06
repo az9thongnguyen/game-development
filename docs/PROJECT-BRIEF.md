@@ -3,7 +3,7 @@
 **Audience:** an AI coding agent (or a new human maintainer) that must understand this
 repository well enough to *choose the right next piece of work*, not merely to edit a file
 it was pointed at.
-**Last verified:** 2026-09-06, against commit `5a9fdfc` (`feat/s22-provenance`, 393 commits).
+**Last verified:** 2026-09-06, against commit `3ea1125` (`main`, 395 commits).
 **Language note:** written in English to match the rest of `docs/` and the code; the
 original vision document `requirements.md` is in Vietnamese and remains authoritative for
 the learning goal.
