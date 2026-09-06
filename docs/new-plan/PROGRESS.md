@@ -1234,6 +1234,64 @@ chỉ sửa được thuộc tính `dir`, mọi prop khác round-trip nhưng kh�
 catalogue loại · `--lab map` hard-code một đường dẫn (lab không có manifest) · `fps::Map`
 vẫn là lưới `uint8` riêng, id > 255 bị clamp.
 
+## S24 — bốn lab, một actor (chương 133) — XONG 2026-09-06
+
+Merge `feat/s24-effects-as-components`. Ròng **−492 dòng**. **13 lab → 9.**
+
+**Vấn đề, nói thẳng:** `--fx --light --audio --anim` là bốn cửa sổ demo bốn core của
+engine, mỗi cái một bộ slider. Cả bốn đều là **ngõ cụt**: hạt trong `--fx` không lưu
+được, đèn trong `--light` là ba struct hard-code trong constructor, nốt trong `--audio`
+là bốn số trong mảng. Chúng chứng minh engine *có* tính năng — và chính là lý do không
+chỗ nào khác có.
+
+Ràng buộc thứ tự (D79, ch.120): **hấp thụ trước, xoá sau.** Lab audio là caller **duy
+nhất** của `audio::Mixer` trong toàn repo; xoá trước thì `audio_core` thành thư viện có
+test và không có người dùng — code chết với suite xanh, loại đắt nhất.
+
+| Commit | Việc |
+|---|---|
+| `ea5316a` | `Emitter` / `Light` / `Sound` + đồng hồ flipbook trên `Sprite`, trong `sandbox_core`; serialize `emitter=` `light=` `sound=` `noloop`. |
+| `f9a989a` | Mục EFFECTS trong inspector Scene; thân panel **cuộn**; `SoundBank` + seam thiết bị âm thanh; `test_scene_workspace` (workspace duy nhất chưa từng có test). |
+| `4bdc442` | Sáu mutation sống sót → năm test mới. |
+| *(tiếp)* | Xoá 4 lab, `--help` thêm mục "retired (chapter 133)". |
+
+**Core thuần không mở được loa.** `sandbox_core` biên dịch vào ba test không link SDL.
+Nên model **không phát** mà **ghi lại**: `World::sounds` là những gì tick vừa yêu cầu
+được nghe; `Workspace::take_sounds()` chuyển lên; `studioshell::SoundBank` biến thành
+mẫu. Và thiết bị bên dưới nó là một **seam** đúng hình dạng `ui::Context::set_clipboard`
+— `main.cpp` nối vào `platform::play_sound`, test headless nối vào không gì cả. Không có
+seam đó, cho Studio một cái loa sẽ làm hỏng `test_shell_golden`.
+
+**Ảnh chụp — chương thứ NĂM liên tiếp — ba lỗi:** đèn bán kính 160 px tràn ra toàn nền
+editor (giờ clip theo **world**, không phải panel) · **mọi nhãn slider đè lên control
+phía trên**, vì `ui::Context::slider` vẽ nhãn *bên ngoài* rect nó nhận — kể cả hai slider
+có từ trước · panel trống lúc Play không nói vì sao.
+
+**Và một lỗi ảnh chụp KHÔNG thể thấy.** `begin_scroll` clip **vẽ** chứ không clip
+**hit-test**. Control cuộn lên trên viewport vẫn giữ rect sống ở đúng chỗ nó bị đẩy tới:
+vô hình vì renderer cắt, bấm được vì hit test không. Cuộn xuống đáy inspector thì nút
+Play trong header nằm dưới một bóng ma ăn mất cú click. Đây là **chiều ngược** của lỗi
+ch.127 và ch.132 (*vẽ mà không bấm được*) và nó **tệ hơn**, vì trên màn hình không có gì
+để nghi ngờ. Sửa 6 dòng trong `point_in` — nơi mọi caller đều được, kể cả danh sách asset
+của mục Project vốn cũng cuộn và cũng thủng.
+
+**Harness ăn mất một bản sửa.** Ch.132 ghi "harness sở hữu working tree khi chạy"; đây là
+cạnh tiếp theo: tôi khôi phục file đã mutate bằng `git checkout`, và git khôi phục về
+**HEAD** — xoá luôn bản sửa chưa commit trong đó. Mutation biến mất, code nó đang kiểm
+cũng biến mất, suite xanh cả hai lý do. **Khôi phục bằng copy file.**
+
+**Số liệu:** **78/78 ctest** (77 → 78: thêm `test_scene_workspace`; 50 khi không có Drogon, **đã đo**) · **20/21
+mutation**, cái sống sót là *equivalent* (`anim::Flipbook` tự guard `fps > 0` ở cả
+`update()` lẫn `frame()`) · golden path xanh, 0 rò `.tmp`, release id **không đổi đúng
+như phải không đổi** (`eac0e534`: nội dung không đổi) · web build xanh + cả hai bài kiểm
+trình duyệt PASS · hai khung hình đã render và **đã nhìn**.
+
+**Chưa xác minh / trần:** `dir`/`spread` chỉnh bằng slider, gizmo chỉ để **đọc** (chưa
+kéo được) · **effect không vào được Archetype**, nên `Spawner` không sinh ra vật phát hạt
+(cố ý: proto lồng particle system) · **đường Texture → `frames>1` → FLIPBOOK không có
+test** (asset root của test rỗng) · Sound chỉ nghe khi actor **bị huỷ** · hạt chỉ bay khi
+Play · deposit đèn vẫn O(radius²)/đèn/khung như lab cũ.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1247,7 +1305,7 @@ làm chín T6).
 | ~~S21~~ | ~~Collection page + `cover`/`summary` + README template~~ — **XONG**, chương 130 | S/M |
 | ~~S22~~ | ~~Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card~~ — **XONG**, chương 131 | M |
 | ~~S23~~ | ~~Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1`~~ — **XONG**, chương 132 | L |
-| S24 | Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene | M |
+| ~~S24~~ | ~~Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene~~ — **XONG**, chương 133 (13 lab → 9) | M |
 | S25 | IntGrid + rule autotile trong Map workspace | L |
 | S26 | Mixer workspace (cửa **thứ tư** vào `.hrt` — phải sửa `CLAUDE.md` có chủ ý) | L |
 | S27 | **Creatures** — game thứ hai (MVP) | XL |
