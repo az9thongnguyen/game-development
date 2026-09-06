@@ -6,13 +6,15 @@
 #include <algorithm>
 #include <cmath>
 
+#include "engine/anim/flipbook.hpp"
+
 namespace sandbox {
 
 ecs::Entity World::spawn(const Archetype& a, float x, float y) {
     ecs::Entity e = reg.create();
     reg.add<Transform2D>(e, {x, y, 0, 1});
     reg.add<Body>(e, {a.w, a.h});
-    reg.add<Sprite>(e, {a.color, a.round, a.texture, a.frames, a.fps});
+    reg.add<Sprite>(e, {a.color, a.round, a.texture, a.frames, a.fps, a.loop, 0.0f});
     if (a.mover)    reg.add<Mover>(e, {a.vx, a.vy});
     if (a.spinner)  reg.add<Spinner>(e, {a.omega});
     if (a.bouncer)  reg.add<Bouncer>(e, {});
@@ -30,7 +32,17 @@ bool aabb_overlap(const Transform2D& ta, const Body& ba,
 }
 } // namespace
 
+void World::animate(float dt) {
+    reg.view<Sprite>([&](ecs::Entity, Sprite& s) {
+        if (s.frames <= 1 || s.fps <= 0) return;
+        anim::Flipbook fb{s.frames, s.fps, s.loop, s.t};
+        fb.update(dt);
+        s.t = fb.t;   // Flipbook owns the wrap; the component owns only the number
+    });
+}
+
 void World::tick(float dt) {
+    sounds.clear();   // one tick's worth; a host that skips a tick misses its sounds
     struct SpawnCmd { Archetype proto; float x, y; };
     std::vector<SpawnCmd>    spawns;
     std::vector<ecs::Entity> destroys;
@@ -63,12 +75,17 @@ void World::tick(float dt) {
         if (t.y - hh < 0)        { t.y = hh;              m->vy =  std::fabs(m->vy); }
         if (t.y + hh > bounds_h) { t.y = bounds_h - hh;   m->vy = -std::fabs(m->vy); }
     });
-    // 5. lifetime
+    // 5. emitters: after movement, so a particle trail is laid where the actor now is.
+    reg.view<Emitter, Transform2D>([&](ecs::Entity, Emitter& em, Transform2D& t) {
+        em.sys.set_config(em.cfg);
+        em.sys.update(dt, t.x, t.y, /*emitting=*/true);
+    });
+    // 6. lifetime
     reg.view<Lifetime>([&](ecs::Entity e, Lifetime& l) {
         l.ttl -= dt;
         if (l.ttl <= 0) destroys.push_back(e);
     });
-    // 6. overlaps: first hit wins its action (read-only; edits deferred to reap).
+    // 7. overlaps: first hit wins its action (read-only; edits deferred to reap).
     // ponytail: O(n^2) all-pairs overlap, fine for a sandbox; grid-hash if counts grow.
     reg.view<OnOverlap, Transform2D, Body>(
         [&](ecs::Entity e, OnOverlap& o, Transform2D& t, Body& b) {
@@ -86,13 +103,17 @@ void World::tick(float dt) {
                 });
         });
 
-    // 7. reap: destroys (deduped by index) first, then spawns.
+    // 8. reap: destroys (deduped by index) first, then spawns.
     std::sort(destroys.begin(), destroys.end(),
               [](ecs::Entity a, ecs::Entity c) { return a.index < c.index; });
     destroys.erase(std::unique(destroys.begin(), destroys.end(),
                    [](ecs::Entity a, ecs::Entity c) { return a.index == c.index; }),
                    destroys.end());
-    for (ecs::Entity e : destroys) reg.destroy(e);
+    for (ecs::Entity e : destroys) {
+        // A Sound is heard because the actor died — read it before the pool forgets it.
+        if (const Sound* snd = reg.get<Sound>(e)) sounds.push_back(*snd);
+        reg.destroy(e);
+    }
     for (auto& s : spawns)         spawn(s.proto, s.x, s.y);
 }
 

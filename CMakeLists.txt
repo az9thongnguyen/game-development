@@ -128,10 +128,6 @@ add_executable(demo
   src/games/editor/editor_scene.cpp
   src/games/colony/colony_scene.cpp
   src/games/studio/studio_scene.cpp
-  src/games/fx/fx_scene.cpp
-  src/games/light/light_scene.cpp
-  src/games/audio/audio_scene.cpp
-  src/games/anim/anim_scene.cpp
   src/games/hub/hub_panel.cpp
   src/games/farm/farm_scene.cpp
   src/games/studio_shell/studio_shell_scene.cpp
@@ -141,6 +137,7 @@ add_executable(demo
   src/games/studio_shell/play_viewport.cpp
   src/games/studio_shell/scene_workspace.cpp
   src/games/studio_shell/pixel_workspace.cpp
+  src/games/studio_shell/sound_bank.cpp
   src/games/studio_shell/workspace_host.cpp
   src/games/runner/worker.cpp
 )
@@ -340,6 +337,7 @@ add_executable(test_shell_golden tests/test_shell_golden.cpp
   src/games/studio_shell/play_viewport.cpp
   src/games/studio_shell/scene_workspace.cpp
   src/games/studio_shell/pixel_workspace.cpp
+  src/games/studio_shell/sound_bank.cpp
   src/games/studio_shell/workspace_host.cpp
   src/games/hub/hub_panel.cpp
   src/engine/renderer2d.cpp
@@ -349,7 +347,8 @@ target_include_directories(test_shell_golden PRIVATE src)
 target_compile_definitions(test_shell_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_shell_golden PRIVATE
   hub_build_core hub_core release_ops_core release_core project_core inspect_core resource_core
-  commands_core map_edit_core paint_core document_core ui_core text_core farm_core sandbox_core ecs_core gbaas_sdk engine_flags)
+  commands_core map_edit_core paint_core document_core ui_core text_core farm_core sandbox_core ecs_core
+  light_core audio_core gbaas_sdk engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
 
 # ---- Documents: undo/redo history and autosave+recovery for an edited file -------
@@ -481,6 +480,20 @@ target_link_libraries(test_pixel_workspace PRIVATE
   paint_core commands_core document_core ui_core text_core engine_flags)
 add_test(NAME pixel_workspace COMMAND test_pixel_workspace)
 
+# The scene editor, driven headless — the third workspace to get one, and the first
+# whose questions are about REACH: a control below the fold of a scrolling inspector.
+add_executable(test_scene_workspace tests/test_scene_workspace.cpp
+  src/games/studio_shell/scene_workspace.cpp
+  src/games/studio_shell/sound_bank.cpp
+  src/engine/renderer2d.cpp
+  src/engine/assets.cpp
+  src/engine/image.cpp
+)
+target_include_directories(test_scene_workspace PRIVATE src)
+target_link_libraries(test_scene_workspace PRIVATE
+  sandbox_core ecs_core commands_core document_core ui_core text_core light_core audio_core engine_flags)
+add_test(NAME scene_workspace COMMAND test_scene_workspace)
+
 add_executable(test_map_workspace tests/test_map_workspace.cpp
   src/games/studio_shell/map_workspace.cpp
   src/engine/renderer2d.cpp
@@ -601,7 +614,9 @@ add_library(sandbox_core STATIC
   src/games/sandbox/serialize.cpp
 )
 target_include_directories(sandbox_core PUBLIC src)
-target_link_libraries(sandbox_core PRIVATE engine_flags)
+# PUBLIC: an Emitter component OWNS a fx::ParticleSystem and a Sprite's frame comes
+# from anim::Flipbook, so anything that links the sandbox needs both (chapter 133).
+target_link_libraries(sandbox_core PUBLIC particles_core tween_core PRIVATE engine_flags)
 
 # test_sandbox compiles registry.cpp directly (ecs::Registry's non-template ops) to
 # stay dependency-free — the tick/serializer round-trips use only in-memory state.
@@ -609,6 +624,8 @@ add_executable(test_sandbox tests/test_sandbox.cpp
   src/games/sandbox/world.cpp
   src/games/sandbox/serialize.cpp
   src/engine/ecs/registry.cpp
+  src/engine/fx/particles.cpp
+  src/engine/anim/flipbook.cpp
 )
 target_include_directories(test_sandbox PRIVATE src)
 target_link_libraries(test_sandbox PRIVATE engine_flags)
@@ -858,6 +875,8 @@ add_executable(test_runner tests/test_runner.cpp
   src/games/runner/runner.cpp
   src/games/sandbox/world.cpp
   src/games/sandbox/serialize.cpp
+  src/engine/fx/particles.cpp
+  src/engine/anim/flipbook.cpp
   src/engine/ecs/registry.cpp
 )
 target_include_directories(test_runner PRIVATE src)

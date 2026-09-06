@@ -657,6 +657,62 @@ static void test_scroll() {
     CHECK(c.y == 0);
 }
 
+// A widget scrolled out of a viewport must be DEAD, not merely invisible. Drawing is
+// clipped by the renderer; hit-testing was not, so a row scrolled above the top kept a
+// live rect wherever the offset put it — taking clicks meant for whatever is drawn
+// there now. Both directions, because a clip that never lets anything through is the
+// same bug wearing the opposite sign (chapter 133).
+static void test_scroll_clips_hit_testing() {
+    ui::Context ui;
+    const ui::Rect view{0, 100, 200, 100};      // the viewport starts 100 px down
+
+    // Press and release over (20, 50): ABOVE the viewport. A row placed there by a
+    // scroll offset must not activate.
+    auto press_release_at = [&](int mx, int my, int offset_ticks, int row_y) {
+        // Scroll first, in its own frame — and with the pointer INSIDE the viewport,
+        // because that is the only place a wheel tick counts. (Feeding the wheel at
+        // the click point scrolled nothing and quietly made this test vacuous.)
+        // Back to the top each time: the offset lives in the Context between frames,
+        // so a second call would otherwise start where the first one stopped.
+        for (int i = 0; i < 20; ++i) {
+            ui::Input in{view.x + 5, view.y + 5, false, false, false};
+            in.wheel = +1;
+            ui.begin(nullptr, in, 400, 400);
+            ui.begin_scroll("rows", view, 500);
+            ui.end_scroll();
+            ui.end();
+        }
+        for (int i = 0; i < -offset_ticks; ++i) {
+            ui::Input in{view.x + 5, view.y + 5, false, false, false};
+            in.wheel = -1;
+            ui.begin(nullptr, in, 400, 400);
+            ui.begin_scroll("rows", view, 500);
+            ui.end_scroll();
+            ui.end();
+        }
+        bool hit = false;
+        for (int phase = 0; phase < 2; ++phase) {
+            ui::Input in{mx, my, phase == 0, phase == 0, phase == 1};
+            ui.begin(nullptr, in, 400, 400);
+            const ui::Rect c = ui.begin_scroll("rows", view, 500);
+            if (ui.button(ui::Rect{c.x, c.y + row_y, 200, 24}, "row")) hit = true;
+            ui.end_scroll();
+            ui.end();
+        }
+        return hit;
+    };
+
+    // Unscrolled, the row at body-y 0 sits at y=100..124 — inside the viewport, and
+    // clickable there.
+    CHECK(press_release_at(20, 110, 0, 0));
+    // Scrolled down 4 ticks (160 px), the row at body-y 100 is drawn at y=40..64:
+    // ON SCREEN but ABOVE the viewport, over whatever the caller drew there. A click
+    // at 50 lands inside that rect and must do nothing.
+    CHECK(!press_release_at(20, 50, -4, 100));
+    // ...and the row that IS in view after the same scroll still works.
+    CHECK(press_release_at(20, 110, -4, 170));
+}
+
 // ---------------------------------------------------------------------------
 //  Tabs and list rows.
 // ---------------------------------------------------------------------------
@@ -759,6 +815,7 @@ int main() {
     test_overlays();
     test_text_input();
     test_scroll();
+    test_scroll_clips_hit_testing();
     test_tabs_and_list();
     test_confirm_reason();
     if (g_failures == 0) std::printf("ui: all tests passed\n");

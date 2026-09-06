@@ -59,6 +59,7 @@ public:
     engine::OpResult save() override;
     engine::OpResult reload() override;
     std::optional<engine::OpResult> take_message() override;
+    std::vector<SoundRequest> take_sounds() override;
 
     [[nodiscard]] bool recovery_pending() const override { return recovery_pending_; }
     void take_recovery() override;
@@ -79,6 +80,18 @@ public:
     // disagree about it. Zero-width before the first draw, since only draw knows the
     // canvas. (Same reason MapWorkspace exposes tile_rect.)
     [[nodiscard]] ui::Rect actor_rect(int index) const;
+    // Where an inspector control landed in the last draw, BY NAME — empty when it was
+    // not drawn at all, and empty when it was scrolled out of the viewport. Named
+    // rather than indexed because an index moves the instant a section is inserted
+    // above it; empty-when-clipped because "drawn but unreachable" is the failure this
+    // panel has already shipped twice (chapters 127, 132), and a test that asks for a
+    // rect must be told the truth about whether a finger could land on it.
+    [[nodiscard]] ui::Rect control_rect(const char* id) const;
+    // How tall the scrolling half of the inspector wants to be, and how tall it got.
+    // A viewport shorter than its content is normal here — that is what the scrollbar
+    // is for — so this is not an error signal, it is what a test scrolls by.
+    [[nodiscard]] int inspector_content_height() const { return content_h_; }
+    [[nodiscard]] ui::Rect inspector_viewport() const { return viewport_; }
 
 private:
     // A palette entry = an Archetype plus which proto-carrying behaviour to attach.
@@ -94,6 +107,7 @@ private:
     // edit records nothing: history you did not make is history you cannot undo past.
     void        commit(const std::string& before, std::string label, std::uint64_t merge = 0);
     void        place(int palette_index, float wx, float wy);
+    void        mark(const char* id, ui::Rect r);   // record a control's reachable rect
     [[nodiscard]] int  index_at(float wx, float wy) const;   // topmost actor, -1 = none
     [[nodiscard]] bool entity_at(int index, ecs::Entity& out) const;
 
@@ -124,7 +138,6 @@ private:
     int      view_x_ = 0, view_y_ = 0;
 
     double autosave_timer_ = 0.0;
-    double anim_time_ = 0.0;      // cosmetic flipbook clock; runs even when stopped
     bool   commands_registered_ = false;
     bool   textures_loaded_ = false;
 
@@ -132,12 +145,21 @@ private:
     std::vector<std::string>                    tex_names_;
 
     std::optional<engine::OpResult> message_;
+    std::vector<SoundRequest>       pending_sounds_;
+
+    // Inspector geometry remembered from the last draw. content_h_ is fed back into
+    // begin_scroll on the NEXT frame: immediate mode cannot measure before it places,
+    // so the height of the thing it just drew is the only honest number it has.
+    std::unordered_map<std::string, ui::Rect> controls_;
+    ui::Rect viewport_{};
+    int      content_h_ = 0;
 
     // Clicks resolve during draw and are acted on in the next update — the same
     // one-way street the map workspace and the Hub buttons use.
     int  want_palette_ = -2;      // -2 = nothing asked, -1 = select/move, >=0 = arm
     bool want_undo_ = false, want_redo_ = false, want_save_ = false;
     bool want_play_ = false, want_delete_ = false, want_recolor_ = false, want_tex_ = false;
+    bool want_audition_ = false, want_light_color_ = false, want_restart_ = false;
     // A slider writes straight into the component while dragging; the edit is
     // committed once, on release, so one drag is one undo step.
     bool  editing_prop_ = false;

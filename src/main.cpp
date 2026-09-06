@@ -43,10 +43,6 @@
 #include "games/editor/editor_scene.hpp"
 #include "games/colony/colony_scene.hpp"
 #include "games/studio/studio_scene.hpp"
-#include "games/anim/anim_scene.hpp"
-#include "games/audio/audio_scene.hpp"
-#include "games/fx/fx_scene.hpp"
-#include "games/light/light_scene.hpp"
 #include "games/studio_shell/map_workspace.hpp"
 #include "games/studio_shell/pixel_workspace.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
@@ -85,6 +81,10 @@ constexpr int kAA = 2;
 int run_window(const platform::Config& cfg, std::unique_ptr<engine::Scene> scene) {
     if (!platform::init(cfg)) return 1;
     platform::init_audio();
+    // The Studio's speaker, wired here because this is the layer allowed to know about
+    // SDL. Everything above studio_shell/sound_bank.hpp only asks for a sound.
+    studioshell::set_audio_device({&platform::init_audio, &platform::audio_rate,
+                                   &platform::play_sound});
 
     engine::App app(std::move(scene));
     platform::run([&app](double dt) { app.frame(dt); });
@@ -199,20 +199,10 @@ const std::vector<Entry>& labs() {
         v.push_back({"editor", win("hand-engine — editor (UI + physics)", 960, 600, kAA), [] {
             return std::unique_ptr<engine::Scene>(new editor::EditorScene());
         }});
-        v.push_back({"fx", win("hand-engine — particle fx", 960, 600, kAA), [] {
-            return std::unique_ptr<engine::Scene>(new fx::FxScene());
-        }});
-        // Lights are soft and per-pixel additive; SSAA would quadruple the fill for
-        // an edge that is not there.
-        v.push_back({"light", win("hand-engine — 2D lighting", 960, 600, 1), [] {
-            return std::unique_ptr<engine::Scene>(new lightdemo::LightScene());
-        }});
-        v.push_back({"audio", win("hand-engine — audio mixer", 960, 600, kAA), [] {
-            return std::unique_ptr<engine::Scene>(new audiodemo::AudioScene());
-        }});
-        v.push_back({"anim", win("hand-engine — sprite animation", 960, 600, kAA), [] {
-            return std::unique_ptr<engine::Scene>(new animdemo::AnimScene());
-        }});
+        // Chapter 133 retired four labs here — fx, light, audio, anim. Each was one
+        // engine core behind its own sliders, in its own window, on data nothing else
+        // could read. They are components on an actor now, in `scene`, which is the
+        // same object as the Studio's Scene tab.
         v.push_back({"3d", win("hand-engine — 3D core", 960, 600, kAA), [] {
             return std::unique_ptr<engine::Scene>(new viz3d::Scene3D());
         }});
@@ -263,7 +253,11 @@ int usage(const std::string& unknown) {
         "\n  retired (chapter 132)\n"
         "    --maplab -> --lab map, which is now the Studio's Map workspace. The old\n"
         "               lab wrote fpsmap1; convert a level with --cmd map.migrate\n"
-        "    --3d --viz3d --iso --colony --fx --light --audio --anim -> --lab <same name>\n"
+        "    --3d --viz3d --iso --colony -> --lab <same name>\n"
+        "\n  retired (chapter 133)\n"
+        "    --fx --light --audio --anim -> --lab scene: an actor carries an emitter,\n"
+        "               a light, a sound and a flipbook, and the inspector edits them\n"
+
         "\n  no mode at all runs the M0 engine demo.\n");
     return unknown.empty() ? 0 : 2;
 }

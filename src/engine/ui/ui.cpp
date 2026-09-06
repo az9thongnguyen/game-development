@@ -65,7 +65,19 @@ void Context::pop_id() {
 }
 
 bool Context::point_in(Rect r) const {
-    return in_.mx >= r.x && in_.mx < r.x + r.w && in_.my >= r.y && in_.my < r.y + r.h;
+    if (in_.mx < r.x || in_.mx >= r.x + r.w || in_.my < r.y || in_.my >= r.y + r.h)
+        return false;
+    // Inside every open scroll viewport too. Drawing is clipped by the renderer, but
+    // hit-testing is not, and a widget scrolled past the edge keeps a live rect
+    // wherever the offset put it — which is a control you cannot see, taking clicks
+    // meant for whatever is drawn there instead.
+    const int n = scroll_depth_ < 4 ? scroll_depth_ : 4;
+    for (int i = 0; i < n; ++i) {
+        const Rect& c = scroll_clip_[i];
+        if (in_.mx < c.x || in_.mx >= c.x + c.w || in_.my < c.y || in_.my >= c.y + c.h)
+            return false;
+    }
+    return true;
 }
 
 void Context::begin(gfx::Renderer2D* r, const Input& in, int screen_w, int screen_h) {
@@ -679,7 +691,7 @@ Rect Context::begin_scroll(const char* id_str, Rect r, int content_h) {
     if (*off > max_off) *off = max_off;
     if (*off < 0)       *off = 0;
 
-    if (scroll_depth_ < 4) scroll_open_[scroll_depth_] = id;
+    if (scroll_depth_ < 4) { scroll_open_[scroll_depth_] = id; scroll_clip_[scroll_depth_] = r; }
     ++scroll_depth_;
     if (r_) {
         r_->push_clip(r.x, r.y, r.w, r.h);

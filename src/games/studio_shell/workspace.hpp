@@ -26,6 +26,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "engine/release/ops.hpp"    // engine::OpResult
 #include "engine/ui/ui.hpp"
@@ -78,6 +79,13 @@ public:
     // Autosave recovery, if this document has any. Defaulted to "nothing to recover"
     // rather than pure, so a workspace without autosave stays silent instead of
     // implementing three empty methods to say it has nothing to say.
+    // Sounds the workspace asked to be HEARD since the last call. A workspace is pure
+    // of the audio device for the same reason the sandbox model is: it is compiled into
+    // headless tests, and a test that opens a speaker is a test that needs a machine.
+    // The host owns the device and drains this (chapter 133).
+    struct SoundRequest { float freq = 392.0f, ms = 220.0f, gain = 0.6f; };
+    virtual std::vector<SoundRequest> take_sounds() { return {}; }
+
     [[nodiscard]] virtual bool recovery_pending() const { return false; }
     virtual void take_recovery() {}
     virtual void dismiss_recovery() {}

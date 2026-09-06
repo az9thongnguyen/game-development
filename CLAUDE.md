@@ -88,14 +88,17 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 ./build/demo --fps      # M2 raycaster (loads maps/level_00.map2)
 
 ./build/demo --lab      # list the labs; --lab <id> runs one
-#   scene    the Studio's Scene workspace, full-screen (the SAME object as its Scene tab)
+#   scene    the Studio's Scene workspace, full-screen (the SAME object as its Scene tab):
+#            place/drag actors, and the EFFECTS section on the selected one — an
+#            Emitter (particles), a Light that rides the actor, a Sound heard when it
+#            is destroyed, and a Flipbook for an animated sheet. Chapter 133 folded the
+#            four effect labs into these; the cores they demoed all stayed.
 #   map      the Studio's Map workspace, full-screen (the SAME object as its Map tab):
 #            paint/rect/fill on layers, plus the Entity tool that place a spawn
 #   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt,
 #            palette sampled from the image + an HSV/hex mixer for a colour it lacks)
 #   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
 #   editor   immediate-mode GUI + physics sandbox
-#   fx light audio anim     particles / 2D lights / mixer / flipbook
 #   3d viz3d                software-rasterized 3D core / interactive sandbox
 #   iso      M4 isometric farm sim (F5/F9 save/load)
 #   colony   engine-core integration game (also the BaaS/SDK client)
@@ -167,8 +170,8 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**28 of the 77 tests**: `ctest` here reports 77, a build configured without Drogon
-reports 49. Since chapter 129 CI has a `baas-test` job in the
+**28 of the 78 tests**: `ctest` here reports 78, a build configured without Drogon
+reports 50. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that
@@ -254,9 +257,15 @@ Understand these deliberate patterns before editing the build:
   conflict's two answers, the hotbar slots and the dialogue panel — so the renderer
   and the hit test cannot disagree; no renderer, no SDK),
   `inflate_core` (hand-written DEFLATE) and `png_core` (decode only, offline),
-  `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
+  `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`
+  (actors on a generic ECS; since chapter 133 an actor also carries an `Emitter`,
+  a `Light`, a `Sound` and a flipbook clock — the model records what should be
+  HEARD into `World::sounds` rather than opening a device, because a pure core
+  must stay compilable into a headless test),
   `map_edit_core` (tile AND entity edits as undoable `doc::Command`s),
-  `particles_core`, `tween_core`, `light_core`, `audio_core`, `paint_core` (pixel
+  `particles_core`, `tween_core`, `light_core`, `audio_core` (all four now have a
+  second consumer: an actor's `Emitter`/`Light`/`Sound`/flipbook, chapter 133 —
+  the effect labs that used to be their only one are gone), `paint_core` (pixel
   edits as undoable commands — the third client of `doc::CommandStack` — plus
   `pixel_source`, the `.pix` -> `Image` bake, and `colour`, the HSV/hex arithmetic
   whose 8-bit round trip is exact),

@@ -253,8 +253,12 @@ private:
 
     struct ScrollState { Id id; int offset; };
     std::vector<ScrollState> scrolls_;
-    int scroll_depth_ = 0;
-    Id  scroll_open_[4]{};
+    int  scroll_depth_ = 0;
+    Id   scroll_open_[4]{};
+    // The viewport rect of each open scroll. A control scrolled out of view is still
+    // AT its rect as far as the mouse is concerned, so without this the row above the
+    // top of a list is clickable wherever its off-viewport rect happens to land.
+    Rect scroll_clip_[4]{};
 };
 
 } // namespace ui

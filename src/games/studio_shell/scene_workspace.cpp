@@ -9,6 +9,7 @@
 
 #include "engine/anim/flipbook.hpp"
 #include "engine/commands/registry.hpp"
+#include "engine/fx/light.hpp"
 #include "engine/document/document.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/ui/theme.hpp"
@@ -309,11 +310,19 @@ void SceneWorkspace::register_commands() {
 }
 
 void SceneWorkspace::update(double dt, const platform::InputState& in, bool interactive) {
-    anim_time_ += dt;
+    // Flipbooks advance whether or not the scene is running — an editor showing a
+    // frozen frame cannot tell you what the animation looks like. ONE clock, on the
+    // sprite, so the stopped preview and the playing frame are the same number.
+    world_.animate(static_cast<float>(dt));
 
     // The simulation runs whether or not this tab is showing: a running scene that
     // froze when you looked at the map would make Play mean two different things.
-    if (playing_) world_.tick(static_cast<float>(dt));
+    if (playing_) {
+        world_.tick(static_cast<float>(dt));
+        // The model recorded what should be heard; carry it to whoever owns a device.
+        for (const sandbox::Sound& s : world_.sounds)
+            pending_sounds_.push_back(SoundRequest{s.freq, s.ms, s.gain});
+    }
 
     // ---- buttons resolved during the last draw -----------------------------
     const int want_pal = want_palette_;
@@ -324,6 +333,32 @@ void SceneWorkspace::update(double dt, const platform::InputState& in, bool inte
     if (want_undo_)   { want_undo_ = false; if (!stack_.undo()) note(false, "nothing to undo"); }
     if (want_redo_)   { want_redo_ = false; if (!stack_.redo()) note(false, "nothing to redo"); }
     if (want_save_)   { want_save_ = false; message_ = save(); }
+    if (want_audition_) {
+        want_audition_ = false;
+        ecs::Entity e{};
+        if (entity_at(sel_, e))
+            if (const sandbox::Sound* s = world_.reg.get<sandbox::Sound>(e))
+                pending_sounds_.push_back(SoundRequest{s->freq, s->ms, s->gain});
+    }
+    if (want_restart_) {
+        want_restart_ = false;
+        ecs::Entity e{};
+        if (entity_at(sel_, e))
+            if (Sprite* s = world_.reg.get<Sprite>(e)) s->t = 0.0f;   // clock, not an edit
+    }
+    if (want_light_color_) {
+        want_light_color_ = false;
+        ecs::Entity e{};
+        if (entity_at(sel_, e))
+            if (sandbox::Light* L = world_.reg.get<sandbox::Light>(e)) {
+                const std::string before = sandbox::to_scene(world_);
+                int at = 0;
+                for (int k = 0; k < kSwatchCount; ++k)
+                    if (kSwatches[k] == L->color) { at = k + 1; break; }
+                L->color = kSwatches[at % kSwatchCount];
+                commit(before, "light colour");
+            }
+    }
 
     // A property drag (a slider) writes straight into the component every frame and
     // is committed ONCE when the pointer is released, so one drag is one undo step.
@@ -486,7 +521,7 @@ void SceneWorkspace::draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect a
                 gfx::Sprite spr{img.pixels.data(), img.w, img.h};
                 if (s.frames > 1 && s.fps > 0 && img.h >= s.frames) {
                     const int fh = img.h / s.frames;
-                    const int f = static_cast<int>(anim_time_ * s.fps) % s.frames;
+                    const int f = sandbox::sprite_frame(s);
                     spr = {img.pixels.data() + static_cast<std::size_t>(f) * fh * img.w, img.w, fh};
                 }
                 g.blit_scaled(spr, cx - w / 2, cy - h / 2, w, h);
@@ -503,12 +538,88 @@ void SceneWorkspace::draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect a
             if (i == sel_) g.draw_rect(cx - w / 2 - 2, cy - h / 2 - 2, w + 4, h + 4, th::accent);
             ++i;
         });
-    g.pop_clip();
+
+    // Effects are clipped to the WORLD, not to the panel. A 160 px light on an actor
+    // near the edge of a 320 px scene otherwise bleeds across the editor background,
+    // which reads as a rendering fault and — worse — hides where the world stops.
+    // Only the screenshot showed this; every assertion about it was green.
+    g.push_clip(view_x_, view_y_, dw, dh);
+
+    // ---- lights: additive, over the actors, inside the canvas clip ---------
+    // The light lab's deposit loop, unchanged except that the centre now comes from a
+    // Transform2D — which is the whole point of making it a component. ponytail: naive
+    // O(radius^2) per light, same as the lab; a radial sprite blit if counts ever grow.
+    world_.reg.view<sandbox::Light, Transform2D>(
+        [&](ecs::Entity, sandbox::Light& L, Transform2D& t) {
+            const float r = L.radius * view_scale_;
+            if (r <= 0.0f || L.intensity <= 0.0f) return;
+            const fx::Light lit{static_cast<float>(sx(t.x)), static_cast<float>(sy(t.y)),
+                                r, L.color, L.intensity};
+            const int x0 = std::max(view_x_, static_cast<int>(lit.x - r));
+            const int y0 = std::max(view_y_, static_cast<int>(lit.y - r));
+            const int x1 = std::min(view_x_ + dw, static_cast<int>(lit.x + r) + 1);
+            const int y1 = std::min(view_y_ + dh, static_cast<int>(lit.y + r) + 1);
+            for (int py = y0; py < y1; ++py)
+                for (int px = x0; px < x1; ++px) {
+                    const gfx::Color c = fx::light_sample(lit, static_cast<float>(px),
+                                                          static_cast<float>(py));
+                    if (gfx::a_of(c)) g.add_pixel(px, py, c);
+                }
+        });
+
+    // ---- particles ---------------------------------------------------------
+    world_.reg.view<sandbox::Emitter>([&](ecs::Entity, sandbox::Emitter& em) {
+        for (const fx::Particle& p : em.sys.particles())
+            g.fill_circle(sx(p.x), sy(p.y),
+                          std::max(1, static_cast<int>(fx::current_size(p) * view_scale_)),
+                          fx::current_color(p));
+    });
+
+    // ---- the selected emitter's aim, drawn while STOPPED -------------------
+    // Without this an emitter is configured blind: the particles only fly during Play,
+    // so `dir` and `spread` would be two sliders with nothing on screen answering them.
+    {
+        ecs::Entity e{};
+        if (entity_at(sel_, e))
+            if (sandbox::Emitter* em = world_.reg.get<sandbox::Emitter>(e))
+                if (Transform2D* t = world_.reg.get<Transform2D>(e)) {
+                    const float len = std::max(12.0f, em->cfg.speed * 0.35f) * view_scale_;
+                    const int   cx = sx(t->x), cy = sy(t->y);
+                    for (float a : {em->cfg.dir - em->cfg.spread, em->cfg.dir,
+                                    em->cfg.dir + em->cfg.spread})
+                        g.draw_line(cx, cy, cx + static_cast<int>(std::cos(a) * len),
+                                    cy + static_cast<int>(std::sin(a) * len), th::accent);
+                }
+    }
+    g.pop_clip();   // the world
+    g.pop_clip();   // the canvas
+}
+
+void SceneWorkspace::mark(const char* id, ui::Rect r) {
+    // A control is only "at" a rect if a finger could land there. Outside the scrolling
+    // viewport it is drawn nowhere and clickable nowhere, and a test that asked for it
+    // must be told that, not handed coordinates that look usable.
+    const ui::Rect v = viewport_;
+    const int x0 = std::max(r.x, v.x), y0 = std::max(r.y, v.y);
+    const int x1 = std::min(r.x + r.w, v.x + v.w), y1 = std::min(r.y + r.h, v.y + v.h);
+    controls_[id] = (x1 > x0 && y1 > y0) ? ui::Rect{x0, y0, x1 - x0, y1 - y0} : ui::Rect{};
+}
+
+ui::Rect SceneWorkspace::control_rect(const char* id) const {
+    const auto it = controls_.find(id);
+    return it == controls_.end() ? ui::Rect{} : it->second;
+}
+
+std::vector<studioshell::Workspace::SoundRequest> SceneWorkspace::take_sounds() {
+    std::vector<SoundRequest> out;
+    out.swap(pending_sounds_);
+    return out;
 }
 
 void SceneWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rect area) {
     g.fill_round_rect(area.x, area.y, area.w, area.h, th::radius_md, th::elevated);
     ui.push_id("scenei");
+    controls_.clear();
 
     const int x = area.x + th::space_md;
     const int w = area.w - th::space_md * 2;
@@ -530,87 +641,218 @@ void SceneWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
         want_play_ = true;
     y += 30 + th::space_md;
 
+    // ---- the footer's geometry, decided BEFORE the body is drawn -----------
+    // Undo/Redo/Save are pinned to the bottom so they do not move as the selection
+    // grows and shrinks. The body between them and the header therefore has a fixed
+    // budget, and effect components blow through it — which is why the body scrolls
+    // rather than growing until it draws over the buttons (chapters 127 and 132: a
+    // control drawn outside its panel is a control that cannot be pressed).
+    const int foot_h = 26 + th::space_xs + 30 + th::space_xs + th::sz_caption + th::space_md;
+    const int foot_y = area.y + area.h - foot_h;
+
+    viewport_ = ui::Rect{area.x, y, area.w, std::max(0, foot_y - y)};
+    const ui::Rect vp = ui.begin_scroll("scenebody", viewport_, content_h_);
+    const int      top = vp.y;
+    int            cy  = vp.y;
+
+    // ui::Context::slider draws its "label: value" ABOVE the rect it is given — the
+    // rect is the groove, not the control — so a row must reserve that line too.
+    // Advancing by the groove alone stacks every label on top of whatever is above it,
+    // which is exactly what the panel looked like the first time it was screenshotted.
+    const auto slider_row = [&](int& cur) {
+        cur += th::sz_caption + 2;
+        const ui::Rect r{x, cur, w, 20};
+        cur += 20 + th::space_xs;
+        return r;
+    };
+
     if (!playing_) {
         g.set_font_size(th::sz_caption);
-        g.draw_text(x, y, "PLACE", th::text_muted);
-        y += th::sz_caption + th::space_xs;
-        if (ui.button(ui::Rect{x, y, w, 26}, "Select / Move", armed_ < 0)) want_palette_ = -1;
-        y += 26 + th::space_xs;
+        g.draw_text(x, cy, "PLACE", th::text_muted);
+        cy += th::sz_caption + th::space_xs;
+        if (ui.button(ui::Rect{x, cy, w, 26}, "Select / Move", armed_ < 0)) want_palette_ = -1;
+        cy += 26 + th::space_xs;
         for (std::size_t k = 0; k < palette_.size(); ++k) {
             ui.push_id(static_cast<int>(k));
-            if (ui.button(ui::Rect{x, y, w, 26}, palette_[k].label,
+            if (ui.button(ui::Rect{x, cy, w, 26}, palette_[k].label,
                           armed_ == static_cast<int>(k)))
                 want_palette_ = static_cast<int>(k);
             ui.pop_id();
-            y += 26 + th::space_xs;
+            cy += 26 + th::space_xs;
         }
-        y += th::space_sm;
+        cy += th::space_sm;
 
         ecs::Entity e{};
         if (entity_at(sel_, e)) {
             g.set_font_size(th::sz_caption);
-            g.draw_text(x, y, "SELECTED", th::text_muted);
-            y += th::sz_caption + th::space_xs;
+            g.draw_text(x, cy, "SELECTED", th::text_muted);
+            cy += th::sz_caption + th::space_xs;
             if (Transform2D* t = world_.reg.get<Transform2D>(e)) {
                 // A slider edits the component directly; update() commits one undo
                 // step when the pointer is released. Capturing the "before" on the
                 // FIRST change of a drag is what makes that one step the whole drag.
-                if (ui.slider(ui::Rect{x, y, w, 22}, "rot", t->rot, -3.14159f, 3.14159f)) {
+                if (ui.slider(slider_row(cy), "rot", t->rot, -3.14159f, 3.14159f)) {
                     if (!editing_prop_) { editing_prop_ = true; prop_before_ = sandbox::to_scene(world_); }
                 }
-                y += 22 + th::space_xs;
-                if (ui.slider(ui::Rect{x, y, w, 22}, "scale", t->scale, 0.3f, 3.0f)) {
+                if (ui.slider(slider_row(cy), "scale", t->scale, 0.3f, 3.0f)) {
                     if (!editing_prop_) { editing_prop_ = true; prop_before_ = sandbox::to_scene(world_); }
                 }
-                y += 22 + th::space_sm;
+                cy += th::space_sm;
             }
             bool bounce = world_.reg.has<Bouncer>(e);
-            if (ui.checkbox(ui::Rect{x, y, w, 22}, "bounces", bounce)) {
+            if (ui.checkbox(ui::Rect{x, cy, w, 22}, "bounces", bounce)) {
                 const std::string before = sandbox::to_scene(world_);
                 if (bounce) world_.reg.add<Bouncer>(e, {});
                 else        world_.reg.remove<Bouncer>(e);
                 commit(before, "toggle bounce");
             }
-            y += 22 + th::space_xs;
+            cy += 22 + th::space_xs;
             bool moves = world_.reg.has<Mover>(e);
-            if (ui.checkbox(ui::Rect{x, y, w, 22}, "moves", moves)) {
+            if (ui.checkbox(ui::Rect{x, cy, w, 22}, "moves", moves)) {
                 const std::string before = sandbox::to_scene(world_);
                 if (moves) world_.reg.add<Mover>(e, {90, 60});
                 else       world_.reg.remove<Mover>(e);
                 commit(before, "toggle mover");
             }
-            y += 22 + th::space_sm;
+            cy += 22 + th::space_sm;
 
-            if (ui.button(ui::Rect{x, y, w / 2 - 2, 26}, "Recolour")) want_recolor_ = true;
-            if (ui.button(ui::Rect{x + w / 2 + 2, y, w / 2 - 2, 26}, "Delete")) want_delete_ = true;
-            y += 26 + th::space_xs;
+            if (ui.button(ui::Rect{x, cy, w / 2 - 2, 26}, "Recolour")) want_recolor_ = true;
+            if (ui.button(ui::Rect{x + w / 2 + 2, cy, w / 2 - 2, 26}, "Delete")) want_delete_ = true;
+            cy += 26 + th::space_xs;
 
             if (Sprite* s = world_.reg.get<Sprite>(e)) {
                 char lbl[48];
                 std::snprintf(lbl, sizeof lbl, "Texture: %s",
                               s->texture.empty() ? "none" : s->texture.c_str());
-                if (ui.button(ui::Rect{x, y, w, 26}, lbl, false, !tex_names_.empty()))
+                if (ui.button(ui::Rect{x, cy, w, 26}, lbl, false, !tex_names_.empty()))
                     want_tex_ = true;
-                y += 26 + th::space_xs;
+                cy += 26 + th::space_xs;
                 if (tex_names_.empty()) {
                     g.set_font_size(th::sz_caption);
-                    g.draw_text(x, y, "(make textures in --studio)", th::text_muted);
-                    y += th::sz_caption + th::space_xs;
+                    g.draw_text(x, cy, "(make textures in --studio)", th::text_muted);
+                    cy += th::sz_caption + th::space_xs;
+                }
+            }
+
+            // ---- EFFECTS: the four labs, on this actor ---------------------
+            cy += th::space_sm;
+            g.set_font_size(th::sz_caption);
+            g.draw_text(x, cy, "EFFECTS", th::text_muted);
+            cy += th::sz_caption + th::space_xs;
+
+            // Add or drop a component as ONE undo step. Same shape as the bounce and
+            // mover checkboxes above it, which is the point: an effect is not a
+            // special kind of thing, it is another component on the same actor.
+            const auto toggle = [&](bool want, const char* label, auto made) {
+                using T = decltype(made);
+                const std::string before = sandbox::to_scene(world_);
+                if (want) world_.reg.add<T>(e, made);
+                else      world_.reg.remove<T>(e);
+                commit(before, label);
+            };
+            // A slider that edits a live component: the same deferred-commit dance the
+            // transform sliders do, so one drag is one undo step.
+            const auto touched = [&](bool changed) {
+                if (changed && !editing_prop_) {
+                    editing_prop_ = true;
+                    prop_before_  = sandbox::to_scene(world_);
+                }
+            };
+
+            bool has_em = world_.reg.has<sandbox::Emitter>(e);
+            mark("emitter", ui::Rect{x, cy, w, 22});
+            if (ui.checkbox(ui::Rect{x, cy, w, 22}, "emitter", has_em))
+                toggle(has_em, "toggle emitter", sandbox::Emitter{});
+            cy += 22 + th::space_xs;
+            if (sandbox::Emitter* em = world_.reg.get<sandbox::Emitter>(e)) {
+                const ui::Rect rate_r = slider_row(cy);
+                mark("emitter.rate", rate_r);
+                touched(ui.slider(rate_r, "rate", em->cfg.rate, 0.0f, 700.0f));
+                touched(ui.slider(slider_row(cy), "speed", em->cfg.speed, 0.0f, 400.0f));
+                touched(ui.slider(slider_row(cy), "spread", em->cfg.spread, 0.0f, 3.14159f));
+                touched(ui.slider(slider_row(cy), "gravity", em->cfg.gravity, -200.0f, 700.0f));
+                touched(ui.slider(slider_row(cy), "dir", em->cfg.dir, -3.14159f, 3.14159f));
+                cy += th::space_sm;
+            }
+
+            bool has_li = world_.reg.has<sandbox::Light>(e);
+            mark("light", ui::Rect{x, cy, w, 22});
+            if (ui.checkbox(ui::Rect{x, cy, w, 22}, "light", has_li))
+                toggle(has_li, "toggle light", sandbox::Light{});
+            cy += 22 + th::space_xs;
+            if (sandbox::Light* L = world_.reg.get<sandbox::Light>(e)) {
+                touched(ui.slider(slider_row(cy), "radius", L->radius, 20.0f, 400.0f));
+                touched(ui.slider(slider_row(cy), "glow", L->intensity, 0.0f, 3.0f));
+                mark("light.colour", ui::Rect{x, cy, w, 26});
+                if (ui.button(ui::Rect{x, cy, w, 26}, "Light colour")) want_light_color_ = true;
+                cy += 26 + th::space_sm;
+            }
+
+            bool has_sd = world_.reg.has<sandbox::Sound>(e);
+            mark("sound", ui::Rect{x, cy, w, 22});
+            if (ui.checkbox(ui::Rect{x, cy, w, 22}, "sound", has_sd))
+                toggle(has_sd, "toggle sound", sandbox::Sound{});
+            cy += 22 + th::space_xs;
+            if (sandbox::Sound* sd = world_.reg.get<sandbox::Sound>(e)) {
+                touched(ui.slider(slider_row(cy), "pitch", sd->freq, 110.0f, 880.0f));
+                touched(ui.slider(slider_row(cy), "gain", sd->gain, 0.0f, 1.0f));
+                mark("sound.audition", ui::Rect{x, cy, w, 26});
+                if (ui.button(ui::Rect{x, cy, w, 26}, "Audition")) want_audition_ = true;
+                cy += 26 + th::space_xs;
+                g.set_font_size(th::sz_caption);
+                g.draw_text(x, cy, "heard when this actor is destroyed", th::text_muted);
+                cy += th::sz_caption + th::space_sm;
+            }
+
+            // ---- FLIPBOOK: only an animated sprite has one to show ----------
+            if (Sprite* s = world_.reg.get<Sprite>(e)) {
+                if (s->frames > 1) {
+                    g.set_font_size(th::sz_caption);
+                    g.draw_text(x, cy, "FLIPBOOK", th::text_muted);
+                    cy += th::sz_caption + th::space_xs;
+                    bool loop = s->loop;
+                    mark("flipbook.loop", ui::Rect{x, cy, w, 22});
+                    if (ui.checkbox(ui::Rect{x, cy, w, 22}, "loop", loop)) {
+                        const std::string before = sandbox::to_scene(world_);
+                        s->loop = loop;
+                        commit(before, "toggle loop");
+                    }
+                    cy += 22 + th::space_xs;
+                    touched(ui.slider(slider_row(cy), "fps", s->fps, 1.0f, 24.0f));
+                    mark("flipbook.restart", ui::Rect{x, cy, w, 26});
+                    if (ui.button(ui::Rect{x, cy, w, 26}, "Restart")) want_restart_ = true;
+                    cy += 26 + th::space_xs;
+                    char fr[48];
+                    std::snprintf(fr, sizeof fr, "frame %d / %d%s",
+                                  sandbox::sprite_frame(*s) + 1, s->frames,
+                                  anim::Flipbook{s->frames, s->fps, s->loop, s->t}.done()
+                                      ? "  (done)" : "");
+                    g.set_font_size(th::sz_caption);
+                    g.draw_text(x, cy, fr, th::text_muted);
+                    cy += th::sz_caption + th::space_sm;
                 }
             }
         } else {
             g.set_font_size(th::sz_caption);
-            g.draw_text(x, y, armed_ >= 0 ? "click the canvas to place"
-                                          : "click an actor to select it", th::text_muted);
-            y += th::sz_caption + th::space_sm;
+            g.draw_text(x, cy, armed_ >= 0 ? "click the canvas to place"
+                                           : "click an actor to select it", th::text_muted);
+            cy += th::sz_caption + th::space_sm;
         }
+    } else {
+        // Editing is off while the scene runs, and an empty panel does not say so.
+        g.set_font_size(th::sz_caption);
+        g.draw_text(x, cy, "running — Stop to edit", th::text_muted);
+        cy += th::sz_caption + th::space_sm;
     }
+    // What the body actually needed, fed back to begin_scroll NEXT frame: immediate
+    // mode places before it can measure, so last frame's height is the only honest
+    // number there is. It is stable because the layout only changes when the user does.
+    content_h_ = cy - top + th::space_md;
+    ui.end_scroll();
 
     // ---- history, pinned to the bottom -------------------------------------
-    // Undo/Redo/Save sit at the far end so they do not move when the inspector above
-    // them grows and shrinks with the selection.
     {
-        int by = area.y + area.h - th::space_md - 30 - th::space_xs - 26 - th::space_xs - th::sz_caption;
+        int by = foot_y;
         const int half = w / 2 - 2;
         if (ui.button(ui::Rect{x, by, half, 26}, "Undo", false, stack_.can_undo())) want_undo_ = true;
         if (ui.button(ui::Rect{x + w / 2 + 2, by, half, 26}, "Redo", false, stack_.can_redo()))

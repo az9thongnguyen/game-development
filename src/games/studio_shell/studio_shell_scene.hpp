@@ -30,6 +30,7 @@
 #include "games/studio_shell/project_panel.hpp"
 #include "games/studio_shell/pixel_workspace.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
+#include "games/studio_shell/sound_bank.hpp"
 #include "games/studio_shell/workspace.hpp"
 
 namespace studioshell {
@@ -111,6 +112,7 @@ private:
     bool                           flash_ok_ = true;
     double                         flash_t_ = 0;
     ui::Context                    ui_;
+    SoundBank                      sound_;
     hubui::Op                      requested_  = hubui::Op::None;   // asked this frame
     hubui::Op                      confirming_ = hubui::Op::None;   // pending hub op
     Modal                          modal_ = Modal::None;
