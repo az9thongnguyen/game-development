@@ -44,6 +44,7 @@
 #include "games/colony/colony_scene.hpp"
 #include "games/studio/studio_scene.hpp"
 #include "games/studio_shell/map_workspace.hpp"
+#include "games/studio_shell/mix_workspace.hpp"
 #include "games/studio_shell/pixel_workspace.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/studio_shell_scene.hpp"
@@ -184,6 +185,14 @@ const std::vector<Entry>& labs() {
                 std::make_unique<studioshell::PixelWorkspace>(
                     std::vector<std::string>{"textures/farm_water.hrt", "textures/town.hrt"},
                     "projects/farm.gameproject")));
+        }});
+        v.push_back({"mixer", win("hand-engine — parts mixer", 960, 600, kAA), [] {
+            // The SAME object as the Studio's Mixer tab, like `scene` and `pixel`.
+            // The farm's textures, because that is where the `.mix` sources are.
+            return std::unique_ptr<engine::Scene>(new studioshell::WorkspaceHost(
+                std::make_unique<studioshell::MixWorkspace>(
+                    std::vector<std::string>{"textures/farm_player.hrt",
+                                             "textures/farm_anna.hrt"})));
         }});
         v.push_back({"map", win("hand-engine — map editor", 960, 600, kAA), [] {
             // The SAME object as the Studio's Map tab, full-screen — like `scene` and

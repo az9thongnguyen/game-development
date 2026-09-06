@@ -168,6 +168,7 @@ Hand-written, SDL-free, unit-tested headless. Contents:
 | `--lab colony` | **Integration game** standing on the whole engine core (ECS + jobs + frame allocator + asset cache + GUI) and on the BaaS via the SDK |
 | `--lab texture` | **Texture Lab**: hand-written seamless noise (value/Perlin/fBm), `.hrt` export with re-editable recipes, animated sheet export |
 | `--lab scene` | The Studio's Scene workspace, full-screen — the same object its Scene tab holds |
+| `--lab mixer` | The Studio's Mixer workspace, full-screen — a sprite ASSEMBLED from parts of a sheet plus palette swaps. Save writes the `.mix` (source), Bake writes the `.hrt` |
 | `--lab map` | The Studio's Map workspace, full-screen — the SAME object as its Map tab: layers, paint/rect/fill, the Entity tool that places a spawn, and the Rule button (none/line/blob per material, drawn as connectivity because there is no tileset renderer here). `map2` only |
 | ~~`--lab fx` `light` `audio` `anim`~~ | **Retired, chapter 133** — particles, 2D lighting, the mixer and sprite animation are now `Emitter`/`Light`/`Sound`/flipbook components on an actor, edited in `--lab scene`'s EFFECTS section and saved in the scene file |
 | `--hub` `--shell` | The platform surfaces (see §6) |
@@ -220,7 +221,7 @@ on desktop and in the browser.
 # native
 brew install cmake sdl2
 cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
-ctest --test-dir build --output-on-failure          # 78 suites, headless
+ctest --test-dir build --output-on-failure          # 80 suites, headless
 ctest --test-dir build -R chess                      # one suite
 
 # sanitizers
@@ -353,7 +354,7 @@ An agent must not upgrade any of these from "written" to "works" without running
 
 | Claim | Status |
 |---|---|
-| 78 test suites pass | ✅ **verified** 2026-09-06 (chapter 133 added `test_scene_workspace` — the Scene editor was the only one of the three Studio workspaces with no test at all; 77 at chapter 132, 62 at chapter 108). A build without Drogon registers 50, measured — see the BaaS row. |
+| 80 test suites pass | ✅ **verified** 2026-09-07 (chapter 135 added `test_mix` and `test_mix_workspace` with the fourth `.hrt` door; 78 at chapter 134 when `test_scene_workspace` arrived, 77 at 132, 62 at 108). A build without Drogon registers 52, measured. |
 | Native build | ✅ verified |
 | The BaaS suite runs somewhere other than a laptop | ✅ verified 2026-09-06 (chapter 129) — and ❌ **before it, since the day those tests were written**. `ctest` here reports 76; CI reported **48**. The 28 in between were the Drogon-gated ones — auth, JWT, RBAC, purchases, cloud saves, inventory, secret rotation, idempotency, and the three end-to-end runs that boot a real server and drive it through the real SDK — skipped because the runner only ever installed SDL2. Measured, not counted: configuring with `-DCMAKE_DISABLE_FIND_PACKAGE_Drogon=ON` reproduces exactly what CI sees. (The planning note had said "23", which was the number of `test_baas_*.cc` **files**; a file with a `foreach` registers seven tests and a helper registers none.) The job is `baas/ops/Dockerfile`'s build stage stopping at the tests, and it carries no list: `BUILDSYSTEM_TARGETS` gives a `baas_tests` target and `ctest --test-dir build/baas` selects exactly that directory's tests — two of which are named `metrics` and `rate_limiter`, so no `baas_*` regex would have found them. **Verified by running it** in `drogonframework/drogon:latest` on the runner's own architecture before the YAML was pushed: 27/27 in 51 s. ⚠️ **making CI run them found a real bug in the first minute**: `test_sdk_realtime_live` does not COMPILE against libcurl 7.81 (it calls `curl_ws_recv`, added in 7.86; Ubuntu 22.04 is the Drogon image's base), and a test that will not compile does not fail one test — it fails the build and takes the other 27 with it. The asymmetry is the point: `sdk/cpp` already degrades to an inert realtime stub and says so, while the test that exercises the degradation was added unconditionally, and the only machine that ever built this half was a Mac with Homebrew's curl 8.x. Now gated on the same two variables as the transport, with a configure-time message, because a test that vanishes quietly is the failure this slice exists to end. The job also asserts a floor of 27 registered tests — a green job that ran nothing is otherwise indistinguishable from a green job that ran everything. ❌ **the SDK's native ws:// realtime is a stub on any Ubuntu 22.04 build, including this project's own backend image**, silently at runtime; `sdk_realtime_live` therefore still runs on exactly one machine. ❌ no Docker job: CI builds and tests the backend, it does not build the image or probe `/healthz`. ❌ SQLite only — the Postgres adapter and the `FOR UPDATE` the purchase path needs remain one slice on purpose. |
 | Web (Emscripten) build + served by the hand-written webserver | ✅ verified: build links, all assets return 200 |

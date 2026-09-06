@@ -1363,6 +1363,75 @@ có tileset renderer (vẽ kết nối, không vẽ art) · rule theo (layer, va
 không biết nhau** (không có "cỏ gặp cát") · không override từng mảnh · `iso` và raycaster
 không đọc rule · lớp `decor` của farm không có rule nào.
 
+## S26 — một dàn nhân vật, không phải một bức vẽ (chương 135) — XONG 2026-09-07
+
+Merge `feat/s26-mixer`. **Cửa THỨ TƯ vào `.hrt`**, và số cửa trong `CLAUDE.md` đổi **có
+chủ ý** — đó là điều kế hoạch yêu cầu, không phải hệ quả.
+
+**Vấn đề:** người chơi trong farm là một hình tròn màu. Anna cũng vậy. Từ ch.124 khi tile
+có art thì người vẫn không, vì tile cắt được từ pack còn người thì không — Kenney Tiny
+Town là nhà cửa và địa hình, **không có ai sống trong đó**.
+
+Cách sửa hiển nhiên là vẽ hai nhân vật. Chương này làm điều khác, và **khác biệt đó là
+toàn bộ luận điểm**.
+
+**Ngưỡng một cửa thứ tư phải vượt qua.** Mỗi cửa là thêm một đường để ảnh vào repo, thêm
+một dấu provenance phải nhận ra, thêm một origin trong ledger, thêm một thứ test phải
+re-bake. Nên ngưỡng là: **nó trả lời câu hỏi ba cửa kia không trả lời được.**
+
+Ba cửa đầu đều trả lời *bức ảnh này từ đâu ra* — và mỗi cái tạo ra **một** bức ảnh.
+`asset.mix` trả lời: **cho tôi một trăm sprite trông như cùng một nơi**. Đó không phải
+bản nhỏ hơn của việc vẽ, mà là **đánh đổi ngược lại**: cọ vẽ cho bạn tự do tuyệt đối và,
+với một người, một dàn nhân vật không giống nhau — vì tính nhất quán qua sáu mươi sprite
+là thứ phải **duy trì bằng tay** và không ai làm nổi. Part lấy đi tự do và trả lại sự
+giống nhau miễn phí.
+
+**Không ai vẽ Anna.** Cô là thân + đầu của người chơi, cộng một cái mũ, cộng hai lần đổi
+màu. `textures/parts_farm.pix` là toàn bộ ngân sách art cho cả hai: một thân, một đầu,
+một mũ — **không cái nào là một nhân vật**.
+
+| Commit | Việc |
+|---|---|
+| `b5ec4f1` | `mix_core` + `--cmd asset.mix` + `Origin::Mixed` + parts + hai `.mix` + farm **tiêu thụ ngay** (người chơi và Anna hết là hình tròn). |
+| `17c5ff4` | Mixer workspace (workspace **thứ tư**) + tab Studio + `--lab mixer` + `test_mix_workspace`. |
+| *(tiếp)* | Mutation, chương 135, đổi số cửa trong `CLAUDE.md` có chủ ý. |
+
+**Save và Bake là hai nút vì chúng là hai việc.** Save ghi `.mix` (nguồn, thứ nằm trong
+version control); Bake ghi `.hrt` bằng **chính lệnh `asset.mix` CLI chạy**. Một nút sẽ
+khiến mỗi phím gõ ghi đè một file nhị phân đã commit, và giấu đi việc file nào là artefact.
+Test khẳng định **cả hai nửa**: Save không đụng `.hrt`, Bake khớp CLI **từng byte**.
+
+**Ramp đổi màu là SÁU màu, cố định.** Trông như thiếu tính năng — nó chính là tính năng:
+một colour picker với mười sáu triệu đáp án trả lại đúng thứ tự do công cụ này vừa đánh đổi.
+
+**Hai thứ tìm thấy đúng thứ tự.** (1) **Dải part được VẼ và hoàn toàn chết** — rect, phép
+hit test, `add_part`, lệnh undo đều có, và **không gì gọi chúng**, vì `update()` chỉ
+hit-test phần preview. Ảnh chụp trông hoàn hảo. Đây là chương thứ **tư** liên tiếp cùng
+hình dạng này (126, 127, 132), và thứ bắt được nó là một test **bấm vào chỗ bàn tay bấm**
+thay vì gọi hàm phía sau nút. (2) **Nền carô là hai màu xám tối, nên nhân vật không có
+chân** — quần tối trên nền tối là cùng một bức ảnh với không có gì.
+
+**Và một comment tiên đoán chính thất bại của nó:** `test_shell_golden` bấm tab thứ hai
+tại `(2i+1)/2n` với `n` viết cứng là `3`, kèm chú thích *"phân số 3/4 nghĩa là 'cái thứ
+hai trong hai', và lặng lẽ thành 'cái thứ ba trong ba' ngày thêm một workspace"*. Workspace
+thứ tư đến, và số `3` hỏng **đúng theo cách comment của nó mô tả**. Giờ cả hai chỗ hỏi
+`sc.workspace_count()`.
+
+**Chưa xác minh / trần:** **không có slot/anchor/rule** — mix là danh sách part phẳng, không
+gì ngăn bạn thêm hai cái đầu · **không frame, không animation** · **không randomiser, không
+seed** (bake tất định vì không có ngẫu nhiên, khác với "tái tạo được theo seed"; "Randomize"
+là nút Kenney Mixer nổi tiếng nhất và nó **không có ở đây**) · swap khớp **RGB chính xác**,
+nên một màu xuất hiện ở hai part sẽ đổi cả hai · **Mixer không tạo được `.mix` mới** (đúng
+như Pixel workspace trước ch.131) · offset part chỉ sửa được bằng tay · **chỉ farm tiêu
+thụ**, và chỉ hai nhân vật đứng yên.
+
+**Số liệu:** 80/80 ctest (78 → 80: `test_mix` và `test_mix_workspace`; 52 khi không có
+Drogon, đã đo) · **19/19 mutation** sau khi vá bốn cái, xoá một guard chết và loại một
+mutant tương đương, baseline sau restore GREEN · golden path xanh, 0 rò `.tmp`, release
+id farm đổi đúng như phải đổi (`db6959279af1cb80`: hai asset mới) · web build xanh + hai
+bài kiểm trình duyệt PASS · ba khung đã render và **đã nhìn** (parts + hai sprite, farm
+lúc chơi, và Mixer workspace — khung thứ ba tìm ra nền carô nuốt mất đôi chân).
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1378,7 +1447,7 @@ làm chín T6).
 | ~~S23~~ | ~~Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1`~~ — **XONG**, chương 132 | L |
 | ~~S24~~ | ~~Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene~~ — **XONG**, chương 133 (13 lab → 9) | M |
 | ~~S25~~ | ~~IntGrid + rule autotile trong Map workspace~~ — **XONG**, chương 134 (rule vào map, `farm::line_piece` bị xoá) | L |
-| S26 | Mixer workspace (cửa **thứ tư** vào `.hrt` — phải sửa `CLAUDE.md` có chủ ý) | L |
+| ~~S26~~ | ~~Mixer workspace (cửa **thứ tư** vào `.hrt`)~~ — **XONG**, chương 135; số cửa 3 → 4 đã đổi có chủ ý | L |
 | S27 | **Creatures** — game thứ hai (MVP) | XL |
 | S28 | Replay + PvP realtime + ELO — consumer thật đầu tiên của realtime | L |
 | S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |

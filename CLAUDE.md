@@ -53,21 +53,30 @@ regression, not a shortcut:
   `autotile` record are gone — a copy of that decision inside one game is why the Map
   workspace drew a flat square for a road it had no idea was a road.
 - **`.hrt` is the only raster format the engine READS at runtime** (`HRT1|w|h|RGBA8`).
-  It has exactly **three offline doors**, one per origin, so art from a pack and art
-  this project made arrive downstream as the same kind of file:
+  It has exactly **four offline doors**, one per origin, so art from a pack and art
+  this project made arrive downstream as the same kind of file. **The count went from
+  three to four in chapter 135, deliberately** — a fourth door is a decision, not a
+  side effect, and the bar it had to clear was: it answers a question none of the
+  other three can. It does. The first three all answer *where did this picture come
+  from*; `asset.mix` answers **make me a hundred sprites that all belong together**,
+  which is the difference between a tool for one picture and a tool for a cast:
   `--cmd asset.import` (a PNG, decoded by hand via `inflate_core` + `png_core`, no third
   party), `--cmd asset.texture` (the Texture Lab's `.recipe` — art we *generated*), and
   `--cmd asset.pixels` (a `.pix` ASCII sheet — art we *drew*; text because a tile SET is
   one design cut N ways and its seams are a relationship you review, not sixteen
-  canvases you click through). A `.recipe`/`.pix` is a *source*: it stays out of the
-  manifest, and a test re-bakes it and compares bytes — as does every `import` line in
-  every `.pack`, so all three doors are held to one standard.
+  canvases you click through), and `--cmd asset.mix` (a `.mix` — art *assembled* from
+  parts of other `.hrt` files, with palette swaps; the farm's player and Anna are the
+  same body and head, and Anna is a hat plus two colour swaps). A `.recipe`/`.pix`/
+  `.mix` is a *source*: it stays out of the manifest, and a test re-bakes it and
+  compares bytes — as does every `import` line in every `.pack`, so all four doors are
+  held to one standard.
 - **Provenance is DERIVED, not remembered** (`provenance_core`, chapter 131). The rule
   used to read "every new `.hrt` gains a line in `assets/ATTRIBUTION.md` in the same
   change", and by the time it was checked it had been forgotten twenty times out of
-  twenty-three. The three doors leave three different marks on disk — a `.pack` naming
-  the import, a sibling `.recipe`, a sibling `.pix` — so `engine::scan_provenance()`
-  reads them instead. Anything else is `UNRECORDED` and `test_provenance` goes RED.
+  twenty-three. The four doors leave four different marks on disk — a `.pack` naming
+  the import, a sibling `.recipe`, a sibling `.pix`, a sibling `.mix` — so
+  `engine::scan_provenance()` reads them instead. A new door costs a new mark and a
+  new origin, and that cost is part of what a fourth door has to be worth. Anything else is `UNRECORDED` and `test_provenance` goes RED.
   The ledger table inside `ATTRIBUTION.md` is **generated** between two markers (the
   prose around it is hand-written and survives); re-bake it with
   `--cmd asset.attribution ATTRIBUTION.md`. Art with no surviving source is `declared`
@@ -111,6 +120,9 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 #            thing on this canvas that says a road is a road
 #   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt,
 #            palette sampled from the image + an HSV/hex mixer for a colour it lacks)
+#   mixer    the Studio's Mixer workspace, full-screen (the SAME object as its Mixer
+#            tab): a sprite ASSEMBLED from parts of a sheet, plus palette swaps.
+#            Save writes the .mix (the source); Bake writes the .hrt
 #   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
 #   editor   immediate-mode GUI + physics sandbox
 #   3d viz3d                software-rasterized 3D core / interactive sandbox
@@ -118,7 +130,7 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 #   colony   engine-core integration game (also the BaaS/SDK client)
 
 ./build/demo --shell [proj]     # the Studio (1280x720, resizable)
-                                # Edit section: TABS of workspaces (Map | Scene | Pixels), Cmd+Z undo,
+                                # Edit section: TABS of workspaces (Map | Scene | Pixels | Mixer), Cmd+Z undo,
                                 # Cmd+S save, Cmd+K palette, Cmd+1..7 sections. Autosaves;
                                 # offers recovery on open.
                                 # Project section = asset browser + validation verdict (the
@@ -135,6 +147,7 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --cmd asset.import  <src.png>    <dst.hrt>  # bring foreign art in (offline)
 ./build/demo --cmd asset.texture <src.recipe> <dst.hrt>  # bake GENERATED art (offline)
 ./build/demo --cmd asset.pixels  <src.pix>    <dst.hrt>  # bake DRAWN art, an ASCII sheet
+./build/demo --cmd asset.mix     <src.mix>    <dst.hrt>  # bake ASSEMBLED art: parts + swaps
 ./build/demo --cmd asset.new <name> <tile-px> <cols> <rows> [<proj>]  # a NEW sheet:
                                               # .pix source -> .hrt -> declared in the
                                               # manifest -> ledger re-baked, in one act

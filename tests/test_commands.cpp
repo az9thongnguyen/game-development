@@ -226,18 +226,19 @@ void test_inspect_command() {
 
 
 // -----------------------------------------------------------------------------
-//  The three doors into `.hrt`. `asset.import` brings a picture in from a format we
+//  The FOUR doors into `.hrt`. `asset.import` brings a picture in from a format we
 //  did not invent; `asset.texture` bakes one this project GENERATED; `asset.pixels`
-//  bakes one a person DREW. They matter as a set: a tile from the CC0 pack, a tile
-//  from the Texture Lab and a tile typed out by hand are the same kind of file by the
-//  time anything downstream sees them, and that is the only reason "support both art
-//  sources" costs the engine nothing.
+//  bakes one a person DREW; `asset.mix` ASSEMBLES one from parts. They matter as a
+//  set: a tile from the CC0 pack, a tile from the Texture Lab, a tile typed out by
+//  hand and a sprite built from three of them are the same kind of file by the time
+//  anything downstream sees them, and that is the only reason "support every art
+//  source" costs the engine nothing.
 // -----------------------------------------------------------------------------
 static void test_asset_commands() {
     assets::set_base_path(ASSET_ROOT "/assets");
     cmd::clear();
     cmd::register_asset_commands();
-    CHECK(cmd::all().size() == 6);   // three doors, the ledger, the way in, the way out
+    CHECK(cmd::all().size() == 7);   // four doors, the ledger, the way in, the way out
 
     // D17: writing commands refuse blank arguments. A destination nobody named is not
     // a default, it is a missing decision — and here it would overwrite something.
@@ -245,6 +246,12 @@ static void test_asset_commands() {
     CHECK(!cmd::run("asset.texture", {"a.recipe"}).ok);
     CHECK(!cmd::run("asset.texture", {"", "b.hrt"}).ok);
     CHECK(!cmd::run("asset.texture", {"a.recipe", ""}).ok);
+
+    CHECK(!cmd::run("asset.mix", {}).ok);
+    CHECK(!cmd::run("asset.mix", {"a.mix"}).ok);
+    CHECK(!cmd::run("asset.mix", {"", "b.hrt"}).ok);
+    CHECK(!cmd::run("asset.mix", {"a.mix", ""}).ok);
+    CHECK(!cmd::run("asset.mix", {"a.mix", "b.png"}).ok);      // .hrt or nothing
 
     // The extension is load-bearing, not decoration: it is what tells the rest of the
     // project the file is readable at runtime.
@@ -322,6 +329,49 @@ static void test_asset_commands() {
     CHECK(redrawn.has_value());
     if (committed_path && redrawn) CHECK(*committed_path == *redrawn);
     std::filesystem::remove(ASSET_ROOT "/assets/textures/_repix.hrt");
+
+    // ---- the fourth door (chapter 135) ----
+    // Held to exactly the same standard, and it had better be: a mix is the door where
+    // the output is furthest from anything anybody drew, so "it looked right once" is
+    // the weakest evidence in the repo.
+    CHECK(!cmd::run("asset.mix", {"nosuch.mix", "textures/x.hrt"}).ok);
+    for (const char* junk_mix : {"hello\n", "mix1\nsize 4 4\n"}) {
+        CHECK(assets::write_file("textures/_not_a.mix",
+                                 std::vector<std::uint8_t>(junk_mix, junk_mix + std::strlen(junk_mix))));
+        const engine::OpResult junk = cmd::run("asset.mix", {"textures/_not_a.mix",
+                                                              "textures/_junk_mix.hrt"});
+        CHECK(!junk.ok);
+        CHECK(junk.message.find("line ") != std::string::npos);   // and it says WHERE
+        CHECK(!assets::load_file("textures/_junk_mix.hrt"));      // and wrote NOTHING
+    }
+    // A sheet that is not there fails at COMPOSE time, not at parse time, and the
+    // message has to name it — "cannot read" with no name is a scavenger hunt.
+    {
+        const char* missing = "mix1\nsize 4 4\nsheet s textures/_nope.hrt 2\npart s 0 at 0 0\n";
+        CHECK(assets::write_file("textures/_not_a.mix",
+                                 std::vector<std::uint8_t>(missing, missing + std::strlen(missing))));
+        const engine::OpResult gone = cmd::run("asset.mix", {"textures/_not_a.mix",
+                                                              "textures/_junk_mix.hrt"});
+        CHECK(!gone.ok);
+        CHECK(gone.message.find("_nope.hrt") != std::string::npos);
+        CHECK(!assets::load_file("textures/_junk_mix.hrt"));
+    }
+    std::filesystem::remove(ASSET_ROOT "/assets/textures/_not_a.mix");
+
+    // The happy path, against BOTH sprites the farm actually ships — and both, not one,
+    // because the whole claim of a mixer is that the second character is free. A test
+    // that only re-baked the first would not be testing the part that is new.
+    for (const char* stem : {"farm_player", "farm_anna"}) {
+        const auto committed_mix = assets::load_file(std::string("textures/") + stem + ".hrt");
+        CHECK(committed_mix.has_value());
+        const engine::OpResult mixed =
+            cmd::run("asset.mix", {std::string("textures/") + stem + ".mix", "textures/_remix.hrt"});
+        CHECK(mixed.ok);
+        const auto remixed = assets::load_file("textures/_remix.hrt");
+        CHECK(remixed.has_value());
+        if (committed_mix && remixed) CHECK(*committed_mix == *remixed);
+        std::filesystem::remove(ASSET_ROOT "/assets/textures/_remix.hrt");
+    }
 }
 
 // -----------------------------------------------------------------------------

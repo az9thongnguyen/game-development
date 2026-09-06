@@ -137,6 +137,7 @@ add_executable(demo
   src/games/studio_shell/play_viewport.cpp
   src/games/studio_shell/scene_workspace.cpp
   src/games/studio_shell/pixel_workspace.cpp
+  src/games/studio_shell/mix_workspace.cpp
   src/games/studio_shell/sound_bank.cpp
   src/games/studio_shell/workspace_host.cpp
   src/games/runner/worker.cpp
@@ -177,7 +178,7 @@ if(EMSCRIPTEN)
     VERBATIM)
   add_dependencies(demo web_pages)
 endif()
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core map_edit_core paint_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core map_edit_core paint_core mix_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -337,6 +338,7 @@ add_executable(test_shell_golden tests/test_shell_golden.cpp
   src/games/studio_shell/play_viewport.cpp
   src/games/studio_shell/scene_workspace.cpp
   src/games/studio_shell/pixel_workspace.cpp
+  src/games/studio_shell/mix_workspace.cpp
   src/games/studio_shell/sound_bank.cpp
   src/games/studio_shell/workspace_host.cpp
   src/games/hub/hub_panel.cpp
@@ -348,7 +350,7 @@ target_compile_definitions(test_shell_golden PRIVATE ASSET_ROOT="${CMAKE_SOURCE_
 target_link_libraries(test_shell_golden PRIVATE
   hub_build_core hub_core release_ops_core release_core project_core inspect_core resource_core
   commands_core map_edit_core paint_core document_core ui_core text_core farm_core sandbox_core ecs_core
-  light_core audio_core gbaas_sdk engine_flags)
+  light_core audio_core mix_core gbaas_sdk engine_flags)
 add_test(NAME shell_golden COMMAND test_shell_golden)
 
 # ---- Documents: undo/redo history and autosave+recovery for an edited file -------
@@ -384,7 +386,7 @@ target_include_directories(commands_core PUBLIC src)
 # project_core is PUBLIC because asset.new writes a manifest line: creating an asset
 # and declaring it are one act, and splitting them would give the Studio a way to make
 # a file the project cannot see.
-target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core provenance_core project_core tilemap_core PRIVATE engine_flags)
+target_link_libraries(commands_core PUBLIC release_ops_core png_core studio_core paint_core provenance_core project_core tilemap_core mix_core PRIVATE engine_flags)
 
 # Compiles the spine sources directly (like test_release_ops) so the test binary owns
 # a complete assets:: implementation without linking a window or a backend.
@@ -403,11 +405,27 @@ add_executable(test_commands tests/test_commands.cpp
   src/engine/image.cpp
   src/engine/tilemap/map2.cpp
   src/engine/tilemap/autotile.cpp   # map2's rule_piece resolves through it
+  src/engine/mix/mix.cpp            # ...and asset.mix composes through this
 )
 target_include_directories(test_commands PRIVATE src)
 target_compile_definitions(test_commands PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_commands PRIVATE png_core studio_core paint_core engine_flags)
 add_test(NAME commands COMMAND test_commands)
+
+# ---- Mix: a sprite assembled from parts, as text ----------------------------------
+# The FOURTH door into .hrt (chapter 135), and the door count in CLAUDE.md changed
+# with it deliberately. PURE: text in, an Image out, with the part images supplied by
+# a resolver the caller owns — no I/O, exactly like the other three doors.
+add_library(mix_core STATIC
+  src/engine/mix/mix.cpp
+)
+target_include_directories(mix_core PUBLIC src)
+target_link_libraries(mix_core PRIVATE engine_flags)
+
+add_executable(test_mix tests/test_mix.cpp)
+target_include_directories(test_mix PRIVATE src)
+target_link_libraries(test_mix PRIVATE mix_core engine_flags)
+add_test(NAME mix COMMAND test_mix)
 
 # ---- Paint: pixel edits as undoable commands --------------------------------------
 # The third client of doc::CommandStack, whose header has named a pixel editor since
@@ -494,6 +512,21 @@ target_include_directories(test_scene_workspace PRIVATE src)
 target_link_libraries(test_scene_workspace PRIVATE
   sandbox_core ecs_core commands_core document_core ui_core text_core light_core audio_core engine_flags)
 add_test(NAME scene_workspace COMMAND test_scene_workspace)
+
+# The parts mixer, driven headless against the project's real sources. What is under
+# test is the LOOP — click a part, see the sprite change, save the source, bake the
+# artefact — and that the two buttons are two things.
+add_executable(test_mix_workspace tests/test_mix_workspace.cpp
+  src/games/studio_shell/mix_workspace.cpp
+  src/engine/renderer2d.cpp
+  src/engine/assets.cpp
+  src/engine/image.cpp
+)
+target_include_directories(test_mix_workspace PRIVATE src)
+target_compile_definitions(test_mix_workspace PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_mix_workspace PRIVATE
+  mix_core commands_core document_core ui_core text_core engine_flags)
+add_test(NAME mix_workspace COMMAND test_mix_workspace)
 
 add_executable(test_map_workspace tests/test_map_workspace.cpp
   src/games/studio_shell/map_workspace.cpp

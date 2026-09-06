@@ -28,6 +28,7 @@
 #include "games/studio_shell/palette.hpp"
 #include "games/studio_shell/play_viewport.hpp"
 #include "games/studio_shell/project_panel.hpp"
+#include "games/studio_shell/mix_workspace.hpp"
 #include "games/studio_shell/pixel_workspace.hpp"
 #include "games/studio_shell/scene_workspace.hpp"
 #include "games/studio_shell/sound_bank.hpp"
@@ -70,6 +71,11 @@ public:
     [[nodiscard]] const PixelWorkspace& pixel_workspace() const { return pixels_; }
     [[nodiscard]] PixelWorkspace&       pixel_workspace() { return pixels_; }
     [[nodiscard]] int open_workspace() const { return ws_; }
+    // How many tabs the Edit section has. Exposed because a test that hard-codes it
+    // is a test that breaks the day a workspace is added — which has now happened
+    // twice, and the second time the comment beside the literal had already predicted
+    // it. A number a test can ASK for cannot go stale.
+    [[nodiscard]] int workspace_count() const { return static_cast<int>(workspaces_.size()); }
 
 private:
     // Map first: this is an authoring tool, and the thing you came to do should be
@@ -121,6 +127,7 @@ private:
     MapWorkspace                   map_;
     SceneWorkspace                 scene_;
     PixelWorkspace                 pixels_;
+    MixWorkspace                   mixer_;
     engine::Ledger                 ledger_{};   // where each picture came from
     // Concrete members, plus a vector of pointers to drive them through the interface.
     // ponytail: the set is fixed at construction, so no allocation and no ownership

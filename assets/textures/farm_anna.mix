@@ -1,0 +1,13 @@
+# Anna. The SAME two parts as the player, plus a hat, plus two colour swaps — and
+# that is the whole demonstration: nobody drew Anna. She is a recipe over parts, so
+# she is consistent with the player by construction rather than by care, and the
+# next villager costs three lines rather than a drawing.
+mix1
+name farm_anna
+size 16 16
+sheet parts textures/parts_farm.hrt 16
+part parts 1 at 0 0
+part parts 0 at 0 0
+part parts 2 at 0 0
+swap 5b3a29 8a6f3a
+swap 6e8fb5 b5566e

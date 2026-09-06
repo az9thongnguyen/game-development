@@ -145,6 +145,8 @@ private:
     void        say(std::string msg, double seconds = 3.0);
     void        facing(int& x, int& y) const;
     [[nodiscard]] const tilemap::Tileset& sheet_of(const std::string& name) const;
+    // One moving thing, at a pixel position. false = no art, draw the circle.
+    bool        draw_actor(gfx::Renderer2D& g, const std::string& name, int px, int py) const;
     bool        draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int x, int y,
                           int px, int py) const;
 

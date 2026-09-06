@@ -187,6 +187,18 @@ const tilemap::Tileset& FarmScene::sheet_of(const std::string& name) const {
     return it == tiles_.end() ? kNone : it->second;
 }
 
+bool FarmScene::draw_actor(gfx::Renderer2D& g, const std::string& name, int px, int py) const {
+    // Deliberately the same two guards as draw_tile, and no third: an actor with no
+    // `actor` line, a sheet that would not load and an index past the end of one that
+    // did all arrive here as the same null sprite.
+    const Theme::Art* a = theme_.actor(name);
+    if (!a) return false;
+    const gfx::Sprite s = sheet_of(a->sheet).sprite(static_cast<std::size_t>(a->index));
+    if (s.w == 0) return false;
+    g.blit(s, px, py);
+    return true;
+}
+
 bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int x, int y,
                           int px, int py) const {
     // No `id == 0` check: `parse_theme` refuses to map id 0 at all, so an empty cell
@@ -751,10 +763,18 @@ void FarmScene::render(const engine::Context& ctx) {
     if (map_.in_bounds(tx, ty))
         g.draw_rect(ox + tx * kTile, oy + ty * kTile, kTile, kTile, 0xFFF4F1DE);
 
+    // The people. Art when the theme has some, the old coloured circle when it does
+    // not — the same fallback every tile has had since chapter 124, for the same
+    // reason: a game with no art must still be playable, and "no art yet" must not
+    // look like a bug. Chapter 135 is what finally gave them art, and nobody drew
+    // either of them: they are three parts and two colour swaps (textures/*.mix).
     for (const NpcState& n : world_.npcs)
-        g.fill_circle(ox + n.x * kTile + kTile / 2, oy + n.y * kTile + kTile / 2, kTile / 2 - 2, kNpc);
-    g.fill_circle(ox + world_.px * kTile + kTile / 2, oy + world_.py * kTile + kTile / 2,
-                  kTile / 2 - 2, kPlayer);
+        if (!draw_actor(g, n.name, ox + n.x * kTile, oy + n.y * kTile))
+            g.fill_circle(ox + n.x * kTile + kTile / 2, oy + n.y * kTile + kTile / 2,
+                          kTile / 2 - 2, kNpc);
+    if (!draw_actor(g, "player", ox + world_.px * kTile, oy + world_.py * kTile))
+        g.fill_circle(ox + world_.px * kTile + kTile / 2, oy + world_.py * kTile + kTile / 2,
+                      kTile / 2 - 2, kPlayer);
 
     if (const int a = night_alpha(world_.minute); a > 0)
         g.fill_rect_blend(0, 0, W, H, gfx::rgba(6, 10, 40, a));

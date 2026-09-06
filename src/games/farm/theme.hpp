@@ -58,15 +58,21 @@ struct Theme {
 
     std::map<std::string, Sheet>              sheets;   // name -> where the pixels are
     std::map<std::pair<std::string, int>, Art> art;     // (layer, id) -> which tile
+    // Things that move. A map cell is addressed by (layer, id); the player and an NPC
+    // are addressed by NAME, because they are not in the grid — and before chapter 135
+    // they were not in this file at all, which is why they were coloured circles.
+    std::map<std::string, Art>                actors;
 
     // nullptr when this id has no art, which is a normal answer, not an error.
     [[nodiscard]] const Art* find(const std::string& layer, int id) const;
+    [[nodiscard]] const Art* actor(const std::string& name) const;
 };
 
 // Parse a theme file:
 //
 //     sheet <name> <path> [tile]           declare where pixels come from
 //     tile  <layer> <id> <sheet> <index>   join a semantic id to one of them
+//     actor <name> <sheet> <index>         ...and a MOVING thing to one of them
 //
 // There used to be an `autotile` record here carrying the same fields; chapter 134
 // moved that decision into the map, so a `tile` whose id has a rule is a base and one

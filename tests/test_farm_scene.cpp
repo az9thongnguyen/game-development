@@ -337,6 +337,29 @@ int main() {
         // a flat blue square, which is exactly what this replaced.
         CHECK(ripple > 0);
         CHECK(deep > ripple);
+
+        // ---- the PEOPLE, chapter 135 ----
+        // The player and the NPC were flat circles until a `.mix` gave them sprites.
+        // The claim is not "the picture changed" — it is that the circle is GONE and
+        // the sprite is there, so both colours are counted by name.
+        int circle_player = 0, circle_npc = 0, skin = 0, anna_tunic = 0, player_tunic = 0;
+        for (std::uint32_t p : buf) {
+            if (p == 0xFFF2CC8Fu) ++circle_player;   // the flat player fill
+            if (p == 0xFFE07A5Fu) ++circle_npc;      // ...and the flat NPC fill
+            if (p == 0xFFE8B891u) ++skin;            // parts_farm.pix's skin
+            if (p == 0xFFB5566Eu) ++anna_tunic;      // Anna's SWAPPED tunic — proof the
+            if (p == 0xFF6E8FB5u) ++player_tunic;    // swap ran; the player's is UNswapped
+        }
+        CHECK(circle_player == 0);
+        CHECK(circle_npc == 0);
+        CHECK(skin > 0);
+        // Both people, counted SEPARATELY by the one colour that differs between them.
+        // They share a body, a head and a skin tone, so a count of anything they have
+        // in common passes just as happily when one of the two is not drawn at all —
+        // which is what a mutation of the player's draw call proved.
+        CHECK(anna_tunic > 0);
+        CHECK(player_tunic > 0);
+
         dump_ppm(buf, "farm_art.ppm");
     }
 

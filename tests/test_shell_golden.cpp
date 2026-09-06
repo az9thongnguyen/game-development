@@ -203,10 +203,11 @@ int main() {
             // setter is the point: a tab that stopped being wired would still pass a
             // test that assigned the index directly.
             // Tabs split the row evenly, so the centre of tab i of n is at
-            // (2i+1)/2n across it. Written from the COUNT rather than as a fraction
-            // that happened to work: the fraction 3/4 meant "the second of two", and
-            // it silently became "the third of three" the day a workspace was added.
-            const int rail = 200, tabs = 3, want = 1;
+            // (2i+1)/2n across it. The count is ASKED FOR, not written down: the
+            // fraction 3/4 once meant "the second of two" and silently became "the
+            // third of three"; then the literal 3 became wrong the day a fourth
+            // workspace arrived. A number a test can ask for cannot go stale.
+            const int rail = 200, tabs = sc.workspace_count(), want = 1;
             const int tx = rail + 24 + (LW - rail - 48) * (2 * want + 1) / (2 * tabs);
             const int ty = 24 + 15;
             platform::InputState down{};
@@ -858,10 +859,10 @@ int main() {
         CHECK(farm.inspection().shippable());
         CHECK(farm.inspection().project.entry == "farm");
         // Every asset the manifest declares — the count moves when the game gains
-        // content (a theme and a tileset in chapter 121, a second tileset in 122), and
-        // it should: the point of the check is that the Studio sees the same list the
-        // CLI does.
-        CHECK(farm.inspection().assets.size() == 9);
+        // content (a theme and a tileset in chapter 121, a second tileset in 122, two
+        // MIXED character sprites in 135), and it should: the point of the check is
+        // that the Studio sees the same list the CLI does.
+        CHECK(farm.inspection().assets.size() == 11);
         // ...and the negative control: the list is what makes the difference, so an
         // ignorant list must still reject it. Otherwise the check above would pass
         // just as happily if known_entries were ignored entirely.
@@ -1141,13 +1142,16 @@ int main() {
             sc.update(1.0 / 60.0, input);
             render(input);
 
-            // Click the third workspace tab (Map | Scene | Pixels) rather than reaching
-            // for a setter: the tab row is the only way a user gets there, and a test
-            // that set the index would not notice the tab row moving.
+            // Click the Pixels tab rather than reaching for a setter: the tab row is
+            // the only way a user gets there, and a test that set the index would not
+            // notice the row moving. The centre of tab i of n is (2i+1)/2n across —
+            // ASKED for, not written down, because `5/6` meant "the third of three"
+            // and became "the middle of four" the day a fourth workspace arrived.
             const int ax = 200 + th::space_xl;
             const int aw = sz.w - 200 - th::space_xl * 2;
+            const int tabs = sc.workspace_count(), want = 2;
             platform::InputState click{};
-            click.mouse_x = ax + aw * 5 / 6;
+            click.mouse_x = ax + aw * (2 * want + 1) / (2 * tabs);
             click.mouse_y = th::space_xl + 15;
             click.mouse_down[static_cast<int>(platform::MouseButton::Left)]    = true;
             click.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;

@@ -15,6 +15,8 @@
 sheet town  textures/town.hrt       16
 sheet water textures/farm_water.hrt 16
 sheet path  textures/farm_path.hrt  16
+sheet who   textures/farm_player.hrt 16
+sheet anna  textures/farm_anna.hrt   16
 
 tile ground 1 town  0      # plain grass
 tile ground 3 water 0      # the pond — the tile the pack did not have
@@ -30,3 +32,11 @@ tile ground 2 path 0       # the worn path, sixteen pieces we drew
 tile decor 1 town 28       # a small green tree
 tile decor 2 town 72       # timber wall
 tile decor 3 town 43       # white stones in the grass
+
+# The people. Neither of them was drawn: both are `textures/*.mix` — the same body and
+# head from `parts_farm.pix`, and Anna is a hat plus two colour swaps on top. That is
+# the fourth door into .hrt (chapter 135) and the reason it exists: a second villager
+# costs three lines rather than a drawing, and looks like she is from the same village
+# by construction rather than by care.
+actor player who  0
+actor anna   anna 0
