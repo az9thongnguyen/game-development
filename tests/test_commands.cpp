@@ -13,11 +13,13 @@
 #include <string>
 #include <vector>
 
+#include "engine/asset/provenance.hpp"
 #include "engine/assets.hpp"
 #include "engine/commands/registry.hpp"
 #include "engine/commands/asset_commands.hpp"
 #include "engine/commands/release_commands.hpp"
 #include "engine/image.hpp"
+#include "engine/paint/pixel_source.hpp"
 
 #ifndef ASSET_ROOT
 #define ASSET_ROOT "."
@@ -234,7 +236,7 @@ static void test_asset_commands() {
     assets::set_base_path(ASSET_ROOT "/assets");
     cmd::clear();
     cmd::register_asset_commands();
-    CHECK(cmd::all().size() == 3);   // every door registered, and only those
+    CHECK(cmd::all().size() == 5);   // three doors, the ledger, and the way in
 
     // D17: writing commands refuse blank arguments. A destination nobody named is not
     // a default, it is a missing decision — and here it would overwrite something.
@@ -321,9 +323,190 @@ static void test_asset_commands() {
     std::filesystem::remove(ASSET_ROOT "/assets/textures/_repix.hrt");
 }
 
+// -----------------------------------------------------------------------------
+//  The import door, held to the same standard as the other two.
+//
+//  A `.recipe` and a `.pix` were each re-baked and byte-compared above; the import
+//  never was. It was the one door whose output had to be taken on trust, which is an
+//  odd place for the trust to sit — it is the door with a LICENCE behind it. This
+//  reads the claims out of the packs rather than naming Kenney, so a second pack is
+//  covered the day it is added and not the day somebody remembers to widen a test.
+// -----------------------------------------------------------------------------
+static void test_every_import_reproduces_its_committed_bytes() {
+    assets::set_base_path(ASSET_ROOT "/assets");
+    cmd::clear();
+    cmd::register_asset_commands();
+
+    int checked = 0;
+    for (const auto& p : assets::list_tree("", ".pack")) {
+        const auto bytes = assets::load_file(p);
+        CHECK(bytes.has_value());
+        if (!bytes) continue;
+        const auto pack = engine::parse_pack(std::string(bytes->begin(), bytes->end()));
+        CHECK(pack.has_value());
+        if (!pack) continue;
+
+        for (const auto& imp : pack->imports) {
+            const auto committed = assets::load_file(imp.second);
+            CHECK(committed.has_value());          // the pack claims a file that is there
+            const engine::OpResult r = cmd::run("asset.import", {imp.first, "textures/_reimport.hrt"});
+            CHECK(r.ok);
+            if (!r.ok) std::printf("      %s: %s\n", imp.first.c_str(), r.message.c_str());
+            const auto again = assets::load_file("textures/_reimport.hrt");
+            CHECK(again.has_value());
+            if (committed && again) CHECK(*committed == *again);
+            std::filesystem::remove(ASSET_ROOT "/assets/textures/_reimport.hrt");
+            ++checked;
+        }
+    }
+    // A loop over an empty list passes every assertion inside it. Say out loud that it
+    // ran, or "all imports reproduce" becomes true by finding no imports.
+    CHECK(checked >= 1);
+}
+
+// -----------------------------------------------------------------------------
+//  Bringing an asset into existence — the ceiling chapter 127 wrote down.
+//
+//  Run against a TEMPORARY asset root, not the repository's. `asset.new` re-bakes
+//  ATTRIBUTION.md as its last act, which is the point of it; pointed at the real
+//  assets/ it would rewrite a committed file and leave the tree dirty after a test
+//  run, and deleting the files afterwards would leave the ledger listing assets that
+//  no longer exist. A test whose cleanup is a second chance to be wrong is the same
+//  trap as a shared service (see the local-services lesson in test_baas_*).
+// -----------------------------------------------------------------------------
+static void test_asset_new() {
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / "gd_asset_new_test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "textures");
+    assets::set_base_path(root.string());
+    cmd::clear();
+    cmd::register_asset_commands();
+
+    // ---- the name becomes a path, so the name is a trust boundary ----
+    for (const char* bad : {"../evil", "a/b", "a\\b", "a.b", "", "with space"}) {
+        const engine::OpResult r = cmd::run("asset.new", {bad, "16", "1", "1"});
+        CHECK(!r.ok);
+    }
+    CHECK(!cmd::run("asset.new", {"ok", "16", "1"}).ok);          // too few arguments
+    CHECK(!cmd::run("asset.new", {"ok", "abc", "1", "1"}).ok);    // not numbers
+    CHECK(!cmd::run("asset.new", {"ok", "0", "1", "1"}).ok);      // no zero dimension
+    CHECK(!cmd::run("asset.new", {"ok", "16", "0", "1"}).ok);
+    CHECK(!cmd::run("asset.new", {"ok", "-4", "2", "2"}).ok);
+    // The multiplication is guarded BEFORE it happens: this is a several-gigabyte
+    // allocation, not an error message, if the check comes after.
+    CHECK(!cmd::run("asset.new", {"ok", "16", "99999", "99999"}).ok);
+    CHECK(std::filesystem::is_empty(root / "textures"));          // and nothing was written
+
+    // ---- the happy path ----
+    const engine::OpResult made = cmd::run("asset.new", {"signs", "16", "2", "2"});
+    CHECK(made.ok);
+    if (!made.ok) std::printf("      %s\n", made.message.c_str());
+    CHECK(assets::load_file("textures/signs.pix").has_value());
+    CHECK(assets::load_file("textures/signs.hrt").has_value());
+    // Born as a SOURCE: the `.hrt` is what the `.pix` bakes to, exactly as for a
+    // file a person typed, which is what makes the ledger call it `drawn` with no
+    // special case for "the Studio made this one".
+    {
+        const auto pix = assets::load_file("textures/signs.pix");
+        const auto hrt = assets::load_file("textures/signs.hrt");
+        CHECK(pix && hrt);
+        if (pix && hrt) {
+            std::string why;
+            const auto img = paint::bake_pixels(std::string(pix->begin(), pix->end()), &why);
+            CHECK(img.has_value());
+            if (img) {
+                CHECK(img->w == 32 && img->h == 32);
+                CHECK(gfx::encode_hrt(*img) == *hrt);
+                for (gfx::Color c : img->pixels) CHECK((c >> 24) == 0);   // blank means blank
+            }
+        }
+    }
+    // Creating is not editing: it never lands on a file that is already there.
+    CHECK(!cmd::run("asset.new", {"signs", "16", "2", "2"}).ok);
+
+    // ---- refused AFTER the name checks pass must still write nothing ----
+    const engine::OpResult bad_proj =
+        cmd::run("asset.new", {"later", "16", "1", "1", "nosuch.gameproject"});
+    CHECK(!bad_proj.ok);
+    CHECK(bad_proj.message.find("nothing was created") != std::string::npos);
+    CHECK(!assets::load_file("textures/later.pix"));   // <- the half-done creation
+    CHECK(!assets::load_file("textures/later.hrt"));
+
+    // ---- declared in the manifest, or the project cannot see it ----
+    static const char kManifest[] = "gameproject1\nname T\nschema 1\nentry fps\n";
+    std::filesystem::create_directories(root / "projects");
+    CHECK(assets::write_file("projects/t.gameproject",
+                             std::vector<std::uint8_t>(kManifest, kManifest + std::strlen(kManifest))));
+    const engine::OpResult declared =
+        cmd::run("asset.new", {"road", "8", "1", "1", "projects/t.gameproject"});
+    CHECK(declared.ok);
+    const auto mf = assets::load_file("projects/t.gameproject");
+    CHECK(mf.has_value());
+    if (mf) {
+        const std::string text(mf->begin(), mf->end());
+        CHECK(text.find("asset texture textures/road.hrt") != std::string::npos);
+        CHECK(text.find("entry fps") != std::string::npos);      // and it rewrote nothing else
+    }
+
+    // ---- and the ledger, without anyone remembering ----
+    // Said out loud when there is no document, rather than skipped quietly: the whole
+    // slice is about a rule nobody should have to hold in their head.
+    CHECK(declared.message.find("no ATTRIBUTION.md") != std::string::npos);
+
+    static const char kDoc[] = "# A\n\n<!-- BEGIN LEDGER (generated) -->\n<!-- END LEDGER (generated) -->\n";
+    CHECK(assets::write_file("ATTRIBUTION.md",
+                             std::vector<std::uint8_t>(kDoc, kDoc + std::strlen(kDoc))));
+    const engine::OpResult with_doc = cmd::run("asset.new", {"fence", "8", "1", "1"});
+    CHECK(with_doc.ok);
+    CHECK(with_doc.message.find("ledger re-baked") != std::string::npos);
+    const auto doc = assets::load_file("ATTRIBUTION.md");
+    CHECK(doc.has_value());
+    if (doc) {
+        const std::string text(doc->begin(), doc->end());
+        CHECK(text.find("`textures/fence.hrt` | drawn") != std::string::npos);
+        CHECK(text.find("`textures/signs.hrt` | drawn") != std::string::npos);  // and its siblings
+        CHECK(text.find("UNRECORDED") == std::string::npos);
+        CHECK(text.find("# A") != std::string::npos);            // hand-written prose kept
+    }
+
+    std::filesystem::remove_all(root);
+    assets::set_base_path(ASSET_ROOT "/assets");
+}
+
+// -----------------------------------------------------------------------------
+//  The ledger command. It writes a COMMITTED file, so its refusals matter more than
+//  its happy path — which test_provenance already pins byte-for-byte.
+// -----------------------------------------------------------------------------
+static void test_attribution_command() {
+    assets::set_base_path(ASSET_ROOT "/assets");
+    cmd::clear();
+    cmd::register_asset_commands();
+
+    CHECK(!cmd::run("asset.attribution", {}).ok);        // D17: no blank arguments
+    CHECK(!cmd::run("asset.attribution", {""}).ok);
+    CHECK(!cmd::run("asset.attribution", {"nosuch.md"}).ok);
+
+    // A document with no markers is refused and left ALONE. Appending would give the
+    // file two ledgers, and the file it would do that to is one somebody wrote.
+    static const char kProse[] = "# hand written\n\nno markers here\n";
+    CHECK(assets::write_file("_no_markers.md",
+                             std::vector<std::uint8_t>(kProse, kProse + std::strlen(kProse))));
+    const engine::OpResult r = cmd::run("asset.attribution", {"_no_markers.md"});
+    CHECK(!r.ok);
+    CHECK(r.message.find("marker") != std::string::npos);
+    const auto after = assets::load_file("_no_markers.md");
+    CHECK(after.has_value());
+    if (after) CHECK(std::string(after->begin(), after->end()) == kProse);   // untouched
+    std::filesystem::remove(ASSET_ROOT "/assets/_no_markers.md");
+}
+
 int main() {
     test_registry();
     test_asset_commands();
+    test_every_import_reproduces_its_committed_bytes();
+    test_attribution_command();
+    test_asset_new();
     test_filter_and_unregister();
     test_release_commands();
     test_inspect_command();

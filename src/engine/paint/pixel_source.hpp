@@ -54,4 +54,19 @@ namespace paint {
 //   * a grid slot left undrawn  <- a hole in an autotile set is not "not yet"
 std::optional<gfx::Image> bake_pixels(const std::string& text, std::string* why = nullptr);
 
+// A new, empty sheet as `.pix` TEXT: `cols` x `rows` tiles of `size` px, every pixel
+// transparent, every slot present.
+//
+// Text and not an Image, because a new asset in this project is born as a SOURCE. A
+// blank `.hrt` written straight to disk would arrive with no origin — the exact hole
+// `engine::scan_provenance` exists to refuse — and would be uneditable as anything
+// but pixels. Writing the source first means the file is `drawn` from its first
+// second and the ledger needs no special case for "made in the Studio".
+//
+// Every slot is emitted because the parser refuses a grid with a hole in it, and a
+// creation path that produced a file its own parser rejects would be a very short
+// bug. Empty when any dimension is < 1 or the sheet would exceed `max_px` on a side.
+std::string blank_sheet(int size, int cols, int rows, const std::string& name,
+                        int max_px = 4096);
+
 } // namespace paint

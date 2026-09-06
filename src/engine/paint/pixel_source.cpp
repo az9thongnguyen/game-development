@@ -145,4 +145,29 @@ std::optional<gfx::Image> bake_pixels(const std::string& text, std::string* why)
     return img;
 }
 
+
+std::string blank_sheet(int size, int cols, int rows, const std::string& name, int max_px) {
+    if (size < 1 || cols < 1 || rows < 1) return {};
+    // Guard the multiplication before doing it: `size * cols` on ints the caller took
+    // from a text field is where an overflow would come from, and an overflowed sheet
+    // is a several-gigabyte allocation, not an error message.
+    if (cols > max_px / size || rows > max_px / size) return {};
+
+    std::string out;
+    out += "# " + name + " — a new sheet, created in the Studio.\n";
+    out += "# Every pixel is transparent; the shapes are yours. This file is the\n";
+    out += "# SOURCE — `.hrt` is baked from it, and assets/ATTRIBUTION.md derives\n";
+    out += "# \"drawn here\" from the fact that this file sits beside it.\n";
+    out += "size " + std::to_string(size) + "\n";
+    out += "grid " + std::to_string(cols) + " " + std::to_string(rows) + "\n";
+    out += "palette . 00000000\n";
+
+    const std::string row(static_cast<std::size_t>(size), '.');
+    for (int t = 0; t < cols * rows; ++t) {
+        out += "tile " + std::to_string(t) + "\n";
+        for (int y = 0; y < size; ++y) out += row + "\n";
+    }
+    return out;
+}
+
 } // namespace paint
