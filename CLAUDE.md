@@ -160,8 +160,8 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**28 of the 80 tests**: `ctest` here reports 80, a build configured without Drogon
-reports 52. Since chapter 129 CI has a `baas-test` job in the
+**28 of the 78 tests**: `ctest` here reports 78, a build configured without Drogon
+reports 50. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that

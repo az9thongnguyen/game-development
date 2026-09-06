@@ -1162,7 +1162,7 @@ nhân ở các giá trị test được không tràn, nên **không phân biệt
 giết phải yêu cầu một sheet đủ lớn để treo cả suite. Guard viết bằng phép **chia** vì nó
 không thể tràn; test không chứng minh được điều đó.
 
-**Số liệu:** 80/80 ctest · **18/20 mutation** · golden path xanh, 0 rò
+**Số liệu:** 78/78 ctest · **18/20 mutation** · golden path xanh, 0 rò
 `.tmp`, package hash **không đổi** `cd1c2864f8315bff` · web build xanh · một khung hình đã
 render và **đã nhìn** (inspector NEW SHEET; card ORIGIN/FROM/LICENCE).
 

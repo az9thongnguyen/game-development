@@ -114,7 +114,7 @@ src/games/       one directory per scene/tool (chess, fps, viz3d, iso, editor, c
                  anim, runner) — studio_shell holds the Workspace interface + its two
                  implementations and the full-screen WorkspaceHost that --lab scene uses
 src/main.cpp     mode dispatch + the launch_entry seam
-tests/           80 dependency-free suites (52 without Drogon — see the BaaS row in §8)
+tests/           78 dependency-free suites (50 without Drogon — see the BaaS row in §8)
 baas/            Drogon Game-BaaS backend (separate process, links no engine code)
 sdk/cpp/         gbaas C++ SDK — native libcurl / web emscripten_fetch, one API
 server/          hand-written HTTP server (POSIX sockets), serves the WASM build
@@ -220,7 +220,7 @@ on desktop and in the browser.
 # native
 brew install cmake sdl2
 cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
-ctest --test-dir build --output-on-failure          # 80 suites, headless
+ctest --test-dir build --output-on-failure          # 78 suites, headless
 ctest --test-dir build -R chess                      # one suite
 
 # sanitizers
@@ -353,7 +353,7 @@ An agent must not upgrade any of these from "written" to "works" without running
 
 | Claim | Status |
 |---|---|
-| 80 test suites pass | ✅ **verified** 2026-09-06 (chapter 131 added `provenance`; 77 at chapter 130, 62 at chapter 108). A build without Drogon registers 52 — see the BaaS row. |
+| 78 test suites pass | ✅ **verified** 2026-09-06 (chapter 131 added `provenance` — one new suite; the other three of this chapter's targets gained cases instead. 77 at chapter 130, 62 at chapter 108). A build without Drogon registers 50 — see the BaaS row. |
 | Native build | ✅ verified |
 | The BaaS suite runs somewhere other than a laptop | ✅ verified 2026-09-06 (chapter 129) — and ❌ **before it, since the day those tests were written**. `ctest` here reports 76; CI reported **48**. The 28 in between were the Drogon-gated ones — auth, JWT, RBAC, purchases, cloud saves, inventory, secret rotation, idempotency, and the three end-to-end runs that boot a real server and drive it through the real SDK — skipped because the runner only ever installed SDL2. Measured, not counted: configuring with `-DCMAKE_DISABLE_FIND_PACKAGE_Drogon=ON` reproduces exactly what CI sees. (The planning note had said "23", which was the number of `test_baas_*.cc` **files**; a file with a `foreach` registers seven tests and a helper registers none.) The job is `baas/ops/Dockerfile`'s build stage stopping at the tests, and it carries no list: `BUILDSYSTEM_TARGETS` gives a `baas_tests` target and `ctest --test-dir build/baas` selects exactly that directory's tests — two of which are named `metrics` and `rate_limiter`, so no `baas_*` regex would have found them. **Verified by running it** in `drogonframework/drogon:latest` on the runner's own architecture before the YAML was pushed: 27/27 in 51 s. ⚠️ **making CI run them found a real bug in the first minute**: `test_sdk_realtime_live` does not COMPILE against libcurl 7.81 (it calls `curl_ws_recv`, added in 7.86; Ubuntu 22.04 is the Drogon image's base), and a test that will not compile does not fail one test — it fails the build and takes the other 27 with it. The asymmetry is the point: `sdk/cpp` already degrades to an inert realtime stub and says so, while the test that exercises the degradation was added unconditionally, and the only machine that ever built this half was a Mac with Homebrew's curl 8.x. Now gated on the same two variables as the transport, with a configure-time message, because a test that vanishes quietly is the failure this slice exists to end. The job also asserts a floor of 27 registered tests — a green job that ran nothing is otherwise indistinguishable from a green job that ran everything. ❌ **the SDK's native ws:// realtime is a stub on any Ubuntu 22.04 build, including this project's own backend image**, silently at runtime; `sdk_realtime_live` therefore still runs on exactly one machine. ❌ no Docker job: CI builds and tests the backend, it does not build the image or probe `/healthz`. ❌ SQLite only — the Postgres adapter and the `FOR UPDATE` the purchase path needs remain one slice on purpose. |
 | Web (Emscripten) build + served by the hand-written webserver | ✅ verified: build links, all assets return 200 |

@@ -263,7 +263,7 @@ would pass just as happily on a panel that never read the ledger at all.
 
 ## What was checked
 
-* `ctest` **80/80** green (`provenance` is new; `paint`, `commands`, `pixel_workspace`
+* `ctest` **78/78** green (`provenance` is new; `paint`, `commands`, `pixel_workspace`
   and `shell_golden` gained cases).
 * **Mutation testing, 20 single-token changes** across `provenance.cpp`,
   `pixel_source.cpp`, `asset_commands.cpp` and `pixel_workspace.cpp`. First run:
