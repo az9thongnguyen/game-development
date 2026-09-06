@@ -3,7 +3,7 @@
 **Audience:** an AI coding agent (or a new human maintainer) that must understand this
 repository well enough to *choose the right next piece of work*, not merely to edit a file
 it was pointed at.
-**Last verified:** 2026-09-04, against commit `81d3a81` (`main`, 282 commits).
+**Last verified:** 2026-09-06, against commit `01b417e` (`main`, 389 commits).
 **Language note:** written in English to match the rest of `docs/` and the code; the
 original vision document `requirements.md` is in Vietnamese and remains authoritative for
 the learning goal.
@@ -114,7 +114,7 @@ src/games/       one directory per scene/tool (chess, fps, viz3d, iso, editor, c
                  anim, runner) — studio_shell holds the Workspace interface + its two
                  implementations and the full-screen WorkspaceHost that --lab scene uses
 src/main.cpp     mode dispatch + the launch_entry seam
-tests/           71 dependency-free suites
+tests/           77 dependency-free suites (49 without Drogon — see the BaaS row in §8)
 baas/            Drogon Game-BaaS backend (separate process, links no engine code)
 sdk/cpp/         gbaas C++ SDK — native libcurl / web emscripten_fetch, one API
 server/          hand-written HTTP server (POSIX sockets), serves the WASM build
@@ -220,7 +220,7 @@ on desktop and in the browser.
 # native
 brew install cmake sdl2
 cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
-ctest --test-dir build --output-on-failure          # 61 suites, headless
+ctest --test-dir build --output-on-failure          # 77 suites, headless
 ctest --test-dir build -R chess                      # one suite
 
 # sanitizers
