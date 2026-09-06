@@ -634,6 +634,241 @@ void test_evolution_is_one_more_part(const Dex& d) {
     CHECK(lines == 6);
 }
 
+
+// ---- 8. the RNG underneath ------------------------------------------------------
+//
+//  Everything above is deterministic ONLY because engine::Rng is. Two claims in that
+//  header had nothing checking them, and a mutation walked straight through both:
+//  the stream itself was never pinned, and "an empty range consumes nothing" was a
+//  sentence.
+
+void test_rng() {
+    // GOLDEN. These four numbers are the contract with every other machine and every
+    // future build: a replay recorded today has to reproduce on a web build compiled
+    // by a different toolchain, and nothing else in the repo would notice the
+    // sequence quietly changing. If this fails, every stored replay is already void.
+    engine::Rng r(1);
+    const std::uint64_t want[] = {0x47E4CE4B896CDD1Dull, 0xABCFA6A8E079651Dull,
+                                  0xB9D10D8FEB731F57ull, 0x4DB418A0BB1B019Dull};
+    for (const std::uint64_t w : want) CHECK(r.next() == w);
+
+    // Seed 0 is remapped rather than rejected, and it must not be a zero stream.
+    engine::Rng z(0);
+    CHECK(z.next() == 0x0D83B3E29A21487Aull);
+
+    // range() is uniform enough to be worth having: a thousand draws from 1..100
+    // average near 50 rather than piling on one end.
+    engine::Rng q(0xDEADBEEF);
+    long long sum = 0;
+    for (int i = 0; i < 1000; ++i) {
+        const int v = q.range(1, 100);
+        CHECK(v >= 1 && v <= 100);
+        sum += v;
+    }
+    CHECK(sum > 45000 && sum < 55000);
+
+    // AN EMPTY RANGE CONSUMES NOTHING. Without this, a battle where one side happens
+    // to have a single legal choice would advance the stream differently from the
+    // same battle where it has two, and the desync would look like a physics bug.
+    engine::Rng e(12345);
+    const std::uint64_t before = e.state();
+    CHECK(e.range(7, 7) == 7);
+    CHECK(e.range(9, 2) == 9);
+    CHECK(e.state() == before);
+
+    // state()/set_state() is a round trip, which is what lets a battle be saved
+    // mid-turn rather than only at its start.
+    engine::Rng a(99), b(1);
+    a.next(); a.next();
+    b.set_state(a.state());
+    CHECK(a.next() == b.next());
+}
+
+// ---- 9. the ten things a mutation walked through --------------------------------
+
+// Damage from ONE move, in a battle where the named side moves first.
+int first_damage(const Dex& d, Battle b, int slot, int side = 0) {
+    std::vector<Event> ev;
+    const Action mine{Action::Kind::Move, slot};
+    const Action theirs{Action::Kind::Move, 0};
+    step(d, b, side == 0 ? mine : theirs, side == 0 ? theirs : mine, &ev);
+    for (const Event& e : ev)
+        if (e.kind == Event::Kind::Damage && e.side == 1 - side) return e.a;
+    return -1;
+}
+
+void test_damage_modifiers(const Dex& d) {
+    // STAB. Same attacker, same defender, same seed, two 40-power moves — one of them
+    // matches the attacker's type. Both are neutral against normal, so the only
+    // difference left in the arithmetic is the 150/100.
+    {
+        Battle b;
+        b.side[0] = make_party(d, {{2, 20}});      // blazehound, fire, fast
+        b.side[1] = make_party(d, {{16, 20}});     // fluffkin, normal, slow
+        b.rng = 4242;
+        Creature& me = b.side[0].now();
+        me.moves[0] = MoveSlot{d.move_index("tackle"), 35};   // 40 power, no STAB
+        me.moves[1] = MoveSlot{d.move_index("ember"),  25};   // 40 power, STAB
+        const int plain = first_damage(d, b, 0);
+        const int stab  = first_damage(d, b, 1);
+        CHECK(plain > 0);
+        CHECK(stab > plain);
+        // 1.5x, allowing for the +2 constant the formula adds before the multiplier.
+        CHECK(stab * 100 >= plain * 130);
+    }
+
+    // BURN halves what the burned creature deals. Forced rather than fished for.
+    {
+        Battle b;
+        b.side[0] = make_party(d, {{2, 20}});
+        b.side[1] = make_party(d, {{16, 20}});
+        b.rng = 909;
+        const int healthy = first_damage(d, b, 0);
+        b.side[0].now().status = Status::Burn;
+        const int burned = first_damage(d, b, 0);
+        CHECK(healthy > 0);
+        CHECK(burned * 2 <= healthy + 2);
+    }
+
+    // A HIT THAT CONNECTS ALWAYS STINGS. A level-1 pup throwing a fire move at a
+    // level-100 fire wolf that resists it: every factor in the formula pushes the
+    // product below one, and the answer must still be 1. Zero damage reads as a miss
+    // that was not a miss, and it is one deleted clamp away.
+    //
+    // The wolf is given a no-op action (a switch to the slot it is already in) rather
+    // than a move, because otherwise it kills the pup before the pup can swing.
+    {
+        Battle b;
+        b.side[0] = make_party(d, {{1, 1}});       // emberpup, level 1
+        b.side[1] = make_party(d, {{3, 100}});     // pyrewolf, level 100, also fire
+        b.rng = 5;
+        b.side[0].now().moves[0] = MoveSlot{d.move_index("ember"), 25};
+        std::vector<Event> ev;
+        step(d, b, Action{Action::Kind::Move, 0}, Action{Action::Kind::Switch, 0}, &ev);
+        int dealt = -1;
+        for (const Event& e : ev)
+            if (e.kind == Event::Kind::Damage && e.side == 1) dealt = e.a;
+        CHECK(dealt == 1);
+    }
+
+    // BURN ON A SMALL CREATURE. max_hp/16 is zero below sixteen HP, and a status that
+    // does nothing for the first ten levels of the game is a bug nobody reports.
+    {
+        Battle b;
+        b.side[0] = make_party(d, {{10, 1}});
+        b.side[1] = make_party(d, {{10, 1}});
+        b.rng = 6;
+        CHECK(b.side[0].now().max_hp < 16);
+        b.side[0].now().status = Status::Burn;
+        const int before = b.side[0].now().hp;
+        // BOTH sides get a no-op action. The first version of this let the opponent
+        // attack, so the HP fell whether the burn ticked or not and the assertion was
+        // satisfied by the wrong cause — the mutation walked straight through it.
+        step(d, b, Action{Action::Kind::Switch, 0}, Action{Action::Kind::Switch, 0});
+        CHECK(b.side[0].now().hp == before - 1);
+    }
+}
+
+void test_the_coin_is_a_coin(const Dex& d) {
+    // TWO IDENTICAL CREATURES. Priority ties, speed ties, and what is left is the
+    // battle's own coin flip. "Side 0 first" is the cheap version of this rule and it
+    // works right up until the two sides are two different computers.
+    int went[2] = {0, 0};
+    for (int i = 0; i < 60; ++i) {
+        Battle b;
+        b.side[0] = make_party(d, {{17, 20}});
+        b.side[1] = make_party(d, {{17, 20}});
+        b.rng = 1000 + static_cast<std::uint64_t>(i) * 7919;
+        std::vector<Event> ev;
+        step(d, b, Action{Action::Kind::Move, 0}, Action{Action::Kind::Move, 0}, &ev);
+        if (!ev.empty() && ev[0].kind == Event::Kind::Used) ++went[ev[0].side];
+    }
+    CHECK(went[0] > 10);
+    CHECK(went[1] > 10);
+}
+
+void test_accuracy_and_paralysis(const Dex& d) {
+    // A 90%-accurate move misses sometimes and a 100% one never does. Both halves:
+    // "nothing ever misses" and "everything misses" are each one token away.
+    int missed_90 = 0, missed_100 = 0, used = 0;
+    for (int i = 0; i < 200; ++i) {
+        Battle b;
+        b.side[0] = make_party(d, {{14, 30}});     // bouldrin knows rockthrow, acc 90
+        b.side[1] = make_party(d, {{16, 30}});
+        b.rng = 500 + static_cast<std::uint64_t>(i) * 104729;
+        Creature& me = b.side[0].now();
+        me.moves[0] = MoveSlot{d.move_index("rockthrow"), 20};
+        me.moves[1] = MoveSlot{d.move_index("tackle"),    35};
+        std::vector<Event> ev;
+        step(d, b, Action{Action::Kind::Move, 0}, Action{Action::Kind::Move, 3}, &ev);
+        for (const Event& e : ev) {
+            if (e.kind == Event::Kind::Used && e.side == 0) ++used;
+            if (e.kind == Event::Kind::Missed && e.side == 0) ++missed_90;
+        }
+        Battle c = b;
+        std::vector<Event> ce;
+        step(d, c, Action{Action::Kind::Move, 1}, Action{Action::Kind::Move, 3}, &ce);
+        for (const Event& e : ce)
+            if (e.kind == Event::Kind::Missed && e.side == 0) ++missed_100;
+    }
+    CHECK(used == 200);
+    CHECK(missed_90 > 5 && missed_90 < 60);   // ~10% of 200
+    CHECK(missed_100 == 0);
+
+    // Paralysis holds a creature about a quarter of the time — and, in the other
+    // direction, not always.
+    int held = 0, acted = 0;
+    for (int i = 0; i < 200; ++i) {
+        Battle b;
+        b.side[0] = make_party(d, {{16, 20}});
+        b.side[1] = make_party(d, {{16, 20}});
+        b.rng = 31 + static_cast<std::uint64_t>(i) * 2654435761ull;
+        b.side[0].now().status = Status::Paralyze;
+        std::vector<Event> ev;
+        step(d, b, Action{Action::Kind::Move, 0}, Action{Action::Kind::Move, 0}, &ev);
+        for (const Event& e : ev) {
+            if (e.kind == Event::Kind::Immobilised && e.side == 0) ++held;
+            if (e.kind == Event::Kind::Used && e.side == 0) ++acted;
+        }
+    }
+    CHECK(held > 20 && held < 90);
+    CHECK(acted > 100);
+}
+
+void test_the_survivor_wins(const Dex& d) {
+    // `winner` is an index, so it is exactly one token away from naming the side that
+    // just died — and every "did it end" assertion in this file would still pass.
+    for (int i = 0; i < 60; ++i) {
+        Battle b;
+        b.side[0] = make_party(d, {{static_cast<int>(1 + i % 18), 20}});
+        b.side[1] = make_party(d, {{static_cast<int>(1 + (i * 5) % 18), 20}});
+        b.rng = 77 + static_cast<std::uint64_t>(i) * 40503;
+        for (int t = 0; t < 200 && !b.over; ++t)
+            step(d, b, choose(d, b, 0), choose(d, b, 1));
+        CHECK(b.over);
+        if (b.winner < 0) continue;                 // a genuine double knockout
+        CHECK(b.side[b.winner].any_alive());
+        CHECK(!b.side[1 - b.winner].any_alive());
+    }
+}
+
+void test_type_chart_survives_growth() {
+    // The shipped types.def declares all six types BEFORE the first `eff` line, so
+    // the re-layout inside `type` never has to preserve anything and a mutation that
+    // deletes it passes every table check. Interleave them and it has work to do.
+    Dex d;
+    CHECK(parse_into(d, "type alpha\neff alpha alpha 50\n"
+                        "type beta\neff beta alpha 200\n"
+                        "type gamma\n", nullptr));
+    const int a = d.types.index("alpha"), b = d.types.index("beta"),
+              g = d.types.index("gamma");
+    CHECK(d.types.multiplier(a, a) == 50);     // written when the chart was 1x1
+    CHECK(d.types.multiplier(b, a) == 200);    // written when it was 2x2
+    CHECK(d.types.multiplier(a, b) == kNeutral);
+    CHECK(d.types.multiplier(g, g) == kNeutral);
+    CHECK(d.types.eff.size() == 9);
+}
+
 } // namespace
 
 int main() {
@@ -649,6 +884,12 @@ int main() {
     test_catch(d);
     test_hash_is_sensitive(d);
     test_ai(d);
+    test_rng();
+    test_damage_modifiers(d);
+    test_the_coin_is_a_coin(d);
+    test_accuracy_and_paralysis(d);
+    test_the_survivor_wins(d);
+    test_type_chart_survives_growth();
     test_no_free_lunch(d);
     test_every_species_wears_a_sprite(d);
     test_evolution_is_one_more_part(d);
