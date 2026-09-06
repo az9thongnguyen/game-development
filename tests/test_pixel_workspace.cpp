@@ -437,6 +437,56 @@ void test_new_sheet() {
     CHECK(ws.new_name().empty());                      // the field clears on success
     CHECK(assets::load_file("textures/fence.hrt").has_value());
 
+    // ---- the button's OTHER direction: disabled means it does nothing ----
+    // Testing that new_sheet() refuses is not the same as testing that the CONTROL
+    // refuses. A button drawn enabled over a function that says no is chapter 126
+    // wearing a different hat, and only pressing it can tell the two apart.
+    {
+        d.panel(ws, ui::Input{});
+        const std::size_t before = ws.count();
+        CHECK(ws.new_name().empty());
+        while (ws.take_message()) {}                 // drain, so the next one is new
+        click(d, ws, ws.new_button_rect());          // no name typed
+        CHECK(ws.count() == before);
+        // Nothing HAPPENED, and nothing was SAID. That second half is the assertion:
+        // the function refuses a blank name anyway, so a button wrongly drawn enabled
+        // would still create nothing — it would just answer with an error nobody
+        // asked for. Silence is the only observable difference between a disabled
+        // control and an enabled one over a guard.
+        CHECK(!ws.take_message().has_value());
+
+        // Now with a name, but with unsaved pixels: still nothing.
+        const ui::Rect f2 = ws.new_name_rect();
+        d.panel(ws, mouse(f2.x + f2.w / 2, f2.y + f2.h / 2, true, true));
+        const std::string n2 = "gate";
+        ui::Input typing2 = mouse(f2.x + f2.w / 2, f2.y + f2.h / 2, false, false);
+        typing2.text     = n2.c_str();
+        typing2.text_len = n2.size();
+        d.panel(ws, typing2);
+        CHECK(ws.new_name() == n2);
+
+        platform::InputState dirt = at_pixel(ws, 3, 3, false);
+        dirt.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+        d.frame(ws, dirt);
+        dirt.mouse_down[static_cast<int>(platform::MouseButton::Left)] = false;
+        d.frame(ws, dirt);
+        CHECK(ws.dirty());
+        d.panel(ws, ui::Input{});
+        while (ws.take_message()) {}
+        click(d, ws, ws.new_button_rect());
+        CHECK(ws.count() == before);                 // still refused, from the control
+        CHECK(!ws.take_message().has_value());       // ...and silently, see above
+        CHECK(!assets::load_file("textures/gate.hrt"));
+
+        // ...and once saved, the SAME click goes through. Without this line the two
+        // checks above would pass on a button that is never enabled at all.
+        CHECK(ws.save().ok);
+        d.panel(ws, ui::Input{});
+        click(d, ws, ws.new_button_rect());
+        CHECK(ws.count() == before + 1);
+        CHECK(assets::load_file("textures/gate.hrt").has_value());
+    }
+
     // While the harness can finally press a button: Save was drawn in every frame of
     // every test in this file and clicked in none of them. Pressing it is the only
     // thing that would notice it being drawn somewhere the hit test does not look.

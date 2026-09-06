@@ -42,10 +42,21 @@ regression, not a shortcut:
   party), `--cmd asset.texture` (the Texture Lab's `.recipe` — art we *generated*), and
   `--cmd asset.pixels` (a `.pix` ASCII sheet — art we *drew*; text because a tile SET is
   one design cut N ways and its seams are a relationship you review, not sixteen
-  canvases you click through). **All three** must gain a line in
-  **`assets/ATTRIBUTION.md`** in the same change — imported art because of the licence,
-  our own art because a file that is ours should be provably ours. A `.recipe`/`.pix` is
-  a *source*: it stays out of the manifest, and a test re-bakes it and compares bytes.
+  canvases you click through). A `.recipe`/`.pix` is a *source*: it stays out of the
+  manifest, and a test re-bakes it and compares bytes — as does every `import` line in
+  every `.pack`, so all three doors are held to one standard.
+- **Provenance is DERIVED, not remembered** (`provenance_core`, chapter 131). The rule
+  used to read "every new `.hrt` gains a line in `assets/ATTRIBUTION.md` in the same
+  change", and by the time it was checked it had been forgotten twenty times out of
+  twenty-three. The three doors leave three different marks on disk — a `.pack` naming
+  the import, a sibling `.recipe`, a sibling `.pix` — so `engine::scan_provenance()`
+  reads them instead. Anything else is `UNRECORDED` and `test_provenance` goes RED.
+  The ledger table inside `ATTRIBUTION.md` is **generated** between two markers (the
+  prose around it is hand-written and survives); re-bake it with
+  `--cmd asset.attribution ATTRIBUTION.md`. Art with no surviving source is `declared`
+  — named one by one in a `.pack`, which is a weaker claim and reads as one.
+  **What you still owe by hand is the PROSE**: why the tile exists, whose palette it
+  borrows. The list keeps itself.
 - **Web-portability is baked in from the start.** The same engine/game code compiles
   native and WASM; only the platform `run()` loop is `#ifdef`'d.
 
@@ -100,6 +111,11 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --cmd asset.import  <src.png>    <dst.hrt>  # bring foreign art in (offline)
 ./build/demo --cmd asset.texture <src.recipe> <dst.hrt>  # bake GENERATED art (offline)
 ./build/demo --cmd asset.pixels  <src.pix>    <dst.hrt>  # bake DRAWN art, an ASCII sheet
+./build/demo --cmd asset.new <name> <tile-px> <cols> <rows> [<proj>]  # a NEW sheet:
+                                              # .pix source -> .hrt -> declared in the
+                                              # manifest -> ledger re-baked, in one act
+./build/demo --cmd asset.attribution ATTRIBUTION.md   # re-bake the provenance ledger
+                                              # (exits non-zero on an UNRECORDED asset)
 ./build/demo --cmd collection.index projects collection.json  # bake the game LIST a page reads
                                               # (assets/collection.json is committed; a test
                                               #  re-bakes it and compares bytes, like a .recipe)
@@ -144,8 +160,8 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**28 of the 76 tests**: `ctest` here reports 76, a build configured without Drogon
-reports 48. Since chapter 129 CI has a `baas-test` job in the
+**28 of the 80 tests**: `ctest` here reports 80, a build configured without Drogon
+reports 52. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that
@@ -221,7 +237,8 @@ Understand these deliberate patterns before editing the build:
   `render3d_core`, `iso_core`, `ecs_core`, `jobs_core`, `mem_core`, `physics_core`,
   `ui_core`, `text_core`, `viz3d_core`, `colony_core`, plus the platform-spine
   cores `project_core`, `inspect_core` (one read+validate+hash, shared by launch,
-  package, publish and the Studio), `resource_core`, `release_core`, `release_ops_core`,
+  package, publish and the Studio), `provenance_core` (where every `.hrt` came from,
+  derived from the marks the three doors leave — the attribution rule, as a boolean), `resource_core`, `release_core`, `release_ops_core`,
   the game cores `farm_core` (day loop, crops, NPC schedules, dialogue, the pure
   cloud-save verdict `decide_sync`, the art `theme` — NAMED sheets, so imported
   and self-drawn art never share a file, plus `line_piece`, which picks one of a

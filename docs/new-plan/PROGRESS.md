@@ -1115,6 +1115,64 @@ việc, không phải release đã publish (cần server — S29) · markdown l�
 link, ảnh, list lồng, blockquote) · **Chrome only** · chỉ mục **bake bằng tay**, test chỉ
 bắt được sau · `build-web/assets/` trùng lặp nửa MB với `demo.data`.
 
+## S22 — luật mà máy giữ (chương 131) — XONG 2026-09-06
+
+Merge `feat/s22-provenance`. Ba commit.
+
+**Vấn đề thật, đo được trước khi sửa:** `CLAUDE.md` mang luật *"mỗi `.hrt` mới phải có
+một dòng trong ATTRIBUTION.md, cùng thay đổi"* từ chương 122. Repo có **23 file `.hrt`**;
+file đó gọi tên **ba**. Hai mươi cái còn lại nằm dưới một câu kết bao trùm — nhiều khả
+năng đúng, **không kiểm được**, đúng hình dạng lời cam đoan mà ch.129 tìm thấy dưới 28
+test chưa từng chạy.
+
+| Commit | Việc |
+|---|---|
+| `669354c` | `assets::list_tree` (đệ quy — `list_dir` chỉ walk `textures/` thì bỏ sót `pieces/`, `sprites/` và gốc = 14/20 lỗ) + `provenance_core`: ba cửa để lại ba dấu, `Ledger::ok()` là boolean mà luật kia luôn ngụ ý. Hai file `.pack`; ledger sinh ra giữa hai marker trong ATTRIBUTION.md. |
+| `7a5f4f3` | `asset.new` — `.pix` **trước**, bake, khai vào manifest, re-bake ledger, một hành động. `paint::blank_sheet`. |
+| `5a9fdfc` | Studio: trường tên + nút Create trong Pixels; card asset có ORIGIN/FROM/LICENCE; `--lab` cũng đăng ký command table. |
+
+**Ba thứ tìm ra khi làm, không phải khi lập kế hoạch:**
+
+- **`asset.new` bản đầu kiểm manifest SAU khi ghi file.** `asset.new x 16 1 1
+  nosuch.gameproject` báo lỗi và để lại hai file thật + ledger cũ → `ctest` đỏ vì một lý
+  do không liên quan gì đến việc đang làm. Giờ mọi thứ từ chối được đều từ chối **trước**
+  khi ghi — đúng bài stage-then-rename mà release store đã có.
+- **Chưa test nào trong `test_pixel_workspace.cpp` từng NHẢ chuột.** `ui::interact` kích
+  hoạt khi `released`; helper `mouse()` không bao giờ set field đó. Nên bộ test kéo được
+  slider, gõ được vào field, và **chưa bao giờ bấm một cái nút nào**. Bốn nút tool, Undo,
+  Redo, Save — vẽ trong mọi khung hình của mọi test, bấm trong không test nào. Đúng điểm
+  mù ch.126, nằm dưới một suite trông rất kỹ.
+- **Cửa import chưa từng được so byte.** `.recipe` và `.pix` đều được bake lại và so;
+  bản import thì không — và nó là cửa **có giấy phép đứng sau**. Giờ mọi dòng `import`
+  trong mọi `.pack` được chạy lại và so byte, đọc từ pack chứ không gọi tên Kenney.
+
+**Mutation — 20 phép, 18 KILL, baseline sau khi restore GREEN.** Bốn cái sống sót ban
+đầu đều là lỗ thật, đã đóng:
+
+| Sống sót | Lỗ nó chỉ ra | Đã đóng bằng |
+|---|---|---|
+| `sibling()` dùng dấu chấm **đầu** thay vì cuối | mọi tên file trong repo có đúng một dấu chấm, nên `a.b.hrt` sẽ đọc là UNRECORDED trong khi source nằm ngay cạnh | test với `textures/a.b.hrt` |
+| markdown in `0 unrecorded` bất kể thật | dòng người ta liếc qua; "0" in đè lên một lỗ còn tệ hơn không in gì | assert nguyên chuỗi `1 raster assets, 1 unrecorded.` |
+| `asset.new` ghi đè `.hrt` có sẵn | guard `.pix` che mất — nhưng **20/23 file trong repo là `.hrt` KHÔNG có `.pix`**, gồm cả sheet CC0 đã import, nên đây là thứ duy nhất chặn `asset.new town ...` ghi đè Kenney | test tạo `.hrt` trần rồi assert từ chối + byte không đổi |
+| nút Create luôn enabled | hàm vẫn từ chối nên **không có gì xảy ra** trong cả hai trường hợp; khác biệt quan sát được duy nhất là nút sai sẽ **nói** một lỗi không ai hỏi | assert `take_message()` rỗng — nút disabled thì **im lặng** |
+
+Hai cái còn sống, **có chủ ý ghi lại**: `size < 1` → `size < 0`, và cap kiểm bằng phép
+nhân thay vì phép chia. Cả hai cùng một guard: trên arm64, chia cho 0 không trap và phép
+nhân ở các giá trị test được không tràn, nên **không phân biệt được bằng quan sát** — muốn
+giết phải yêu cầu một sheet đủ lớn để treo cả suite. Guard viết bằng phép **chia** vì nó
+không thể tràn; test không chứng minh được điều đó.
+
+**Số liệu:** 80/80 ctest · **18/20 mutation** · golden path xanh, 0 rò
+`.tmp`, package hash **không đổi** `cd1c2864f8315bff` · web build xanh · một khung hình đã
+render và **đã nhìn** (inspector NEW SHEET; card ORIGIN/FROM/LICENCE).
+
+**Chưa xác minh / trần:** sheet mới **16px, một ô** (CLI nhận mọi cỡ, nút thì không) ·
+sheet mới mở ra với **palette rỗng** — phải qua mixer mới có màu · **`declared` là lời
+hứa**, 20 file vẫn không bake lại được từ gì cả · ledger **bake bằng tay** (chỉ
+`asset.new` tự re-bake; ba cửa kia không) · chỉ theo dõi `.hrt` — font/map/`.def`/scene
+không có ledger · **không có trình nhập `.pack`**: không tải, không giải nén, không kiểm
+checksum · **bốn nút tool vẫn chưa từng bị bấm** trong test (chưa publish rect).
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1126,7 +1184,7 @@ làm chín T6).
 | ~~S19~~ | ~~Trang web thật + chứng minh chạm~~ — **XONG**, chương 128 | M |
 | ~~S20~~ | ~~CI chạy 28 test BaaS~~ — **XONG**, chương 129 (27/28; cái thứ 28 là một trần) | S |
 | ~~S21~~ | ~~Collection page + `cover`/`summary` + README template~~ — **XONG**, chương 130 | S/M |
-| S22 | Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card | M |
+| ~~S22~~ | ~~Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card~~ — **XONG**, chương 131 | M |
 | S23 | Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1` | L |
 | S24 | Hấp thụ 4 lab hiệu ứng (`fx light audio anim`) thành component của Scene | M |
 | S25 | IntGrid + rule autotile trong Map workspace | L |

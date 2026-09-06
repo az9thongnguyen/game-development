@@ -136,6 +136,9 @@ static void test_a_file_with_no_source_is_the_failure() {
     CHECK(l.files.size() == 1);                       // listed, not hidden
     CHECK(l.files[0].origin == Origin::Unrecorded);
     CHECK(contains(ledger_markdown(l), "UNRECORDED"));
+    // ...and the COUNT, which is the line a reader skims. "0 unrecorded" printed over
+    // a hole is a worse lie than no summary at all.
+    CHECK(contains(ledger_markdown(l), "1 raster assets, 1 unrecorded."));
 
     // ...and the same file, once declared, is fine — the guard's other direction.
     Pack ours;
@@ -148,6 +151,16 @@ static void test_a_file_with_no_source_is_the_failure() {
     // A declared asset bakes from nothing, so its source is the file that VOUCHES —
     // the one to open when the question is who said so.
     CHECK(d.files[0].source == "ours.pack");
+}
+
+static void test_the_sibling_is_the_LAST_dot() {
+    // `a.b.hrt` bakes from `a.b.pix`, not from `a.pix`. Every filename in this repo
+    // has one dot, which is exactly why nothing noticed the difference — and a sheet
+    // named `farm.path.hrt` would have read as UNRECORDED with its source beside it.
+    const Ledger l = attribute({"textures/a.b.hrt"}, {"textures/a.b.pix"}, {});
+    CHECK(l.ok());
+    CHECK(l.files[0].origin == Origin::Drawn);
+    CHECK(l.files[0].source == "textures/a.b.pix");
 }
 
 static void test_a_sibling_of_the_wrong_kind_is_not_a_source() {
@@ -267,6 +280,7 @@ int main() {
     test_pack_fails_closed_and_ignores_unknowns();
     test_the_three_doors_leave_three_marks();
     test_a_file_with_no_source_is_the_failure();
+    test_the_sibling_is_the_LAST_dot();
     test_a_sibling_of_the_wrong_kind_is_not_a_source();
     test_a_stale_claim_is_a_problem_not_coverage();
     test_two_answers_is_not_an_answer();

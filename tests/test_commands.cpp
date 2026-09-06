@@ -424,6 +424,26 @@ static void test_asset_new() {
     }
     // Creating is not editing: it never lands on a file that is already there.
     CHECK(!cmd::run("asset.new", {"signs", "16", "2", "2"}).ok);
+    // ...and the case the source check does NOT cover, which is most of this repo: a
+    // `.hrt` with no `.pix` beside it. Twenty of the twenty-three committed rasters are
+    // that shape, including the imported CC0 sheet, so this guard is the only thing
+    // standing between `asset.new town ...` and overwriting Kenney's tileset.
+    {
+        gfx::Image one;
+        one.w = 1; one.h = 1; one.pixels.assign(1, 0xFF112233u);
+        CHECK(assets::write_file("textures/legacy.hrt", gfx::encode_hrt(one)));
+        const engine::OpResult r2 = cmd::run("asset.new", {"legacy", "16", "1", "1"});
+        CHECK(!r2.ok);
+        CHECK(r2.message.find("already exists") != std::string::npos);
+        CHECK(!assets::load_file("textures/legacy.pix"));       // and it wrote no source
+        const auto still = assets::load_file("textures/legacy.hrt");
+        CHECK(still.has_value());
+        if (still) CHECK(*still == gfx::encode_hrt(one));       // the bytes are untouched
+        // Removed again: it is a fixture for the guard above, and left in place it is
+        // a raster with no origin — which the ledger further down would correctly
+        // refuse, failing this test for a reason it is not about.
+        std::filesystem::remove(root / "textures" / "legacy.hrt");
+    }
 
     // ---- refused AFTER the name checks pass must still write nothing ----
     const engine::OpResult bad_proj =
@@ -499,6 +519,37 @@ static void test_attribution_command() {
     CHECK(after.has_value());
     if (after) CHECK(std::string(after->begin(), after->end()) == kProse);   // untouched
     std::filesystem::remove(ASSET_ROOT "/assets/_no_markers.md");
+
+    // And the refusal the whole subsystem exists for: a raster with no origin makes
+    // this command exit NON-ZERO. Writing the table anyway would put the word
+    // UNRECORDED in a committed file and call it done.
+    {
+        const std::filesystem::path tmp =
+            std::filesystem::temp_directory_path() / "gd_attr_hole_test";
+        std::filesystem::remove_all(tmp);
+        std::filesystem::create_directories(tmp / "textures");
+        assets::set_base_path(tmp.string());
+
+        gfx::Image one;
+        one.w = 1; one.h = 1; one.pixels.assign(1, 0xFF445566u);
+        CHECK(assets::write_file("textures/orphan.hrt", gfx::encode_hrt(one)));
+        static const char kDoc[] = "# A\n\n<!-- BEGIN LEDGER (generated) -->\n<!-- END LEDGER (generated) -->\n";
+        CHECK(assets::write_file("ATTRIBUTION.md",
+                                 std::vector<std::uint8_t>(kDoc, kDoc + std::strlen(kDoc))));
+
+        const engine::OpResult hole = cmd::run("asset.attribution", {"ATTRIBUTION.md"});
+        CHECK(!hole.ok);
+        CHECK(hole.message.find("1 unrecorded") != std::string::npos);
+        // It still WRITES the table — the hole belongs in the document where a reader
+        // sees it, and the non-zero exit is what stops a build from calling it fine.
+        const auto doc2 = assets::load_file("ATTRIBUTION.md");
+        CHECK(doc2.has_value());
+        if (doc2) CHECK(std::string(doc2->begin(), doc2->end()).find("UNRECORDED") !=
+                        std::string::npos);
+
+        std::filesystem::remove_all(tmp);
+        assets::set_base_path(ASSET_ROOT "/assets");
+    }
 }
 
 int main() {
