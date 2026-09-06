@@ -1022,6 +1022,48 @@ gì để cướp.
 là con tem** (390×219 → nút d-pad 27px, dưới mọi khuyến nghị; trang chỉ khuyên xoay máy) ·
 chỉ Chrome, chưa có Safari/iOS · `?shell=` trên điện thoại chưa kiểm.
 
+## S20 — nửa bộ test chưa từng chạy (chương 129) — XONG 2026-09-06
+
+**Con số chưa ai viết ra:** `ctest` ở máy này = **76**; CI = **48**. Chênh **28** là toàn
+bộ nửa Drogon-gated — auth, JWT, RBAC, purchase, cloud save, inventory, secret rotation,
+idempotency, và **ba bài end-to-end dựng server thật**. Tối ở CI **từ ngày được viết**.
+
+**Và con số trong kế hoạch của tôi cũng sai.** Ghi "23 test" — đó là số **file**
+`test_baas_*.cc`. Đo thay vì đếm: cấu hình lại với `-DCMAKE_DISABLE_FIND_PACKAGE_Drogon=ON`
+(đúng cái CI thấy) → 48. **File không phải test.**
+
+**Đã CHẠY, không chỉ viết:** job mới chính là build stage của `baas/ops/Dockerfile` (có từ
+ch.107) dừng ở test. Hai mẩu build system để job không phải mang danh sách:
+`BUILDSYSTEM_TARGETS` → target `baas_tests`; và `ctest --test-dir build/baas` chọn **đúng**
+28 test của thư mục đó — **thư mục LÀ nhóm**, không regex (hai test tên `metrics` và
+`rate_limiter`, không pattern `baas_*` nào bắt được), không danh sách tên để lạc hậu.
+
+**Bắt CI chạy lộ ra bug thật trong phút đầu.** `test_sdk_realtime_live` **không biên dịch**
+trên libcurl 7.81 (dùng `curl_ws_recv`, API có từ 7.86; Ubuntu 22.04 = base của image
+Drogon). Điểm đáng nói không phải phiên bản mà là **sự bất đối xứng**: SDK **đã** xử lý —
+thiếu header thì transport realtime thành **stub** và in ra một dòng; còn **test kiểm chính
+cái stub đó lại không gate**, và một test không biên dịch được thì không làm hỏng một test,
+nó làm **hỏng cả build** — kéo theo 27 cái kia. Không ai thấy vì **máy duy nhất từng dựng
+nửa này là một cái Mac có curl 8.x của Homebrew**.
+
+**Phát hiện bên dưới, về SẢN PHẨM chứ không phải CI:** transport ws:// native của SDK là
+**stub trên mọi bản Ubuntu 22.04** — kể cả **image container của chính backend này**.
+Người dùng Linux dựng SDK ở đó có REST và **không có realtime**, và thứ duy nhất nói ra là
+một dòng `STATUS` lúc configure. Không có gì báo lúc chạy.
+
+- **27/27 xanh trong container**, 51 s, đã chạy thật ở **đúng image và đúng kiến trúc
+  (amd64)** của runner **trước khi** đẩy YAML — trong khi file CI vẫn còn dòng "written but
+  not run in the authoring environment" (nay đã thu hẹp lại đúng phần nó còn mô tả).
+- Job **assert sàn 27**: một job xanh mà chạy 0 test là đúng cái thất bại slice này tồn tại
+  để chấm dứt, và không có dòng đó thì nó **không phân biệt được** với job chạy đủ.
+- 76/76 ở máy · YAML đã parse kiểm.
+
+**Chưa xác minh / trần:** `sdk_realtime_live` vẫn chỉ chạy ở **một máy** (cần libcurl ≥
+7.86) · realtime native là stub trên 22.04, **im lặng lúc chạy** · chỉ SQLite (Postgres +
+`FOR UPDATE` vẫn là **một** slice, tách ra là ship một race) · **không có job Docker**:
+CI dựng và test backend, không dựng image, không gọi `/healthz` · bản kiểm ở máy chạy
+amd64 **giả lập**; native amd64 là lần chạy đầu của CI.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1031,7 +1073,7 @@ làm chín T6).
 | # | Slice | Size |
 |---|---|---|
 | ~~S19~~ | ~~Trang web thật + chứng minh chạm~~ — **XONG**, chương 128 | M |
-| S20 | CI chạy 23 test BaaS (container Drogon) — cả bộ đang **tối** | S |
+| ~~S20~~ | ~~CI chạy 28 test BaaS~~ — **XONG**, chương 129 (27/28; cái thứ 28 là một trần) | S |
 | S21 | Collection page + `cover`/`summary` trong manifest + README template | S/M |
 | S22 | Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card | M |
 | S23 | Kết thúc migration map: hấp thụ Map Lab, giết `fpsmap1` | L |

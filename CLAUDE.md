@@ -140,9 +140,13 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 ```
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
-depends on it; when Drogon is absent its targets, including the `baas_*`/`sdk_live`/
-`farm_live` tests, silently vanish from `ctest` — and CI installs only SDL2, so **none
-of them run there**):
+depends on it; when Drogon is absent its targets vanish from `ctest`, which is
+**28 of the 76 tests**: `ctest` here reports 76, a build configured without Drogon
+reports 48. Since chapter 129 CI has a `baas-test` job in the
+`drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
+libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
+than silently. `cmake --build <dir> --target baas_tests` builds exactly that
+directory's targets; `ctest --test-dir <dir>/baas` runs exactly its tests):
 
 ```sh
 brew install drogon libsodium                  # enables the 'baas' target
