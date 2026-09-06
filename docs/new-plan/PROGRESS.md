@@ -850,25 +850,84 @@ hình dạng không kiểm được nếu không có renderer. Đưa ra thành h
 `farm::line_piece` trong `farm_core` (đúng luật D của spine), rồi kiểm **cả 16** vùng
 lân cận + 5 ô mốc trên bản đồ thật. **Guard thừa thứ tư** liên tiếp (121, 122, 123, 125).
 
+## S17 — những động từ ngón tay không với tới (chương 126) — XONG 2026-09-06
+
+**Đã CHẠY, không chỉ viết:**
+
+- **Hotbar bốn ô GIỜ LÀ CONTROL**, không còn là bức tranh của một control chưa tồn tại.
+  Nó vẽ đúng bốn tool từ chương 113 và không trả lời gì. Hình học của nó **chuyển vào**
+  `controls.hpp` (chứ không **chép** ra) — vì một dải vừa trả lời tap vừa tự tính toạ độ
+  là **hai layout cho một màn hình**, đúng con bug dòng đầu file đó nói.
+- **Hai chiều cao, MỘT điều kiện**: `hud_height = pad_fits ? 44 : 24`. 44 là cái ngón tay
+  cần; 24 là cái *nhãn* cần. Cả hai đều đúng, về hai thứ khác nhau — và nó thành *target*
+  đúng lúc pad vừa, tức cùng một câu hỏi, hỏi một lần.
+- **Nút `save` (F5)** — một hàng TRÊN hàng ngón cái, để với `use` không trượt vào nó.
+- **Hai đáp án xung đột cloud (F6/F7) THAY THẾ `save`**, không đứng cạnh. `save_game()`
+  gọi thẳng `push_save()`, nên bấm save lúc xung đột **âm thầm nghĩa "bản của tôi
+  thắng"** — không được phép mời điều đó dưới dạng ô 44px cho người chưa từng thấy câu
+  hỏi. `keep` lấy ghế ngoài (dễ với) vì nó **không đổi gì**; `take` phải với xa.
+- **Nút ghi TÊN PHÍM nó thay** (`F5`/`F6`/`F7`, cạnh `Z`/`Q`) → chip góc phải
+  "F6 keep yours / F7 take cloud" **thành legend của chúng, không sửa một chữ**.
+
+**Tìm ra một KHOÁ CỨNG khi kiểm tra:** nhánh `talking_` trong `update()` **`return`
+trước khi đọc con trỏ**. Mở hộp thoại với Anna = **đóng băng vĩnh viễn** (không trả lời,
+không đi, không lưu, không thoát; lối ra duy nhất là tắt app), màn hình **trông hoàn toàn
+bình thường**. Sống từ chương 124 — chương *tuyên bố* "chơi được bằng tay" — và không ai
+thấy vì **`test_farm_scene` KHÔNG CÓ test hội thoại nào cả**. Sửa: `talk_layout` +
+`read(Talk)` trong cùng file; **chạm một lựa chọn để chọn, chạm panel để sang dòng**,
+không thêm nút nào. Panel cũng chuyển lên **trên** hotbar (trước đó `h - box_h - 12`,
+đúng với dải 24 và che dải 44).
+
+**Và một lỗi thứ tư chỉ ẢNH CHỤP mới thấy:** nút `v` của d-pad vẽ đè lên chip cảnh báo
+config — đúng dòng mà comment của nó gọi là "dòng operator phải đọc được từ đầu phòng".
+76 test xanh, 20 mutation chết hết, compiler im lặng. Giờ đã có test: tìm **bbox nền đục
+của chip** rồi cấm mọi control cắt qua nó — nói bằng LUẬT, không bằng ngưỡng pixel.
+
+- **13 hình chữ nhật đổi bản chất của test hình học.** 6 cái thì nhìn được; 13 thì không,
+  và hai cái chồng nhau 4px là trò tung đồng xu người chơi luôn thua. Nên: **sweep tính
+  chất** ~12.000 layout (480..1920 × 260..1200, bước lẻ, × 2 trạng thái conflict) — mọi
+  box còn sống đều nằm trong màn hình, **không hai cái nào chồng nhau** — và sweep **tự
+  kiểm chính nó** (`with_pad > 100 && without_pad > 100`).
+- **`Box` rỗng LÀ toàn bộ guard.** `contains` đã false với mọi điểm trong box rộng 0, nên
+  control chưa được layout **không thể** bị bấm, kể cả bởi code quên hỏi. Thay cho
+  `bool has_save` — hai sự thật về một thứ thì sớm muộn cũng cãi nhau. Test then chốt:
+  **cùng một pixel**, trên hai layout, phải cho hai câu trả lời khác nhau và không lẫn.
+- **20 mutation: 18 chết ngay; 2 sống sót và cả hai CÙNG MỘT LỖI** — `if (b.empty())
+  return;` trong renderer nút, và pad vẫn vẽ khi hộp thoại giữ input. Mọi test đều hỏi
+  *"bấm được không"*; **không cái nào hỏi thứ ĐANG VẼ có bấm được không**. Hai claim hành
+  vi đóng cả hai (giữ chuột trên `use` không đổi một pixel nào khi hộp thoại đang mở; một
+  control vắng mặt không để lại chữ ma ở góc), rồi 20/20.
+- 76/76 · golden path xanh · web build xanh · **đã render và
+  NHÌN** ba khung: pad + F5, xung đột (F6/F7 dưới chip), và hộp thoại 3 lựa chọn.
+
+**Bài học ghi lại:** *"chơi được bằng tay"* được tuyên bố ở ch.124 dựa trên **ba động từ
+đi được**, trong khi game có bảy — và cái thứ bảy **treo máy**. Khoảng cách không nằm ở
+chỗ test yếu, mà ở chỗ **không có test nào cho đường đó**. Trước khi tin một tuyên bố về
+"dùng được", hãy **liệt kê động từ** và đối chiếu từng cái, đừng đối chiếu ấn tượng.
+
 ## Việc kế tiếp
 
-**S17 — chưa chốt.** Ba ứng viên, theo thứ tự tôi thấy đáng làm:
+**S18 — chưa chốt.** Ba ứng viên, theo thứ tự tôi thấy đáng làm:
 
-1. **Nút tool (1–4) + save trên màn hình.** Người chơi điện thoại hiện chỉ đi được, dùng
-   được, đổi hạt được. Đây là khoảng cách rõ nhất giữa "chạy được trên điện thoại" và
-   "chơi được trên điện thoại", và nó nhỏ.
-2. **Colour picker trong Pixel workspace.** Hiện chỉ tô được màu ảnh đã có, nên workspace
-   không sửa nổi `farm_path.hrt` theo hướng mới. Cùng với "không tạo được file mới", đây
-   là hai trần khiến chương 125 phải đi cửa `.pix`.
-3. **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`) — và nó là chỗ *đầu tiên*
-   thấy được autotile chạy khi vẽ: sửa đường trong editor, mảnh tự đổi theo.
+1. **Colour picker trong Pixel workspace.** Hiện chỉ tô được màu ảnh **đã có**, nên
+   workspace không sửa nổi `farm_path.hrt` theo hướng mới. Cùng với "không tạo được file
+   mới", đây là hai trần khiến chương 125 phải đi cửa `.pix` — và là hai trần *duy nhất*
+   đứng giữa "có editor" và "vẽ được art mới trong Studio".
+2. **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`) — và nó là chỗ *đầu tiên*
+   thấy được autotile chạy **khi vẽ**: sửa đường trong editor, mảnh tự đổi theo.
+3. **Đa chạm thật ở platform seam.** Chương 126 đóng hết động từ, nhưng vẫn **một ngón**:
+   không vừa giữ hướng vừa bấm hành động. Đây là ràng buộc còn lại của "chơi được bằng
+   tay", và nó nằm ở seam chứ không ở game — nên nó phục vụ mọi surface, không riêng farm.
 
 Sau đó (chưa xếp thứ tự):
 
-- **Đa chạm thật** ở platform seam — điều kiện để vừa giữ hướng vừa bấm hành động.
-- **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`.
+- **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`. `colony` cũng
+  là client BaaS, nên nó là bài kiểm tra thứ hai cho đường manifest → scene.
+- **Điều khiển màn hình mới chỉ có ở farm.** Nếu game thứ hai cần, `farm/controls.hpp` sẽ
+  phải tách ra — nhưng **chưa có người dùng thứ hai**, nên chưa tách (đúng luật §10b).
 - **Nước động**: `studio::make_sheet` làm được miễn phí; farm chưa biết gì về frame.
 - **Vật liệu autotile thứ hai** — hiện chỉ con đường; chưa có gì dùng chung giữa hai bộ.
+- **Đo chi phí frame của farm** — `--bench-ui` vẫn chỉ chạy Studio.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
@@ -881,4 +940,8 @@ Sau đó (chưa xếp thứ tự):
   canvas, **không tạo file mới**, **không chọn được màu ngoài ảnh**, guide cố định 16px.
 - **`.pix` và `.hrt` có thể lệch nhau** — giống `.recipe`: test bắt được, không chặn được.
 - **`autotile_index` (47-blob) vẫn không có art** — Tiny Town chỉ có mảng 9 mảnh.
-- **Điều khiển màn hình**: chỉ farm có; luôn hiện, không tự ẩn trên desktop.
+- **Điều khiển màn hình**: chỉ farm có; luôn hiện, không tự ẩn trên desktop; **một ngón**
+  (SDL dựng chuột từ chạm, nên không giữ hướng + bấm hành động cùng lúc).
+- **Không có nút `F9`** (load) — load vứt bỏ ngày đang chơi và farm không có modal để hỏi
+  lại; động từ phá huỷ ở lại sau một phím phải cố ý bấm.
+- **Nhãn hạt trong ô hotbar có thể tràn** ô 62px với tên cây dài.
