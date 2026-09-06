@@ -85,6 +85,10 @@ constexpr int kAA = 2;
 int run_window(const platform::Config& cfg, std::unique_ptr<engine::Scene> scene) {
     if (!platform::init(cfg)) return 1;
     platform::init_audio();
+    // The Studio's speaker, wired here because this is the layer allowed to know about
+    // SDL. Everything above studio_shell/sound_bank.hpp only asks for a sound.
+    studioshell::set_audio_device({&platform::init_audio, &platform::audio_rate,
+                                   &platform::play_sound});
 
     engine::App app(std::move(scene));
     platform::run([&app](double dt) { app.frame(dt); });

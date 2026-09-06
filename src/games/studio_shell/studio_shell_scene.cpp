@@ -246,7 +246,12 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
                           static_cast<int>(i) == ws_;
         workspaces_[i]->update(dt, in, live);
         if (auto msg = workspaces_[i]->take_message()) flash(*msg);
+        // Drained from EVERY workspace, not just the visible one: a scene left running
+        // in a background tab keeps simulating (three lines above say so), and a sound
+        // its simulation asked for is a sound that happened.
+        for (const Workspace::SoundRequest& s : workspaces_[i]->take_sounds()) sound_.play(s);
     }
+    sound_.pump();
 
     // ---- the play viewport --------------------------------------------------
     // Focus is claimed by clicking the frame and released with Escape. Without an

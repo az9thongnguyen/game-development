@@ -24,6 +24,11 @@ void WorkspaceHost::update(double dt, const platform::InputState& in) {
     // stop while a dialog is up) but a click behind the card must not edit anything.
     ws_->update(dt, in, /*interactive*/ !recovery_);
     if (auto m = ws_->take_message()) { flash_ = m->message; flash_ok_ = m->ok; flash_t_ = 4.0; }
+    // The workspace is deaf on purpose (it compiles into headless tests); the host
+    // owns the device. Same two lines in the Studio shell, because a lab and a tab are
+    // the same workspace object and an effect audible in only one of them is drift.
+    for (const Workspace::SoundRequest& s : ws_->take_sounds()) sound_.play(s);
+    sound_.pump();
 }
 
 void WorkspaceHost::render(const engine::Context& ctx) {
@@ -61,6 +66,11 @@ void WorkspaceHost::render(const engine::Context& ctx) {
         if (c == ui::Confirm::Yes)     { ws_->take_recovery();    recovery_ = false; }
         else if (c == ui::Confirm::No) { ws_->dismiss_recovery(); recovery_ = false; }
         if (auto m = ws_->take_message()) { flash_ = m->message; flash_ok_ = m->ok; flash_t_ = 4.0; }
+    // The workspace is deaf on purpose (it compiles into headless tests); the host
+    // owns the device. Same two lines in the Studio shell, because a lab and a tab are
+    // the same workspace object and an effect audible in only one of them is drift.
+    for (const Workspace::SoundRequest& s : ws_->take_sounds()) sound_.play(s);
+    sound_.pump();
     }
 
     if (flash_t_ > 0 && !flash_.empty())

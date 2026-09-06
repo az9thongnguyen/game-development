@@ -18,6 +18,7 @@
 
 #include "engine/scene.hpp"
 #include "engine/ui/ui.hpp"
+#include "games/studio_shell/sound_bank.hpp"
 #include "games/studio_shell/workspace.hpp"
 
 namespace studioshell {
@@ -34,6 +35,7 @@ public:
 private:
     std::unique_ptr<Workspace> ws_;
     ui::Context                ui_;
+    SoundBank                  sound_;
     bool                       recovery_ = false;
     std::string                flash_;
     bool                       flash_ok_ = true;
