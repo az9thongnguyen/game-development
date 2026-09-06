@@ -1214,7 +1214,17 @@ giây trước: mục ENTITY đẩy inspector quá đáy panel, nơi `slot()` cl
 nút Save vẽ ở đâu không ai biết và bấm ở đâu cũng không được. `inspector_clipped()` giờ
 có ở đây như Pixels đã có từ ch.127, và status nói ra.
 
-**Số liệu:** 77/77 ctest (78 trừ `test_maplab` đã nghỉ) · golden path xanh, 0 rò `.tmp`,
+**Mutation 16 phép, 16 KILL, baseline sau restore GREEN.** Lần đầu 14/16; **cả hai cái
+sống sót là cùng một lỗ — `map.migrate` không có test nào.** Chĩa nó vào một file map2,
+và bắt nó không ghi gì mà vẫn báo thành công: cả hai sống sót qua toàn bộ suite.
+
+**Và harness ăn mất một commit.** Nó sửa file tại chỗ, và tôi chạy `git add -A` khi nó
+đang chạy → mutation M13 (`if (false) place_selected(...)`) vào thẳng commit. Thứ bắt
+được là **dòng cuối của chính harness** mà ch.130 thêm vào: `git diff --stat` sau restore
+in ra một file lệch thay vì "sources restored clean". Đã `--amend` trước khi push. Luật
+mới: **không đụng vào index khi harness đang chạy** — nó sở hữu working tree.
+
+**Số liệu:** 77/77 ctest (78 trừ `test_maplab` đã nghỉ) · **16/16 mutation** · golden path xanh, 0 rò `.tmp`,
 release id **đổi đúng như phải đổi** (`cd1c2864` → `eac0e534`: nội dung map đã đổi) ·
 web build xanh · một khung hình đã render và **đã nhìn**, hai lần.
 

@@ -176,8 +176,14 @@ not clipped, the 400×300 one is and says so.
 
 ## What was checked
 
-* `ctest` green; `test_maplab` is gone and `test_map_edit`, `test_map_workspace`,
-  `test_fps` and `test_tilemap` gained cases.
+* `ctest` **77/77** green; `test_maplab` is gone with the lab it tested, and
+  `test_map_edit`, `test_map_workspace`, `test_commands`, `test_fps` and
+  `test_tilemap` gained cases.
+* **Mutation testing, 16 single-token changes.** First run: 14 killed, and both
+  survivors were the same hole — **`map.migrate` had no test at all.** Pointing it at
+  a `map2` file and having it write nothing while reporting success both survived a
+  full suite, because a command nobody tests is not a command that works, it is one
+  nobody has contradicted. With that test: **16/16**, post-restore baseline GREEN.
 * **Four tests failed the way they were supposed to.** Migrating the level made
   `collection.json` stale (the package hash moved with the content), broke two
   hard-coded paths and moved the command count. Every one of those was a guard built in
@@ -188,6 +194,31 @@ not clipped, the 400×300 one is and says so.
 * A rendered frame, looked at — twice. The first showed the clipped panel; the second
   shows the marker, its facing stub and the ENTITY section at a real panel size.
 * Golden path re-run. The release id **moves**, and it should: the map's bytes changed.
+
+## The harness ate a commit
+
+Worth writing down because it is a process bug, not a code one, and it was one command
+away from being permanent.
+
+The mutation harness rewrites source files in place. It was still running when I staged
+the migration work — `git add -A` picked up whatever was on disk at that instant, which
+was mutation **M13** (`if (false) place_selected(...)`, the Entity tool's drag disabled),
+and it went into a commit. Every test had passed minutes earlier, on files that no
+longer existed.
+
+What caught it was the harness's own last line — the one chapter 130 added:
+
+```
+sources restored clean          <- expected
+ src/games/studio_shell/map_workspace.cpp | 2 +-    <- what actually printed
+```
+
+That diff is against HEAD, and after a commit landed mid-run it stopped meaning "the
+harness cleaned up" and started meaning "the harness cleaned up and HEAD is wrong". It
+was fixed with `--amend` before anything was pushed, and the rule is now simple: **do
+not touch the index while the harness is running.** Chapter 130's lesson was that the
+instrument measuring the tests needs its own check. This is the next one along: the
+instrument *edits your working tree*, so it owns the tree while it runs.
 
 ## Ceilings
 

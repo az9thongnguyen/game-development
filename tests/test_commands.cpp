@@ -19,6 +19,7 @@
 #include "engine/commands/asset_commands.hpp"
 #include "engine/commands/release_commands.hpp"
 #include "engine/image.hpp"
+#include "engine/tilemap/map2.hpp"
 #include "engine/paint/pixel_source.hpp"
 
 #ifndef ASSET_ROOT
@@ -495,6 +496,65 @@ static void test_asset_new() {
 }
 
 // -----------------------------------------------------------------------------
+//  The one-way door out of fpsmap1 (chapter 132). Added with no test of its own,
+//  which two mutations found immediately: pointing it at a map2 file and having it
+//  write nothing both survived a full suite. A command with no test is not a command
+//  that works, it is one nobody has contradicted.
+// -----------------------------------------------------------------------------
+static void test_map_migrate() {
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / "gd_map_migrate_test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "maps");
+    assets::set_base_path(root.string());
+    cmd::clear();
+    cmd::register_asset_commands();
+
+    static const char kLegacy[] =
+        "fpsmap1\n" "size 3 2\n" "row 1 1 1\n" "row 1 0 2\n" "spawn 1 1 1.570796\n";
+    CHECK(assets::write_file("maps/old.map",
+                             std::vector<std::uint8_t>(kLegacy, kLegacy + std::strlen(kLegacy))));
+
+    CHECK(!cmd::run("map.migrate", {}).ok);                       // D17: no blank arguments
+    CHECK(!cmd::run("map.migrate", {"maps/old.map"}).ok);
+    CHECK(!cmd::run("map.migrate", {"", "maps/x.map2"}).ok);
+    CHECK(!cmd::run("map.migrate", {"maps/nope.map", "maps/x.map2"}).ok);
+    CHECK(!assets::load_file("maps/x.map2"));                     // and none of them wrote
+
+    const engine::OpResult r = cmd::run("map.migrate", {"maps/old.map", "maps/new.map2"});
+    CHECK(r.ok);
+    if (!r.ok) std::printf("      %s\n", r.message.c_str());
+
+    // It really WROTE something, and that something is a map2 the shared reader
+    // accepts. "reported success" and "produced a file" are different claims.
+    const auto out = assets::load_file("maps/new.map2");
+    CHECK(out.has_value());
+    if (out) {
+        const std::string text(out->begin(), out->end());
+        CHECK(text.rfind("map2 ", 0) == 0);
+        auto m = tilemap::load(text);
+        CHECK(m.has_value());
+        if (m) {
+            CHECK(m->w == 3 && m->h == 2);
+            CHECK(m->layer("wall") != nullptr);
+            CHECK(m->entity("spawn_player") != nullptr);
+            if (auto* e = m->entity("spawn_player")) CHECK(e->x == 1 && e->y == 1);
+        }
+    }
+
+    // Pointed at a file that is ALREADY map2 it refuses, rather than reporting a
+    // migration that did not happen. `tilemap::load` would have accepted it happily,
+    // which is why this uses from_fpsmap1 and why this line exists.
+    const engine::OpResult again = cmd::run("map.migrate", {"maps/new.map2", "maps/twice.map2"});
+    CHECK(!again.ok);
+    CHECK(again.message.find("not an fpsmap1") != std::string::npos);
+    CHECK(!assets::load_file("maps/twice.map2"));
+
+    std::filesystem::remove_all(root);
+    assets::set_base_path(ASSET_ROOT "/assets");
+}
+
+// -----------------------------------------------------------------------------
 //  The ledger command. It writes a COMMITTED file, so its refusals matter more than
 //  its happy path — which test_provenance already pins byte-for-byte.
 // -----------------------------------------------------------------------------
@@ -556,6 +616,7 @@ int main() {
     test_registry();
     test_asset_commands();
     test_every_import_reproduces_its_committed_bytes();
+    test_map_migrate();
     test_attribution_command();
     test_asset_new();
     test_filter_and_unregister();
