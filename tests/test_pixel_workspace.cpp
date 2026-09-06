@@ -12,6 +12,7 @@
 //
 //  Files go into a scratch directory through the assets:: seam, like test_release_ops.
 // =============================================================================
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 
@@ -26,6 +27,7 @@
 #include "engine/commands/registry.hpp"
 #include "engine/document/document.hpp"
 #include "engine/image.hpp"
+#include "engine/paint/colour.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/ui/ui.hpp"
 #include "games/studio_shell/pixel_workspace.hpp"
@@ -74,10 +76,10 @@ std::optional<gfx::Image> read_image(const std::string& path) {
 
 // A screenshot of the editor, for a human to look at. Counting lit pixels proves
 // something was drawn; only an eye can say it was the right thing.
-void dump_ppm(const std::vector<std::uint32_t>& buf, const char* name) {
+void dump_ppm(const std::vector<std::uint32_t>& buf, int w, int h, const char* name) {
     std::FILE* f = std::fopen(name, "wb");
     if (!f) return;
-    std::fprintf(f, "P6\n%d %d\n255\n", CW, CH);
+    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
     for (std::uint32_t p : buf) {
         const unsigned char rgb[3] = {static_cast<unsigned char>((p >> 16) & 0xFF),
                                       static_cast<unsigned char>((p >> 8) & 0xFF),
@@ -95,21 +97,56 @@ gfx::Color at(const gfx::Image& img, int x, int y) {
 // One frame: draw (which is what publishes the canvas rect) then update with `in`.
 // Same order the App loop produces after the first frame.
 struct Driver {
-    // Parentheses, not braces: braces would build a two-element initializer_list.
-    std::vector<std::uint32_t> buf = std::vector<std::uint32_t>(
-        static_cast<std::size_t>(CW) * CH, 0);
-    platform::Framebuffer      fb{buf.data(), CW, CH, CW};
+    int                        w, h;
+    std::vector<std::uint32_t> buf;
+    platform::Framebuffer      fb;
     ui::Context                ui;
+
+    explicit Driver(int w_ = CW, int h_ = CH)
+        : w(w_), h(h_),
+          // Parentheses, not braces: braces would build a two-element initializer_list.
+          buf(static_cast<std::size_t>(w_) * static_cast<std::size_t>(h_), 0),
+          fb{buf.data(), w_, h_, w_} {}
 
     void frame(studioshell::PixelWorkspace& ws, const platform::InputState& in,
                double dt = 1.0 / 60.0) {
         gfx::Renderer2D g(fb, 1);
-        ui.begin(&g, ui::Input{}, CW, CH);
-        ws.draw_canvas(ui, g, ui::Rect{0, 0, CW, CH});
+        ui.begin(&g, ui::Input{}, w, h);
+        ws.draw_canvas(ui, g, ui::Rect{0, 0, w, h});
+        ui.end();
+        ws.update(dt, in, /*interactive*/ true);
+    }
+
+    // A frame that draws the INSPECTOR too, split the way WorkspaceHost splits it, and
+    // with a real ui::Input so the panel's own controls can be pressed. Two inputs
+    // because the workspace has two: the mouse the widgets see and the keyboard the
+    // editor sees, and half of this slice is about which of them owns a letter.
+    void panel(studioshell::PixelWorkspace& ws, const ui::Input& uin,
+               const platform::InputState& in = platform::InputState{},
+               double dt = 1.0 / 60.0) {
+        const int       iw = ws.inspector_width();
+        gfx::Renderer2D g(fb, 1);
+        ui.begin(&g, uin, w, h);
+        ws.draw_canvas(ui, g, ui::Rect{0, 0, w - iw, h});
+        ws.draw_inspector(ui, g, ui::Rect{w - iw, 0, iw, h});
         ui.end();
         ws.update(dt, in, /*interactive*/ true);
     }
 };
+
+// The panel needs more room than the 400x300 canvas cases: an inspector is 280 wide
+// and its content is taller than 300, which is a fact one of the tests below is about.
+constexpr int PW = 700, PH = 620;
+
+// A press, then the frames that hold it. `pressed` is one frame; `down` is the drag.
+ui::Input mouse(int x, int y, bool down, bool pressed) {
+    ui::Input u{};
+    u.mx = x;
+    u.my = y;
+    u.down = down;
+    u.pressed = pressed;
+    return u;
+}
 
 // Mouse at the centre of image pixel (px,py). The workspace owns the pan/zoom
 // arithmetic, so ask it rather than duplicating the maths — a test that recomputes
@@ -359,8 +396,247 @@ void test_real_sheet() {
     for (std::uint32_t p : d.buf) if ((p & 0x00FFFFFFu) != 0) ++lit;
     CHECK(lit > CW * CH / 10);
 
-    dump_ppm(d.buf, "pixel_workspace.ppm");
+    dump_ppm(d.buf, d.w, d.h, "pixel_workspace.ppm");
     CHECK(!ws.dirty());       // opening and looking is not an edit
+}
+
+
+// ---------------------------------------------------------------------------
+//  The ceiling this workspace shipped with.
+//
+//  Both doors into `colour_` read the FILE: the palette is the image's own most-used
+//  colours and the eyedropper is a pixel. So every colour the editor could paint was
+//  one the sheet already had, and it could not introduce a single new hue — a
+//  retouching tool, not a drawing one. Typing a code is the exact door out.
+// ---------------------------------------------------------------------------
+void test_mix_by_code() {
+    constexpr gfx::Color kNew = 0xFF3C7A2Eu;   // a green this fixture has never held
+
+    studioshell::PixelWorkspace ws({kPath});
+    CHECK(ws.loaded());
+    Driver d(PW, PH);
+    d.panel(ws, ui::Input{});                  // publish the layout
+
+    const ui::Rect f = ws.hex_rect();
+    CHECK(f.w > 0 && f.h > 0);
+    // The field opens showing the selected colour, so it can be read as well as typed.
+    CHECK(ws.hex_field() == "#FF203040");
+
+    const int fx = f.x + f.w / 2, fy = f.y + f.h / 2;
+    d.panel(ws, mouse(fx, fy, true, true));    // focus: selects the whole value
+
+    // Half a code must leave the colour ALONE. The caller is a field being typed into,
+    // and a parser that guessed would repaint the brush on every keystroke.
+    const std::string half = "#FF3C";
+    ui::Input         typing = mouse(fx, fy, false, false);
+    typing.text     = half.c_str();
+    typing.text_len = half.size();
+    d.panel(ws, typing);
+    CHECK(ws.hex_field() == half);
+    CHECK(ws.colour() == 0xFF203040u);         // ...unchanged
+
+    const std::string code = "#FF3C7A2E";
+    typing.text     = code.c_str();
+    typing.text_len = code.size();
+    ui::Input select_all = typing;
+    select_all.keys.select_all = true;         // replace, as a user retyping would
+    d.panel(ws, select_all);
+    CHECK(ws.hex_field() == code);
+    CHECK(ws.colour() == kNew);
+    // The mixer moved with it. A typed colour that left the sliders behind would make
+    // the next drag jump to whatever was selected before.
+    CHECK(paint::from_hsv(ws.mix(), 0xFF) == kNew);
+
+    // A shorter spelling of the same colour must not be rewritten under the caret.
+    // "3C7A2E" is #FF3C7A2E, and canonicalising the field the moment it parses would
+    // move the text six characters while the user is still typing in it.
+    const std::string short_form = "3C7A2E";
+    typing.text     = short_form.c_str();
+    typing.text_len = short_form.size();
+    ui::Input select_short = typing;
+    select_short.keys.select_all = true;
+    d.panel(ws, select_short);
+    CHECK(ws.hex_field() == short_form);
+    CHECK(ws.colour() == kNew);
+
+    // ...and it really is a colour NEITHER of the old doors could have reached.
+    bool in_palette = false, in_image = false;
+    for (gfx::Color c : ws.palette()) in_palette |= (c == kNew);
+    for (gfx::Color c : ws.image().pixels) in_image |= (c == kNew);
+    CHECK(!in_palette);
+    CHECK(!in_image);
+
+    // Paint with it, and the round trip that matters: the file now holds a colour the
+    // file never held. That is the whole slice, in one assertion.
+    platform::InputState draw = at_pixel(ws, 3, 3, true);
+    d.panel(ws, ui::Input{}, draw);
+    draw.mouse_down[static_cast<int>(platform::MouseButton::Left)] = false;
+    d.panel(ws, ui::Input{}, draw);
+    CHECK(at(ws.image(), 3, 3) == kNew);
+    CHECK(ws.save().ok);
+    const auto on_disk = read_image(kPath);
+    CHECK(on_disk.has_value());
+    if (on_disk) CHECK(at(*on_disk, 3, 3) == kNew);
+
+    // The eyedropper feeds the field too: every way of choosing a colour goes through
+    // one adopt(), so what the panel shows can never disagree with what the brush is.
+    // Click the canvas first: the field still has the keyboard, and a letter shortcut
+    // belongs to it until the user clicks away.
+    d.panel(ws, mouse(20, 20, true, true));
+    platform::InputState key{};
+    key.key_pressed[static_cast<int>(platform::Key::I)] = true;
+    d.panel(ws, ui::Input{}, key);
+    platform::InputState pick = at_pixel(ws, 0, 5, false);   // a kFg pixel
+    pick.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+    d.panel(ws, ui::Input{}, pick);
+    CHECK(ws.colour() == kFg);
+    CHECK(ws.hex_field() == "#FFC0D0E0");
+}
+
+// ---------------------------------------------------------------------------
+//  Why the mixer holds coordinates: a drag through black has to be reversible.
+//
+//  test_paint proves the arithmetic. This proves the WIRING — that the workspace kept
+//  the sliders' own state instead of re-reading the colour, which is the version that
+//  looks identical until somebody drags value to the bottom.
+// ---------------------------------------------------------------------------
+void test_mix_by_slider() {
+    studioshell::PixelWorkspace ws({kPath});
+    Driver d(PW, PH);
+    d.panel(ws, ui::Input{});
+
+    const ui::Rect v = ws.mix_slider(2);       // 0 = hue, 1 = sat, 2 = value
+    CHECK(v.w > 0 && v.h > 0);
+    CHECK(ws.mix_slider(0).y < ws.mix_slider(1).y);
+    CHECK(ws.mix_slider(1).y < v.y);
+    CHECK(ws.mix_slider(9).w == 0);            // out of range is empty, not a crash
+
+    // The colour on open is the sheet's most common one: hue 210, half saturated.
+    CHECK(ws.colour() == kBg);
+    CHECK(std::abs(ws.mix().h - 210.0f) < 0.5f);
+
+    const int my = v.y + v.h / 2;
+    d.panel(ws, mouse(v.x + v.w / 2, my, true, true));      // grab the knob
+    d.panel(ws, mouse(v.x - 50, my, true, false));          // drag past the left end
+    CHECK(ws.colour() == 0xFF000000u);                      // value 0 is black
+    // Black remembers nothing. If the workspace re-derived the sliders from the
+    // colour here, hue and saturation would now be 0 and dragging back would give
+    // WHITE. The assertion below is the difference between the two implementations.
+    d.panel(ws, mouse(v.x + v.w + 50, my, true, false));    // drag past the right end
+    CHECK(ws.colour() != 0xFFFFFFFFu);
+    CHECK(ws.colour() == 0xFF80BFFFu);                      // hue 210, sat 0.5, value 1
+    CHECK(std::abs(ws.mix().h - 210.0f) < 0.5f);
+    d.panel(ws, mouse(v.x + v.w + 50, my, false, false));   // release
+
+    // Alpha rides alongside rather than inside: a picked half-transparent pixel keeps
+    // its alpha while its hue is dragged.
+    ws.reload();
+    d.panel(ws, ui::Input{});
+    platform::InputState key{};
+    key.key_pressed[static_cast<int>(platform::Key::I)] = true;
+    d.panel(ws, ui::Input{}, key);
+    // Make a translucent pixel to pick, the only way the workspace offers: type it.
+    const ui::Rect f = ws.hex_rect();
+    d.panel(ws, mouse(f.x + 4, f.y + f.h / 2, true, true));
+    const std::string code = "#80C08040";
+    ui::Input         typing = mouse(f.x + 4, f.y + f.h / 2, false, false);
+    typing.text     = code.c_str();
+    typing.text_len = code.size();
+    typing.keys.select_all = true;
+    d.panel(ws, typing);
+    CHECK(ws.colour() == 0x80C08040u);
+    const ui::Rect hue = ws.mix_slider(0);
+    d.panel(ws, mouse(hue.x + hue.w / 2, hue.y + hue.h / 2, true, true));
+    d.panel(ws, mouse(hue.x + hue.w + 50, hue.y + hue.h / 2, true, false));
+    CHECK(gfx::a_of(ws.colour()) == 0x80);     // the hue moved; the alpha did not
+}
+
+// ---------------------------------------------------------------------------
+//  B, R, G and I are tools. They are also hex digits.
+//
+//  The editor's letter shortcuts and the code field want the same keys, and the field
+//  is the one that must win while it has the keyboard — otherwise typing a brown
+//  (#8B5A2B) switches the tool twice on the way through.
+// ---------------------------------------------------------------------------
+void test_field_owns_the_letters() {
+    studioshell::PixelWorkspace ws({kPath});
+    Driver d(PW, PH);
+    d.panel(ws, ui::Input{});
+
+    platform::InputState r_key{};
+    r_key.key_pressed[static_cast<int>(platform::Key::R)] = true;
+    d.panel(ws, ui::Input{}, r_key);
+    CHECK(ws.tool() == studioshell::PixelWorkspace::Tool::Rect);
+
+    const ui::Rect f = ws.hex_rect();
+    d.panel(ws, mouse(f.x + 4, f.y + f.h / 2, true, true));   // the field takes focus
+
+    const std::string b = "B";
+    ui::Input         typing = mouse(f.x + 4, f.y + f.h / 2, false, false);
+    typing.text     = b.c_str();
+    typing.text_len = b.size();
+    typing.keys.select_all = true;
+    platform::InputState b_key{};
+    b_key.key_pressed[static_cast<int>(platform::Key::B)] = true;
+    d.panel(ws, typing, b_key);
+    CHECK(ws.hex_field() == "B");                             // the letter went here
+    CHECK(ws.tool() == studioshell::PixelWorkspace::Tool::Rect);   // ...and only here
+
+    // And the shortcut comes BACK when focus leaves. A guard that never lifts is the
+    // same bug in the other direction, and it is the half nobody tests.
+    //
+    // Clicking the CANVAS is the case that matters, and it did not work when this was
+    // first written: ui::Context only moved focus when another WIDGET took it, so a
+    // press on empty space left the field holding the keyboard and every letter
+    // shortcut in the editor stayed dead for the rest of the session. The fix is in
+    // ui::Context::end(), because it is not this workspace's bug — it is what
+    // clicking outside a text field means anywhere.
+    d.panel(ws, mouse(20, 20, true, true));                   // the canvas: no widget
+    d.panel(ws, mouse(20, 20, false, false), b_key);
+    CHECK(ws.tool() == studioshell::PixelWorkspace::Tool::Pencil);
+
+    // ...and a click on another WIDGET moves the keyboard too, not just clears it.
+    platform::InputState r2{};
+    r2.key_pressed[static_cast<int>(platform::Key::R)] = true;
+    d.panel(ws, ui::Input{}, r2);
+    CHECK(ws.tool() == studioshell::PixelWorkspace::Tool::Rect);
+    const ui::Rect f2 = ws.hex_rect();
+    d.panel(ws, mouse(f2.x + 4, f2.y + f2.h / 2, true, true));
+    const ui::Rect v = ws.mix_slider(2);
+    d.panel(ws, mouse(v.x + v.w / 2, v.y + v.h / 2, true, true));
+    d.panel(ws, mouse(v.x + v.w / 2, v.y + v.h / 2, false, false), b_key);
+    CHECK(ws.tool() == studioshell::PixelWorkspace::Tool::Pencil);
+}
+
+// ---------------------------------------------------------------------------
+//  A panel with no room left does not overflow — it DISAPPEARS.
+//
+//  `ui::Context::slot` clamps to what is left, so a control that does not fit gets a
+//  rect of height 0: drawn as nothing, hit as nothing, reported by nothing. Adding a
+//  colour mixer made the inspector ~130 logical pixels taller, which is exactly the
+//  change that finds this. The workspace asks for the height it wanted and compares.
+// ---------------------------------------------------------------------------
+void test_inspector_clipped() {
+    studioshell::PixelWorkspace ws({kPath, kOther});
+
+    Driver tall(PW, PH);
+    tall.panel(ws, ui::Input{});
+    CHECK(!ws.inspector_clipped());
+    CHECK(ws.status().find("clipped") == std::string::npos);
+
+    Driver squat(PW, 240);
+    squat.panel(ws, ui::Input{});
+    CHECK(ws.inspector_clipped());
+    // Said on the status line, which is OUTSIDE the panel — when the panel is too
+    // short there is by definition no room inside it to say so.
+    CHECK(ws.status().find("clipped") != std::string::npos);
+
+    // A screenshot of the whole panel, for a human: the sliders, the preview and the
+    // field are geometry a passing assertion cannot see.
+    Driver shot(PW, PH);
+    shot.panel(ws, ui::Input{});
+    shot.panel(ws, ui::Input{});
+    dump_ppm(shot.buf, shot.w, shot.h, "pixel_mixer.ppm");
 }
 
 } // namespace
@@ -388,6 +664,14 @@ int main() {
     test_recovery();
     CHECK(write_image(kPath, fixture()));
     test_no_texture();
+    CHECK(write_image(kPath, fixture()));
+    test_mix_by_code();
+    CHECK(write_image(kPath, fixture()));
+    test_mix_by_slider();
+    CHECK(write_image(kPath, fixture()));
+    test_field_owns_the_letters();
+    CHECK(write_image(kPath, fixture()));
+    test_inspector_clipped();
 
     fs::remove_all(root);
     test_real_sheet();          // last: it repoints the asset root at the repository

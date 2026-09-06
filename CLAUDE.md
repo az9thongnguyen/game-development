@@ -73,7 +73,8 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 ./build/demo --lab      # list the labs; --lab <id> runs one
 #   scene    the Studio's Scene workspace, full-screen (the SAME object as its Scene tab)
 #   map      tile-grid level editor -> maps/level_NN.map (still fpsmap1; not yet absorbed)
-#   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt)
+#   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt,
+#            palette sampled from the image + an HSV/hex mixer for a colour it lacks)
 #   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
 #   editor   immediate-mode GUI + physics sandbox
 #   fx light audio anim     particles / 2D lights / mixer / flipbook
@@ -216,7 +217,8 @@ Understand these deliberate patterns before editing the build:
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),
   `particles_core`, `tween_core`, `light_core`, `audio_core`, `paint_core` (pixel
   edits as undoable commands — the third client of `doc::CommandStack` — plus
-  `pixel_source`, the `.pix` -> `Image` bake),
+  `pixel_source`, the `.pix` -> `Image` bake, and `colour`, the HSV/hex arithmetic
+  whose 8-bit round trip is exact),
   `runner_core`). Each has a matching `test_*` target so simulation/logic is
   unit-tested with no window.
 - **`-DENGINE_BUILD_DESKTOP=OFF`** builds everything except the SDL2 `demo` target —

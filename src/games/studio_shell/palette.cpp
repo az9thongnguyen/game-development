@@ -64,9 +64,16 @@ std::string CommandPalette::draw(ui::Context& ui, gfx::Renderer2D& g) {
     g.draw_round_rect(x, y, w, h, th::radius_md, th::border_strong);
 
     // The query field takes the keyboard the moment the palette opens; a palette you
-    // have to click into first is slower than the menu it replaces.
+    // have to click into first is slower than the menu it replaces. It takes it BACK
+    // whenever nothing holds it, because the palette owns the screen while it is up:
+    // ui::Context::end() clears focus on a press that landed on no widget (ch. 127),
+    // and a press on the scrim would otherwise leave this open and deaf to letters —
+    // which looks exactly like a hang.
     const ui::Rect q{x + th::space_lg, y + th::space_lg, w - th::space_lg * 2, 34};
-    if (just_opened_) { ui.set_focus(ui.id_for("query")); just_opened_ = false; }
+    if (just_opened_ || ui.focused() == 0) {
+        ui.set_focus(ui.id_for("query"));
+        just_opened_ = false;
+    }
     if (ui.text_input("query", q, query_, "Type a command...")) {
         sel_ = 0;   // the list moved under the selection; anything else selects at random
     }

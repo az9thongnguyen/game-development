@@ -9,6 +9,7 @@
 
 #include "engine/commands/registry.hpp"
 #include "engine/document/document.hpp"
+#include "engine/paint/colour.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/ui/theme.hpp"
 
@@ -39,13 +40,6 @@ constexpr gfx::Color kTransparent = 0x00000000u;
 constexpr gfx::Color kCheckA = 0xFF2A2F3A;
 constexpr gfx::Color kCheckB = 0xFF232833;
 
-std::string to_hex(gfx::Color c) {
-    static const char* d = "0123456789ABCDEF";
-    std::string s = "#";
-    for (int shift = 28; shift >= 0; shift -= 4) s += d[(c >> shift) & 0xFu];
-    return s;
-}
-
 } // namespace
 
 // ---- construction ------------------------------------------------------------
@@ -71,6 +65,10 @@ void PixelWorkspace::load() {
     recovery_text_.clear();
     palette_.clear();
     path_.clear();
+    // Opening a document is not a moment to protect a half-typed code: without this
+    // the field would keep the previous file's text while the brush moved to the new
+    // file's palette, which is the one disagreement adopt() exists to prevent.
+    hex_focused_ = false;
 
     if (paths_.empty()) {
         problem_ = "this project declares no texture - add `asset texture <path>` to its manifest";
@@ -124,7 +122,9 @@ void PixelWorkspace::build_palette() {
     });
     for (std::size_t i = 0; i < ranked.size() && i < kPaletteN; ++i)
         palette_.push_back(ranked[i].second);
-    if (palette_.size() > 1) colour_ = palette_[1];
+    // White, not transparent, when a sheet has no colour to offer: a brush that
+    // paints nothing looks like a broken editor.
+    adopt(palette_.size() > 1 ? palette_[1] : 0xFFFFFFFFu);
 }
 
 void PixelWorkspace::take_recovery() {
@@ -215,6 +215,18 @@ void PixelWorkspace::note(bool ok, std::string msg) {
     message_ = engine::OpResult{ok, std::move(msg)};
 }
 
+// Every way of choosing a colour ends here: a swatch, the eyedropper, a typed code,
+// opening a file. The mixer's coordinates move with it, so the next slider drag
+// starts from the colour you are looking at rather than from wherever it was left.
+void PixelWorkspace::adopt(gfx::Color c) {
+    colour_ = c;
+    mix_    = paint::to_hsv(c);
+    mix_a_  = gfx::a_of(c);
+    // Never while it has focus: replacing the text under a caret mid-code is how a
+    // field becomes impossible to type in.
+    if (!hex_focused_) hex_field_ = paint::to_hex(c);
+}
+
 std::string PixelWorkspace::status() const {
     if (!loaded_) return problem_.empty() ? std::string("no texture") : problem_;
     std::string s = path_ + (dirty() ? "  *  unsaved" : "  saved");
@@ -222,10 +234,13 @@ std::string PixelWorkspace::status() const {
         s += "   " + std::to_string(hover_x_) + ", " + std::to_string(hover_y_);
         // The colour UNDER the cursor, not the selected one: matching a neighbour is
         // most of the work, and reading it off the status bar beats guessing.
-        s += "   " + to_hex(img_.pixels[static_cast<std::size_t>(hover_y_) *
-                                            static_cast<std::size_t>(img_.w) +
-                                        static_cast<std::size_t>(hover_x_)]);
+        s += "   " + paint::to_hex(img_.pixels[static_cast<std::size_t>(hover_y_) *
+                                                  static_cast<std::size_t>(img_.w) +
+                                              static_cast<std::size_t>(hover_x_)]);
     }
+    // Outside the panel, because when the panel is too short there is by definition
+    // no room inside it to say so.
+    if (inspector_clipped_) s += "   inspector clipped - make the window taller";
     return s;
 }
 
@@ -251,9 +266,19 @@ void PixelWorkspace::update(double dt, const platform::InputState& in, bool inte
     if (want_tool_ >= 0) { tool_ = static_cast<Tool>(want_tool_); want_tool_ = -1; }
     if (want_swatch_ >= 0) {
         if (want_swatch_ < static_cast<int>(palette_.size()))
-            colour_ = palette_[static_cast<std::size_t>(want_swatch_)];
+            adopt(palette_[static_cast<std::size_t>(want_swatch_)]);
         want_swatch_ = -1;
     }
+    // A slider moved: the coordinates are the truth and the colour is derived from
+    // them — NOT adopt(), which would run the lossy way round and snap the hue to 0
+    // the moment value reached the bottom.
+    if (want_mix_) {
+        mix_    = *want_mix_;
+        colour_ = paint::from_hsv(mix_, mix_a_);
+        if (!hex_focused_) hex_field_ = paint::to_hex(colour_);
+        want_mix_.reset();
+    }
+    if (want_colour_) { adopt(*want_colour_); want_colour_.reset(); }
     if (want_index_ >= 0) {
         const int next = want_index_;
         want_index_ = -1;
@@ -292,7 +317,9 @@ void PixelWorkspace::update(double dt, const platform::InputState& in, bool inte
         const bool ok = in.mods.shift ? stack_.redo() : stack_.undo();
         if (!ok) note(false, in.mods.shift ? "nothing to redo" : "nothing to undo");
     }
-    if (!cmd) {
+    // B, R, G and I are also hex digits. While the code field has the keyboard they
+    // belong to it, or typing #B8... silently switches the tool mid-code.
+    if (!cmd && !hex_focused_) {
         if (in.pressed(platform::Key::B)) tool_ = Tool::Pencil;
         if (in.pressed(platform::Key::R)) tool_ = Tool::Rect;
         if (in.pressed(platform::Key::G)) tool_ = Tool::Fill;
@@ -388,9 +415,9 @@ void PixelWorkspace::update(double dt, const platform::InputState& in, bool inte
             // The eyedropper changes the SELECTED colour and never the image, so it is
             // not an undoable step and must not become one.
             if (in.pressed(platform::MouseButton::Left) && hover_x_ >= 0 && !cmd) {
-                colour_ = img_.pixels[static_cast<std::size_t>(hover_y_) *
-                                          static_cast<std::size_t>(img_.w) +
-                                      static_cast<std::size_t>(hover_x_)];
+                adopt(img_.pixels[static_cast<std::size_t>(hover_y_) *
+                                      static_cast<std::size_t>(img_.w) +
+                                  static_cast<std::size_t>(hover_x_)]);
                 tool_ = Tool::Pencil;   // pick, then keep drawing: the gesture is one thought
             }
             break;
@@ -513,8 +540,11 @@ void PixelWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
 
     // ---- palette ----
     g.set_font_size(th::sz_caption);
+    // Short enough to FIT: the panel is 280 wide and the old wording ran off its right
+    // edge as "...RMB era". A label that has to be guessed at is not a label, and only
+    // a rendered frame says which ones do — no assertion in this file could.
     g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_xs).y,
-                "COLOUR   from this image,  RMB erases", th::text_muted);
+                "COLOUR   from image,  RMB erases", th::text_muted);
     {
         const int per_row = 8;
         ui.push_id("swatch");
@@ -546,9 +576,54 @@ void PixelWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
         }
         ui.pop_id();
     }
+    // ---- mix: the two doors out of "only colours this image already has" ----
+    // Three sliders to wander to a shade, one field to be TOLD a colour. Neither
+    // replaces the palette above: matching a neighbour stays one click, and this is
+    // for the colour that is not on the sheet yet. See engine/paint/colour.hpp.
     g.set_font_size(th::sz_caption);
-    g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_sm).y, to_hex(colour_).c_str(),
-                th::text_dim);
+    g.draw_text(inner.x, ui.slot(th::sz_caption + th::space_xs).y,
+                "MIX   drag, or type a code", th::text_muted);
+    {
+        ui.push_id("mix");
+        paint::Hsv m     = mix_;
+        bool       moved = false;
+        // A slider draws its own caption ABOVE its rect, so each row reserves the
+        // headroom instead of letting the text land on the row before it.
+        const auto row = [&](int i, const char* label, float& v, float hi) {
+            const ui::Rect r = ui.slot(30);
+            mix_rect_[i]     = ui::Rect{r.x, r.y + 16, r.w, 14};
+            if (ui.slider(mix_rect_[i], label, v, 0.0f, hi)) moved = true;
+        };
+        row(0, "hue", m.h, 360.0f);
+        row(1, "sat", m.s, 1.0f);
+        row(2, "val", m.v, 1.0f);
+        // Resolved in update() like every other control here, so nothing edits state
+        // during a draw.
+        if (moved) want_mix_ = m;
+        ui.pop_id();
+    }
+    {
+        const ui::Rect row = ui.slot(26);
+        const ui::Rect sw{row.x, row.y, 26, row.h};
+        // The preview sits on the same checkerboard the canvas uses, so a colour with
+        // alpha reads as one here too rather than as a darker opaque colour.
+        g.fill_round_rect(sw.x, sw.y, sw.w, sw.h, th::radius_sm, kCheckB);
+        g.fill_rect(sw.x + sw.w / 2, sw.y, sw.w - sw.w / 2, sw.h / 2, kCheckA);
+        g.fill_rect(sw.x, sw.y + sw.h / 2, sw.w / 2, sw.h - sw.h / 2, kCheckA);
+        g.fill_rect_blend(sw.x, sw.y, sw.w, sw.h, colour_);
+        g.draw_round_rect(sw.x, sw.y, sw.w, sw.h, th::radius_sm, th::border_strong);
+
+        hex_rect_ = ui::Rect{row.x + sw.w + th::space_xs, row.y,
+                             row.w - sw.w - th::space_xs, row.h};
+        if (ui.text_input("hex", hex_rect_, hex_field_, "#AARRGGBB")) {
+            // Only when it PARSES. Half a code must leave the brush where it is.
+            if (auto c = paint::parse_hex(hex_field_)) want_colour_ = *c;
+        }
+        // Whether the keyboard belongs to the field this frame. update() reads it to
+        // stand its letter shortcuts down — B, R, G and I are hex digits too.
+        hex_focused_ = (ui.focused() == ui.id_for("hex"));
+    }
+    ui.skip();
 
     // ---- which texture ----
     if (paths_.size() > 1) {
@@ -576,7 +651,13 @@ void PixelWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
             want_redo_ = true;
         ui.pop_id();
     }
-    if (ui.button(ui.slot(30), dirty() ? "Save  *" : "Save", dirty())) want_save_ = true;
+    // `slot()` clamps to what is left instead of overflowing, so a panel one control
+    // too short hands back a rect of height 0 — which draws nothing and cannot be
+    // clicked. Ask for the height and check what came back: that is the only place
+    // the loss is visible.
+    const ui::Rect save_row = ui.slot(30);
+    inspector_clipped_      = save_row.h < 30;
+    if (ui.button(save_row, dirty() ? "Save  *" : "Save", dirty())) want_save_ = true;
 
     g.set_font_size(th::sz_caption);
     const std::string hint = stack_.can_undo() ? "undo: " + stack_.undo_label()

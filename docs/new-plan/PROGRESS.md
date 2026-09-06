@@ -905,14 +905,88 @@ của chip** rồi cấm mọi control cắt qua nó — nói bằng LUẬT, kh�
 chỗ test yếu, mà ở chỗ **không có test nào cho đường đó**. Trước khi tin một tuyên bố về
 "dùng được", hãy **liệt kê động từ** và đối chiếu từng cái, đừng đối chiếu ấn tượng.
 
+## S18 — màu không có trên sheet (chương 127) — XONG 2026-09-06
+
+**Trần đã đóng:** Pixel workspace có hai cửa chọn màu và **cả hai đọc từ file** —
+palette là màu ảnh *đang có* (`build_palette` đếm tần suất), eyedropper là *một pixel*.
+Tập màu vẽ được **bằng đúng** tập màu đã có trong file: sắp xếp lại được một sheet,
+nhưng không thêm nổi một điểm sáng đậm hơn một sắc. Đó là công cụ **chỉnh sửa**, không
+phải công cụ **vẽ**.
+
+**Đã CHẠY, không chỉ viết:**
+
+- **`engine/paint/colour.{hpp,cpp}` — core thuần**, không renderer/UI/IO: `to_hsv`,
+  `from_hsv`, `to_hex`, `parse_hex`. `to_hex` cũ nằm trong anonymous namespace của
+  workspace; nay một bản, hai chỗ dùng.
+- **Hai cửa, vì là hai câu hỏi.** Ba slider HSV = *"đậm hơn chút, vẫn màu đó"* (một sắc
+  độ là **một trục** HSV, **ba trục tương quan** RGB). Ô hex = *"#8B5A2B, đúng màu pack
+  dùng"* (slider kéo từng pixel, không ai **nói** cho nó một bộ ba chính xác được).
+  Palette vẫn đứng đầu — nó vẫn là mặc định đúng; mixer là cho màu **chưa có** trên sheet.
+- **Ba slider, không phải bốn.** Alpha đã có control riêng (ô 0 + chuột phải xoá) và ô
+  hex nhận `#AARRGGBB`, nên cọ nửa trong suốt cách một dòng chữ — trong khi slider thứ tư
+  tốn thêm 34px của một panel *đang thiếu chỗ*.
+- **Trạng thái mixer KHÔNG phải là màu.** Nếu suy ba slider ra từ `colour_` mỗi frame,
+  kéo Value xuống đáy **quên cả hue lẫn sat** (mọi màu v=0 đều là đen) và kéo lên lại ra
+  **trắng** — cú kéo thành một chiều. Nên workspace giữ `paint::Hsv mix_` + `mix_a_`, và
+  **mọi** cách chọn màu (ô palette, eyedropper, mã gõ vào, mở file) đi qua **một**
+  `adopt()`.
+- **Round-trip HSV chính xác TUYỆT ĐỐI**: quét đủ **16.777.216 màu → 0 sai lệch** (76 s
+  bản debug, chạy một lần; CI chạy lát cắt 65.536 màu + các mốc sextant). Đây là claim
+  **bằng nhau**, không phải sai số: lệch một đơn vị mỗi lần chạm thì màu trôi dần và
+  **không gì trên màn hình nói ra** — chỉ file mới thấy, và lúc đó sheet đã lệch.
+- **`+ 0.5f` trong `to_byte` là load-bearing**: `v*255` với kênh 200 ra `199.99998`, cắt
+  cụt là mất round-trip ở gần như mọi màu.
+
+**Một dòng ở `end()` có người dùng thứ hai.** Command palette nhận bàn phím lúc mở và
+không bao giờ đòi lại; giờ click vào scrim sẽ **xoá focus** → palette mở mà điếc, không
+phân biệt được với treo. Nên palette **lấy lại focus bất cứ khi nào không ai giữ** — đúng
+nghĩa "overlay này sở hữu màn hình" mà `confirm()` vẫn làm. Thay đổi một dòng ở tầng
+chung vẫn phải đi nhìn quanh.
+
+**Guard đẻ ra lỗi nặng hơn lỗi nó sửa.** B/R/G/I vừa là tool vừa là chữ số hex, nên gõ
+`#8B5A2B` đổi tool hai lần giữa chừng → workspace đứng phím lại khi ô hex giữ bàn phím.
+Nhưng `ui::Context` **chỉ** chuyển focus khi **widget khác** nhận, nên click ra canvas —
+nơi con trỏ của editor pixel sống cả ngày — **không** trả bàn phím: sau MỘT lần gõ vào ô
+hex, **mọi phím tắt chữ chết đến hết phiên**, và không gì nói tại sao. Sửa **một dòng ở
+`ui::Context::end()`** (`if (in_.pressed && hot_ == 0) focused_ = 0;`), không ở
+workspace: click ra ngoài ô nhập nghĩa là gì thì ở đâu cũng vậy. Test chạy **cả hai
+chiều** — guard không bao giờ nhả là *cùng con bug quay mặt lại*, và đó là nửa không ai
+viết test.
+
+**Panel hết chỗ thì control không tràn — nó BIẾN MẤT.** `ui::slot()` **cắt** kích thước
+xuống phần còn lại, nên control cuối nhận rect **cao 0**: vẽ không ra gì, hover/bấm/focus
+đều không trúng, panel phía trên **trông hoàn toàn bình thường**. Mixer làm inspector cao
+thêm ~130px — đúng thay đổi để lộ chuyện đó. Guard là **hỏi chiều cao rồi so với cái nhận
+về** (`save_row.h < 30`), và nói ra ở **status bar** — bên ngoài panel, vì panel quá ngắn
+thì bên trong không còn chỗ để nói. Đây là bug chương 126 **nhìn từ mặt kia**: không phải
+*vẽ ở chỗ không bấm được*, mà **không vẽ ra gì cả**.
+
+**Và ảnh chụp lại tìm ra lỗi 76 test không thấy:** nhãn `COLOUR   from this image,  RMB
+erases` **bị cắt cụt** thành `...RMB era` ở mép phải panel 280px. Không assertion nào
+trong file đó nói được điều này; chỉ khung đã render mới nói.
+
+- **17 mutation** trên `colour.cpp` / `pixel_workspace.cpp` / `ui.cpp`: **15 chết ngay**;
+  **2 sống sót và cùng một loại** — đều là *câu trong header mà không assertion nào kiểm*.
+  Bỏ wrap hue trong `to_hsv` vẫn round-trip hoàn hảo (vì `from_hsv` tự chuẩn hoá) nhưng
+  slider hue (0..360) sẽ kẹt knob ở trái và in `hue: -30.10`; bỏ `fmod` trong `from_hsv`
+  chỉ lộ ra khi hue < **-360°**, thứ không slider nào tạo ra được. Đóng cả hai bằng cách
+  kiểm **hợp đồng**, không kiểm cách dùng hôm nay → 17/17.
+- 76/76 · ASan+UBSan sạch · golden path xanh · web build xanh · **đã render và NHÌN**
+  panel mixer (slider hiện đúng hue 210 / sat 0.50 / val 0.25 của `#FF203040`).
+
+**Bài học ghi lại:** một guard mới **luôn** có chiều ngược lại, và chiều ngược lại thường
+tệ hơn. "Ô nhập giữ phím tắt" đúng; "và không bao giờ trả lại" là bug nặng hơn cái ban
+đầu. Viết test cho **cả hai chiều** của mọi guard, không chỉ chiều nó được sinh ra để đỡ.
+
 ## Việc kế tiếp
 
-**S18 — chưa chốt.** Ba ứng viên, theo thứ tự tôi thấy đáng làm:
+**S19 — chưa chốt.** Ba ứng viên, theo thứ tự tôi thấy đáng làm:
 
-1. **Colour picker trong Pixel workspace.** Hiện chỉ tô được màu ảnh **đã có**, nên
-   workspace không sửa nổi `farm_path.hrt` theo hướng mới. Cùng với "không tạo được file
-   mới", đây là hai trần khiến chương 125 phải đi cửa `.pix` — và là hai trần *duy nhất*
-   đứng giữa "có editor" và "vẽ được art mới trong Studio".
+1. **Tạo file mới trong Pixel workspace.** Đây là **trần cuối cùng** giữa "có editor" và
+   "vẽ được art mới ngay trong Studio": chương 127 đã mở cửa màu, nhưng workspace vẫn chỉ
+   sửa được texture **manifest đã khai**. Vẽ một tile mới vẫn phải tự thêm dòng
+   `asset texture` và đặt sẵn một `.hrt` rỗng bên cạnh. Nó chạm `project_core` (sửa
+   manifest) nên là một slice thật, không phải một nút.
 2. **Hấp thụ Map Lab** (`--lab map` → workspace, bỏ `fpsmap1`) — và nó là chỗ *đầu tiên*
    thấy được autotile chạy **khi vẽ**: sửa đường trong editor, mảnh tự đổi theo.
 3. **Đa chạm thật ở platform seam.** Chương 126 đóng hết động từ, nhưng vẫn **một ngón**:
@@ -937,7 +1011,10 @@ Sau đó (chưa xếp thứ tự):
 - **`.recipe` không nằm trong manifest** — nó là *source*, giống PNG import.
 - **Chưa đo chi phí frame** của farm; `--bench-ui` vẫn không chạy farm.
 - **Pixel workspace**: một layer, không selection/move/copy, không đổi kích thước
-  canvas, **không tạo file mới**, **không chọn được màu ngoài ảnh**, guide cố định 16px.
+  canvas, **không tạo file mới**, guide cố định 16px. *(Chọn màu ngoài ảnh: đã mở ở
+  ch.127.)* Mixer: **không có ô vuông S/V 2D** (ba slider, vì `ui::hit` báo click chứ
+  không báo drag); **màu đã pha không có nhà** — không nối vào palette, muốn lấy lại thì
+  eyedropper sau khi đã tô; **inspector không cuộn**, chỉ báo khi bị cắt.
 - **`.pix` và `.hrt` có thể lệch nhau** — giống `.recipe`: test bắt được, không chặn được.
 - **`autotile_index` (47-blob) vẫn không có art** — Tiny Town chỉ có mảng 9 mảnh.
 - **Điều khiển màn hình**: chỉ farm có; luôn hiện, không tự ẩn trên desktop; **một ngón**

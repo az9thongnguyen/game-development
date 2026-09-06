@@ -980,6 +980,34 @@ int main() {
         CHECK(cmd::exists("map.save"));
         CHECK(!cmd::filter("save").empty());
 
+        // A press on the SCRIM must not take the keyboard away from the query field.
+        // ui::Context clears focus when a press lands on no widget, which is right
+        // everywhere else and wrong here: the palette owns the screen while it is up,
+        // and one that stays open but stops accepting letters is indistinguishable
+        // from a hang. Counted in card area, because "no command matches zzzz" makes
+        // the card lose all eight rows and shrink to its header.
+        const auto card_px = [&] {
+            int n = 0;
+            for (std::uint32_t p : b) if (p == th::elevated) ++n;
+            return n;
+        };
+        const int open_area = card_px();
+        platform::InputState scrim{};
+        scrim.mouse_x = 60;
+        scrim.mouse_y = 400;
+        scrim.mouse_down[static_cast<int>(platform::MouseButton::Left)]    = true;
+        scrim.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+        render(scrim);
+        platform::InputState typed{};
+        typed.text[0] = 'z'; typed.text[1] = 'z'; typed.text[2] = 'z'; typed.text[3] = 'z';
+        typed.text_len = 4;
+        render(typed);
+        // One more frame before looking: immediate mode lays the card out from the
+        // query it had at the TOP of the frame, so the letters typed during a frame
+        // shrink the card on the next one.
+        render(input);
+        CHECK(card_px() < open_area / 2);
+
         // Escape closes it and the map screen comes back.
         platform::InputState esc{};
         esc.key_pressed[static_cast<int>(platform::Key::Escape)] = true;
@@ -1034,6 +1062,66 @@ int main() {
                 for (int x = 210 * sz.ss; x < pw; ++x)
                     if (b[static_cast<std::size_t>(y) * pw + x] != th::bg) ++ink;
             CHECK(ink > 1000);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    //  The Pixels tab FITS at the Studio's own size — measured, not estimated.
+    //
+    //  Chapter 127 added a colour mixer, roughly 130 logical pixels, to an inspector
+    //  whose height comes from the window. `ui::slot` CLAMPS rather than overflows, so
+    //  a panel that runs out of room does not spill: its last control silently becomes
+    //  a rect of height 0 — drawn as nothing, hit by nothing, reported by nothing. At
+    //  1280x720 it has to fit. And there has to be a size where it does NOT, or the
+    //  guard that reports clipping has never been watched to fire in the real shell,
+    //  only in the workspace's own test.
+    // ---------------------------------------------------------------------
+    {
+        struct Size { int w, h; bool fits; };
+        const Size sizes[] = {{1280, 720, true}, {900, 560, false}};
+        for (const Size& sz : sizes) {
+            std::vector<std::uint32_t> b(static_cast<std::size_t>(sz.w) * sz.h, 0);
+            platform::Framebuffer      f{b.data(), sz.w, sz.h, sz.w};
+            studioshell::StudioShellScene sc(kProject, kKnownEntries);
+
+            const auto render = [&](const platform::InputState& in) {
+                gfx::Renderer2D      r(f, 1);
+                const engine::Context c{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
+                sc.render(c);
+            };
+            sc.update(1.0 / 60.0, input);
+            render(input);
+
+            // Click the third workspace tab (Map | Scene | Pixels) rather than reaching
+            // for a setter: the tab row is the only way a user gets there, and a test
+            // that set the index would not notice the tab row moving.
+            const int ax = 200 + th::space_xl;
+            const int aw = sz.w - 200 - th::space_xl * 2;
+            platform::InputState click{};
+            click.mouse_x = ax + aw * 5 / 6;
+            click.mouse_y = th::space_xl + 15;
+            click.mouse_down[static_cast<int>(platform::MouseButton::Left)]    = true;
+            click.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+            // Press AND release: ui::Context reports a click on the release, so a test
+            // that only presses proves nothing about a tab.
+            render(click);
+            platform::InputState up = click;
+            up.mouse_down[static_cast<int>(platform::MouseButton::Left)]     = false;
+            up.mouse_pressed[static_cast<int>(platform::MouseButton::Left)]  = false;
+            up.mouse_released[static_cast<int>(platform::MouseButton::Left)] = true;
+            render(up);                        // the tabs widget sees the click...
+            sc.update(1.0 / 60.0, up);         // ...and the shell acts on it
+            render(input);
+
+            CHECK(sc.open_workspace() == 2);   // it really is the Pixels tab
+            CHECK(sc.pixel_workspace().loaded());
+            CHECK(sc.pixel_workspace().inspector_clipped() == !sz.fits);
+
+            // A screenshot of the tab at the Studio's own size, for a human. Every
+            // assertion above is about geometry that fits; whether the panel READS is
+            // a different question, and the only thing that answers it is a frame —
+            // which is how the COLOUR label was caught running off the panel edge.
+            if (sz.fits) dump_ppm(b, sz.w, sz.h, "shell_pixels.ppm");
         }
     }
 
