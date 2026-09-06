@@ -102,11 +102,20 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
-                                              # d-pad + action buttons on screen (touch/mouse);
+                                              # EVERY verb has an on-screen control (touch/mouse):
+                                              # d-pad, Z/Q, the hotbar slots pick the tool, F5 saves,
+                                              # and the dialogue is answered by tapping an option.
+                                              # ALL of it — including the hotbar and the dialogue
+                                              # panel — is laid out by ONE farm::layout/talk_layout
+                                              # in src/games/farm/controls.hpp, which the renderer
+                                              # and the hit test BOTH read: a control drawn in one
+                                              # place and hit in another is invisible in a screenshot
                                               # resumes saves/farm/slot1.sav; signs in as a guest
                                               # (project pk_demo_farm), takes prices from remote
                                               # config + any live event, and reconciles the cloud
-                                              # save (F5 save+push, F6/F7 resolve a conflict)
+                                              # save (F5 save+push, F6/F7 resolve a conflict —
+                                              # during a conflict those two REPLACE the save button,
+                                              # because saving then silently means "mine wins")
 ./build/demo --project-inspect  <proj>        # validate/doctor + resource closure
 ./build/demo --project-package  <proj>        # deterministic package manifest (release-id seed)
 ./build/demo --project-publish  <proj> development "reason"   # atomic publish + audit
@@ -198,7 +207,10 @@ Understand these deliberate patterns before editing the build:
   the game cores `farm_core` (day loop, crops, NPC schedules, dialogue, the pure
   cloud-save verdict `decide_sync`, the art `theme` — NAMED sheets, so imported
   and self-drawn art never share a file, plus `line_piece`, which picks one of a
-  16-piece autotile LINE set from a cell's four neighbours — no renderer, no SDK),
+  16-piece autotile LINE set from a cell's four neighbours, and `controls`, which
+  lays out EVERY rectangle on that game's screen — d-pad, actions, save, the cloud
+  conflict's two answers, the hotbar slots and the dialogue panel — so the renderer
+  and the hit test cannot disagree; no renderer, no SDK),
   `inflate_core` (hand-written DEFLATE) and `png_core` (decode only, offline),
   `hub_core`/`hub_build_core`, and the content cores `studio_core`, `sandbox_core`,
   `maplab_core`, `map_edit_core` (tile edits as undoable `doc::Command`s),

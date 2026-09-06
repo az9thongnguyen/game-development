@@ -84,12 +84,34 @@ public:
     // Where the on-screen controls are, for the frame most recently DRAWN. Exposed so
     // a test presses the button the player would see rather than a rectangle it
     // computed for itself — a test that recomputes the layout stops testing it.
-    [[nodiscard]] Layout controls() const { return layout(screen_w_, screen_h_); }
+    // The conflict flag goes in because it CHANGES the layout (see controls.hpp), so a
+    // test that presses "take the cloud's" has to ask for the screen the player is
+    // actually looking at rather than one where that button does not exist.
+    [[nodiscard]] Layout controls() const { return layout(screen_w_, screen_h_, conflict_); }
+
+    // The dialogue panel for the frame most recently drawn, same rule and same reason:
+    // a test that recomputed these rectangles would agree with itself about a screen
+    // the player never saw. `talking()` goes with it — the state a test has to be able
+    // to see to prove the box can still be closed.
+    [[nodiscard]] bool talking() const { return talking_; }
+    [[nodiscard]] Talk talk_controls() const {
+        // No box when nobody is talking. `talk_layout(w, h, 0)` is a perfectly good
+        // panel for a line of PROSE, so returning it here would say "there is a
+        // dialogue on screen offering nothing" — which is a different thing, and the
+        // one a test would then believe.
+        if (!talking_) return Talk{};
+        return talk_layout(screen_w_, screen_h_, static_cast<int>(talk_.choices().size()));
+    }
 
     [[nodiscard]] std::size_t tile_count(const std::string& sheet) const {
         return sheet_of(sheet).count();
     }
     [[nodiscard]] int   seed_index() const { return seed_; }
+    // Which of the four tools is held. Exposed for the same reason `seed_index` is:
+    // the hotbar has answered a tap since chapter 126, and a test that could only see
+    // the tool through its EFFECT would pass on a control that selected the wrong one
+    // and then did the right thing by accident.
+    [[nodiscard]] int   tool_index() const { return static_cast<int>(tool_); }
     [[nodiscard]] int   facing_x() const { return face_x_; }
     [[nodiscard]] int   facing_y() const { return face_y_; }
     [[nodiscard]] float camera_origin_x() const { return cam_.origin().x; }

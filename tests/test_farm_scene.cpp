@@ -87,6 +87,19 @@ int ink(const std::vector<std::uint32_t>& b, int x, int y, int w, int h) {
     return total - best;
 }
 
+// The top-left corner, which nothing draws in. `save`, `keep` and `take` take turns
+// being absent, and an absent Box is `{0,0,0,0}` — so a renderer that draws a control it
+// was not given centres the label at roughly (-tw/2, -6) and lands its second glyph
+// exactly here. In a correct frame the leftmost thing on screen is the "D" of "Day", at
+// x=18; this block is background and nothing else, always.
+bool corner_clean(const std::vector<std::uint32_t>& b) {
+    const std::uint32_t c = b[0];
+    for (int y = 0; y < 20; ++y)
+        for (int x = 0; x < 16; ++x)
+            if (b[static_cast<std::size_t>(y) * PW + x] != c) return false;
+    return true;
+}
+
 std::uint64_t fingerprint(const std::vector<std::uint32_t>& b) {
     std::uint64_t h = 1469598103934665603ull;
     for (auto p : b) h = (h ^ p) * 1099511628211ull;
@@ -175,6 +188,20 @@ std::string save_text(int day, int gold, int px = -1, int py = -1) {
     // are wherever the bounds put them.
     if (px >= 0) { w.px = px; w.py = py; }
     return doc::to_text(farm::to_save(w));
+}
+
+// A save file as a JSON string body. Two tests now need the cloud to be holding a
+// specific world, and a second hand-rolled copy of this loop is a second chance to
+// escape it differently.
+std::string as_json_string(const std::string& raw) {
+    std::string out;
+    for (char c : raw) {
+        if      (c == '\n') out += "\\n";
+        else if (c == '"')  out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else                out += c;
+    }
+    return out;
 }
 
 const char* kGuestOk = R"({"user":{"user_id":9,"display_name":"guest","is_guest":true},"access_token":"tok"})";
@@ -369,6 +396,13 @@ int main() {
         // At most one action's worth. (Zero is also correct: the facing tile may not
         // be hoeable. What must not happen is thirty.)
         CHECK(spent <= farm::kMaxEnergy / 4);
+
+        // Nothing is drawn for a control that was not laid out. `keep` and `take` are
+        // empty here, and an empty Box is {0,0,0,0} — so a renderer that draws one anyway
+        // puts its label in the top-left corner of the screen, for ever, for no reason.
+        // It is a one-line guard and it is NOT redundant; this is what says so.
+        render(idle);
+        CHECK(corner_clean(buf));
 
         dump_ppm(buf, "farm_controls.ppm");
     }
@@ -632,10 +666,20 @@ int main() {
     // ---- the hotbar shows which tool is held, and which are not ----
     // Four slots, and the selected one carries a border and brighter text. Asserted by
     // counting, because the interesting pixels are the outline, not the middle.
+    //
+    // The rectangles come from scene.controls() rather than from four constants copied
+    // out of the renderer. They used to be copied, and the copy was right up until
+    // chapter 126 moved the hotbar into the layout and gave it a second height — at
+    // which point the test was measuring an empty strip 20 pixels below the slots and
+    // would have gone on measuring it. A test that recomputes a layout stops testing it.
     {
-        constexpr int kSlotW = 62, kSlotH = 24;
-        const int     hy = LH - kSlotH - 8;
-        const auto    slot = [&](int i) { return ink(buf, 8 + i * (kSlotW + 4), hy, kSlotW, kSlotH); };
+        render(idle);                                   // publish the screen size
+        const farm::Layout hud = scene.controls();
+        CHECK(!hud.tool[0].empty());
+        const auto slot = [&](int i) {
+            const farm::Box& b = hud.tool[i];
+            return ink(buf, b.x, b.y, b.w, b.h);
+        };
 
         scene.update(1.0 / 60.0, key(platform::Key::Num1));
         render(idle);
@@ -646,6 +690,190 @@ int main() {
         CHECK(hoe_on > hoe_off);          // the Hoe slot lost its border
         CHECK(water_on > water_off);      // ...and the Water slot gained one
         dump_ppm(buf, "farm_hotbar.ppm");
+    }
+
+    // ---- the hotbar is now the CONTROL, not a picture of one ----------------
+    // Five chapters of showing the tool without being able to change it. On a keyboard
+    // that was fine — 1..4 were right there. On a phone the tool you started with was
+    // the tool you had, which made three of the game's four verbs unreachable.
+    {
+        render(idle);
+        const farm::Layout hud = scene.controls();
+        const auto tap = [&](const farm::Box& b, bool pressed) {
+            platform::InputState in{};
+            in.mouse_x = b.x + b.w / 2;
+            in.mouse_y = b.y + b.h / 2;
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = pressed;
+            return in;
+        };
+
+        // Every slot, in an order that is not the order they sit in — a mapping that
+        // is off by one still passes an ascending sweep about a quarter of the time.
+        for (int i : {2, 0, 3, 1}) {
+            scene.update(1.0 / 60.0, tap(hud.tool[i], true));
+            render(idle);
+            CHECK(scene.tool_index() == i);
+        }
+
+        // ...and the tool that was selected by a tap is the tool that FIRES. The index
+        // being right and the action being wrong is one substitution apart, and the
+        // index alone cannot see the difference.
+        scene.update(1.0 / 60.0, key(platform::Key::S));          // face down
+        const std::size_t before = scene.world().soil.size();
+        scene.update(1.0 / 60.0, tap(hud.tool[3], true));         // Harvest
+        CHECK(scene.tool_index() == 3);
+        scene.update(1.0 / 60.0, key(platform::Key::Z));
+        CHECK(scene.world().soil.size() == before);               // harvesting bare ground tills nothing
+        scene.update(1.0 / 60.0, tap(hud.tool[0], true));         // Hoe
+        scene.update(1.0 / 60.0, key(platform::Key::Z));
+        CHECK(scene.world().soil.size() > before);                // ...and the hoe does
+
+        // A tap on the hotbar must not ALSO work the tile beneath it, the same veto the
+        // d-pad has. The tool changed; the world must not have.
+        const std::size_t after = scene.world().soil.size();
+        scene.update(1.0 / 60.0, tap(hud.tool[1], true));
+        CHECK(scene.tool_index() == 1);
+        CHECK(scene.world().soil.size() == after);
+    }
+
+    // ---- talking to Anna, entirely by thumb -----------------------------------
+    // There was no scene test for the dialogue at all, which is why this went five
+    // chapters without surfacing: the dialogue branch of update() RETURNS before it
+    // reads the pointer, so a player without a keyboard who opened the box could not
+    // answer it, could not walk away and could not save. A frozen game whose only exit
+    // is force-quit — and the screen looked completely normal the whole time.
+    {
+        // Two scenes from one save: the first says where Anna stands at that minute,
+        // the second puts the player directly north of her. The schedule is a function
+        // of the world clock, which both saves share, so she does not move in between.
+        clear_file("saves/farm/slot1.sync");
+        write_text("saves/farm/slot1.sav", save_text(1, 0, 2, 2));
+        int ax = 0, ay = 0;
+        {
+            farm::FarmScene probe{farm::FarmScene::default_config(),
+                                  std::make_unique<gbaas::OfflineTransport>()};
+            CHECK(!probe.world().npcs.empty());
+            ax = probe.world().npcs[0].x;
+            ay = probe.world().npcs[0].y;
+        }
+        write_text("saves/farm/slot1.sav", save_text(1, 0, ax, ay - 1));
+        farm::FarmScene sc{farm::FarmScene::default_config(),
+                           std::make_unique<gbaas::OfflineTransport>()};
+        CHECK(sc.world().px == ax && sc.world().py == ay - 1);
+        CHECK(!sc.talking());
+
+        draw(sc, idle);                                   // publish the screen size
+        sc.update(1.0 / 60.0, key(platform::Key::Z));     // facing down by default: Anna
+        CHECK(sc.talking());
+
+        draw(sc, idle);
+        const farm::Talk tk = sc.talk_controls();
+        CHECK(tk.visible());
+        CHECK(tk.count == 3);                             // anna.dlg's first node
+        CHECK(ink(buf, tk.panel.x * SS, tk.panel.y * SS, tk.panel.w * SS, tk.panel.h * SS) > 0);
+        dump_ppm(buf, "farm_dialogue.ppm");
+
+        const auto tap = [&](const farm::Box& b) {
+            platform::InputState in{};
+            in.mouse_x = b.x + b.w / 2;
+            in.mouse_y = b.y + b.h / 2;
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+            return in;
+        };
+
+        // A tap on the panel but off every option is not an answer: it finishes the
+        // prompt and leaves the question standing. Getting this wrong would mean a
+        // stray tap anywhere in the box silently picks whatever was highlighted.
+        const std::size_t soil_before = sc.world().soil.size();
+        const int         px_before   = sc.world().px;
+        sc.update(1.0 / 60.0, tap(farm::Box{tk.panel.x, tk.panel.y, tk.panel.w, 20}));
+        CHECK(sc.talking());
+        CHECK(sc.talk_controls().count == 3);
+
+        // ...and an option answers it. "Ask about the town" is the second, so a
+        // mapping that is off by one still moves the conversation along and this test
+        // has to go looking for the difference.
+        sc.update(1.0 / 60.0, tap(tk.choice(1)));
+        draw(sc, idle);
+        CHECK(sc.talking());
+        CHECK(sc.talk_controls().count == 0);             // the branch is prose from here
+
+        // NOTHING ELSE ON SCREEN REACTS TO THE POINTER while the box is up. update()
+        // returns before it reads the pad, so every one of those buttons is dead — and
+        // a dead control that still lights up under a thumb is the founding bug of
+        // `controls.hpp` arriving from the other direction.
+        //
+        // Held, not pressed, so the dialogue itself ignores it (it answers edges); and
+        // dt = 0 so the typewriter does not advance between the two frames and turn a
+        // real difference into an unreadable one.
+        {
+            const farm::Box& b = sc.controls().use;
+            CHECK(!b.empty());
+            platform::InputState hold{};
+            hold.mouse_x = b.x + b.w / 2;
+            hold.mouse_y = b.y + b.h / 2;
+            hold.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            sc.update(0.0, hold);
+            draw(sc, idle);
+            const std::uint64_t with_pointer = fingerprint(buf);
+            sc.update(0.0, platform::InputState{});
+            draw(sc, idle);
+            CHECK(fingerprint(buf) == with_pointer);
+            CHECK(sc.talking());                          // and neither frame answered it
+        }
+
+        // The box CLOSES. This is the whole claim: before chapter 126 this loop ran out
+        // and `talking()` was still true, for ever.
+        int taps = 0;
+        for (; taps < 20 && sc.talking(); ++taps) {
+            const farm::Talk now = sc.talk_controls();
+            CHECK(now.visible());
+            sc.update(1.0 / 60.0, tap(now.panel));
+            draw(sc, idle);
+        }
+        CHECK(!sc.talking());
+        CHECK(taps < 20);
+
+        // None of it touched the world. A dialogue that also hoes the tile you are
+        // standing on is the `consumed` bug wearing a different hat.
+        CHECK(sc.world().soil.size() == soil_before);
+        CHECK(sc.world().px == px_before);
+
+        // ...and the game is playable again straight afterwards: the pad is back, and
+        // the panel is gone rather than merely transparent.
+        draw(sc, idle);
+        CHECK(!sc.talk_controls().visible());
+        const farm::Layout back = sc.controls();
+        CHECK(back.visible());
+        clear_file("saves/farm/slot1.sav");
+    }
+
+    // ---- save, by thumb ------------------------------------------------------
+    // F5 has been the only way to write the file since the farm existed. A phone has
+    // no F5, so a phone had no save at all — the day survived only if you slept.
+    {
+        clear_file("saves/farm/slot1.sav");
+        CHECK(assets::load_file("saves/farm/slot1.sav")->empty());
+        render(idle);
+        const farm::Layout hud = scene.controls();
+        CHECK(!hud.save.empty());
+        platform::InputState in{};
+        in.mouse_x = hud.save.x + hud.save.w / 2;
+        in.mouse_y = hud.save.y + hud.save.h / 2;
+        in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+        in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+        scene.update(1.0 / 60.0, in);
+        const auto written = assets::load_file("saves/farm/slot1.sav");
+        CHECK(written && !written->empty());
+        // It is THIS world on disk, not an empty one: a save button that writes a file
+        // is not the same claim as a save button that saves the game.
+        const std::string text(written->begin(), written->end());
+        CHECK(text.find("game farm") != std::string::npos);
+        CHECK(text.find("var day " + std::to_string(scene.world().day)) != std::string::npos);
+        CHECK(text.find("var gold " + std::to_string(scene.world().gold)) != std::string::npos);
+        clear_file("saves/farm/slot1.sav");
     }
 
     const auto routes_ok = [](ScriptedTransport& t) {
@@ -718,14 +946,7 @@ int main() {
         auto owner = std::make_unique<ScriptedTransport>();
         ScriptedTransport* t = owner.get();
         routes_ok(*t);
-        const std::string cloud = save_text(/*day*/ 11, /*gold*/ 3000);
-        std::string escaped;
-        for (char c : cloud) {
-            if      (c == '\n') escaped += "\\n";
-            else if (c == '"')  escaped += "\\\"";
-            else if (c == '\\') escaped += "\\\\";
-            else                escaped += c;
-        }
+        const std::string escaped = as_json_string(save_text(/*day*/ 11, /*gold*/ 3000));
         t->routes["GET /v1/saves/farm"] = {200,
             R"({"slot":"farm","version":3,"data":")" + escaped + R"("})"};
         t->routes["PUT /v1/saves/farm"] = {200, R"({"slot":"farm","version":4,"size":12})"};
@@ -758,6 +979,102 @@ int main() {
         CHECK(ink(buf, LW / 2, 0, LW / 2, 20) < asking);
         for (int i = 0; i < 3; ++i) sc.update(1.0 / 60.0, idle);
         CHECK(t->count("PUT /v1/saves/farm") == 0);       // taking a copy is not a reason to send one
+    }
+
+    // ---- ...and the same question, answered by a thumb -----------------------
+    // The chip has named F6 and F7 since the farm learned to sync, and a phone has
+    // neither key. That was not a missing convenience: `sync_saves` runs on CONNECT, so
+    // a player who opened the farm on a second device met a question at startup, before
+    // touching anything, with no way to answer it and no way to save afterwards. The
+    // buttons appear only while the conflict is live, in the seat `save` normally has —
+    // which is also why `save` cannot be there: tapping it would silently mean "mine
+    // wins" for someone who never saw the question.
+    {
+        // Both answers have to be reachable, so the scene is built twice from one
+        // recipe. A conflict is resolved exactly once, and a test that could only press
+        // the destructive answer would have left "keep mine" — the answer a player
+        // reaching for their own evening's play wants — unpressed on this surface.
+        ScriptedTransport* t = nullptr;
+        const auto conflicted = [&] {
+            write_text("saves/farm/slot1.sav", save_text(/*day*/ 5, /*gold*/ 700));
+            clear_file("saves/farm/slot1.sync");
+            auto owner = std::make_unique<ScriptedTransport>();
+            t = owner.get();
+            routes_ok(*t);
+            t->routes["GET /v1/saves/farm"] = {200,
+                R"({"slot":"farm","version":7,"data":")" +
+                as_json_string(save_text(/*day*/ 20, /*gold*/ 9000)) + R"("})"};
+            t->routes["PUT /v1/saves/farm"] = {200, R"({"slot":"farm","version":8,"size":12})"};
+            auto sc = std::make_unique<farm::FarmScene>(farm::FarmScene::default_config(),
+                                                        std::move(owner));
+            for (int i = 0; i < 8; ++i) sc->update(1.0 / 60.0, idle);
+            return sc;
+        };
+
+        auto scp = conflicted();
+        farm::FarmScene& sc = *scp;
+        CHECK(sc.conflict());
+        CHECK(sc.world().day == 5);
+
+        draw(sc, idle);                                   // publish the screen size
+        const farm::Layout ask = sc.controls();
+        CHECK(ask.visible());
+        CHECK(!ask.keep.empty() && !ask.take.empty());
+        CHECK(ask.save.empty());                          // the seat is taken by the question
+        CHECK(corner_clean(buf));                         // ...and `save` leaves no ghost
+        dump_ppm(buf, "farm_conflict_buttons.ppm");
+
+        const auto tap = [&](const farm::Box& b) {
+            platform::InputState in{};
+            in.mouse_x = b.x + b.w / 2;
+            in.mouse_y = b.y + b.h / 2;
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+            return in;
+        };
+
+        // A tap that is not on either answer must leave the question standing. The
+        // buttons sit over the world, so the press that resolves a conflict has to be
+        // the press on the button and not merely a press.
+        sc.update(1.0 / 60.0, tap(farm::Box{ask.take.x, ask.take.y - 60, 10, 10}));
+        CHECK(sc.conflict());
+        CHECK(sc.world().day == 5);
+
+        sc.update(1.0 / 60.0, tap(ask.take));
+        CHECK(!sc.conflict());
+        CHECK(sc.world().day == 20);                      // the cloud copy, adopted
+        CHECK(sc.world().gold == 9000);
+        CHECK(sc.cloud_line() == "cloud v7");
+        for (int i = 0; i < 3; ++i) sc.update(1.0 / 60.0, idle);
+        CHECK(t->count("PUT /v1/saves/farm") == 0);       // taking a copy is not a reason to send one
+
+        // The question is gone, so the seat goes back to `save` — and it works. A
+        // player who resolves a conflict and then cannot save has traded one dead end
+        // for another.
+        draw(sc, idle);
+        const farm::Layout after = sc.controls();
+        CHECK(!after.save.empty());
+        CHECK(after.keep.empty() && after.take.empty());
+        sc.update(1.0 / 60.0, tap(after.save));
+        for (int i = 0; i < 3; ++i) sc.update(1.0 / 60.0, idle);
+        CHECK(t->count("PUT /v1/saves/farm") == 1);
+
+        // ...and the other answer, on a fresh conflict. `keep` uploads THIS device's
+        // world and leaves it on screen; nothing is adopted.
+        auto kp = conflicted();
+        farm::FarmScene& kc = *kp;
+        CHECK(kc.conflict());
+        draw(kc, idle);
+        const farm::Layout ask2 = kc.controls();
+        CHECK(!ask2.keep.empty());
+        CHECK(t->count("PUT /v1/saves/farm") == 0);       // asked, uploaded nothing
+        kc.update(1.0 / 60.0, tap(ask2.keep));
+        for (int i = 0; i < 3; ++i) kc.update(1.0 / 60.0, idle);
+        CHECK(!kc.conflict());
+        CHECK(kc.world().day == 5);                       // the local evening survived
+        CHECK(kc.world().gold == 700);
+        CHECK(t->count("PUT /v1/saves/farm") == 1);       // ...and went up
+        CHECK(kc.cloud_line() == "cloud v8");
     }
 
     // ---- the day ends: analytics go out, and the day is a save point --------
@@ -874,6 +1191,40 @@ int main() {
         for (std::uint32_t p : buf) if (p == 0xFF301A20u) ++chip;
         CHECK(chip > 200);
         dump_ppm(buf, "farm_config_typo.ppm");
+
+        // ...and NOTHING COVERS IT. The chip is left-aligned and the d-pad lives in the
+        // bottom-left corner, so the first cut of chapter 126 drew the "down" button
+        // straight through the middle of the one line an operator has to be able to
+        // read. Nothing failed: the flag was set, the text was drawn, the count above
+        // was well over 200, and only a screenshot said otherwise.
+        //
+        // Stated as the rule rather than as a pixel budget: find where the chip
+        // actually IS from its own opaque background, and require that no control was
+        // laid out across it. A count would have to pick a threshold; this does not.
+        {
+            int x0 = PW, y0 = PH, x1 = -1, y1 = -1;
+            for (int y = 0; y < PH; ++y)
+                for (int x = 0; x < PW; ++x)
+                    if (buf[static_cast<std::size_t>(y) * PW + x] == 0xFF301A20u) {
+                        if (x < x0) x0 = x;
+                        if (x > x1) x1 = x;
+                        if (y < y0) y0 = y;
+                        if (y > y1) y1 = y;
+                    }
+            CHECK(x1 >= x0 && y1 >= y0);
+            const farm::Box chip_box{x0 / SS, y0 / SS, (x1 - x0 + 1) / SS, (y1 - y0 + 1) / SS};
+            const farm::Layout ctl = sc.controls();
+            CHECK(ctl.visible());                    // the pad IS up on this screen
+            const farm::Box all[] = {ctl.up,   ctl.down, ctl.left, ctl.right,
+                                     ctl.use,  ctl.seed, ctl.save,
+                                     ctl.tool[0], ctl.tool[1], ctl.tool[2], ctl.tool[3]};
+            for (const farm::Box& b : all) {
+                if (b.empty()) continue;
+                const bool over = chip_box.x < b.x + b.w && b.x < chip_box.x + chip_box.w &&
+                                  chip_box.y < b.y + b.h && b.y < chip_box.y + chip_box.h;
+                CHECK(!over);
+            }
+        }
     }
 
     clear_file("saves/farm/slot1.sav");

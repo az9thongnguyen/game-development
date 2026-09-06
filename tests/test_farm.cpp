@@ -894,25 +894,111 @@ static void test_water_provenance() {
 //  The on-screen controls. The load-bearing claim is not "a tap moves you" — it is
 //  that ONE layout function answers both the renderer and the hit test, and that the
 //  pointer being over a control STOPS the world from also reading it.
+//
+//  Chapter 126 took the count from six boxes to thirteen, and at thirteen the
+//  interesting failure changes shape. Six rectangles can be eyeballed; thirteen
+//  cannot, and two of them overlapping by four pixels is a coin toss the player always
+//  loses and no screenshot ever shows. So the geometry is checked as a PROPERTY over a
+//  sweep of screen sizes rather than as landmarks on one: whatever layout() answers,
+//  for any screen, every box it hands back is on that screen and no two share a pixel.
 // -----------------------------------------------------------------------------
-static void test_controls() {
-    const farm::Layout l = farm::layout(1280, 720);
-    CHECK(l.visible());
+namespace {
 
-    // Every control is on screen and none of them overlap. Two buttons sharing a
-    // pixel is a coin toss the player always loses, and it is invisible in a mockup.
-    const farm::Box* all[] = {&l.up, &l.down, &l.left, &l.right, &l.use, &l.seed};
-    for (const farm::Box* a : all) {
-        CHECK(a->x >= 0 && a->y >= 0);
-        CHECK(a->x + a->w <= 1280 && a->y + a->h <= 720);
-        CHECK(a->w >= 44 && a->h >= 44);      // reachable by a thumb, not by aiming
-        for (const farm::Box* b : all) {
-            if (a == b) continue;
-            const bool overlap = a->x < b->x + b->w && b->x < a->x + a->w &&
-                                 a->y < b->y + b->h && b->y < a->y + a->h;
-            CHECK(!overlap);
+// Every box the layout is offering this frame. An empty one is a control that is not
+// there, and it is excluded rather than special-cased: `contains` is already false for
+// all of them, so "not laid out" and "not hittable" are one fact, not two.
+std::vector<farm::Box> live_boxes(const farm::Layout& l) {
+    const farm::Box all[] = {l.up,   l.down, l.left, l.right,
+                             l.use,  l.seed, l.save, l.keep, l.take,
+                             l.tool[0], l.tool[1], l.tool[2], l.tool[3]};
+    std::vector<farm::Box> out;
+    for (const farm::Box& b : all)
+        if (!b.empty()) out.push_back(b);
+    return out;
+}
+
+bool overlaps(const farm::Box& a, const farm::Box& b) {
+    return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+farm::Pointer at(const farm::Box& b, bool down, bool pressed) {
+    return farm::Pointer{b.x + b.w / 2, b.y + b.h / 2, down, pressed};
+}
+
+} // namespace
+
+static void test_controls_geometry() {
+    // A sweep, not a handful of landmarks: the sizes in between are exactly where an
+    // off-by-one in a margin lives. Odd steps, so the samples do not all land on
+    // multiples of the button size and miss the rounding.
+    int swept = 0, with_pad = 0, without_pad = 0;
+    for (int w = 480; w <= 1920; w += 13) {
+        for (int h = 260; h <= 1200; h += 17) {
+            for (int c = 0; c < 2; ++c) {
+                const bool         conflict = c != 0;
+                const farm::Layout l        = farm::layout(w, h, conflict);
+                const auto         boxes    = live_boxes(l);
+                ++swept;
+                (l.visible() ? with_pad : without_pad)++;
+
+                for (std::size_t i = 0; i < boxes.size(); ++i) {
+                    const farm::Box& a = boxes[i];
+                    // On the screen. A control drawn half off the edge is a control
+                    // whose other half cannot be pressed.
+                    CHECK(a.x >= 0 && a.y >= 0);
+                    CHECK(a.x + a.w <= w && a.y + a.h <= h);
+                    for (std::size_t k = i + 1; k < boxes.size(); ++k)
+                        CHECK(!overlaps(a, boxes[k]));
+                }
+
+                // The pad is all-or-nothing: `visible()` reads ONE box, so a layout
+                // that filled five of the six would look present and act broken.
+                if (l.visible()) {
+                    const farm::Box pad[] = {l.up, l.down, l.left, l.right, l.use, l.seed};
+                    for (const farm::Box& b : pad) {
+                        CHECK(!b.empty());
+                        CHECK(b.w >= 44 && b.h >= 44);   // a thumb, not an aim
+                    }
+                }
+
+                // `save` and the conflict pair share one seat, and which of them sits
+                // in it is the whole reason layout() takes state at all. They must
+                // never both be there: an unresolved conflict with a save button beside
+                // it is exactly the ambiguity this design exists to remove.
+                if (conflict) {
+                    CHECK(l.save.empty());
+                    CHECK(l.visible() == !l.keep.empty());
+                    CHECK(l.visible() == !l.take.empty());
+                } else {
+                    CHECK(l.keep.empty() && l.take.empty());
+                    CHECK(l.visible() == !l.save.empty());
+                }
+
+                // The hotbar has two heights and they are not a preference: 24 is what
+                // a LABEL needs, 44 is what a TARGET needs, and it becomes a target
+                // exactly when the pad fits. One fact, so one condition.
+                if (!l.tool[0].empty()) {
+                    CHECK(l.tool[0].h == (l.visible() ? 44 : 24));
+                    for (int i = 0; i < 4; ++i) {
+                        CHECK(!l.tool[i].empty());
+                        CHECK(l.tool[i].h == l.tool[0].h);
+                        CHECK(l.tool[i].y == l.tool[0].y);
+                        if (i > 0) CHECK(l.tool[i].x > l.tool[i - 1].x);
+                    }
+                }
+            }
         }
     }
+    // The sweep has to have covered BOTH regimes, or it proved one of them twice and
+    // the other not at all — which is the failure mode of every sweep ever written.
+    CHECK(swept > 5000);
+    CHECK(with_pad > 100 && without_pad > 100);
+}
+
+static void test_controls() {
+    const farm::Layout l = farm::layout(1280, 720, /*conflict*/ false);
+    CHECK(l.visible());
+
     // The d-pad is a cross: left is left of right, up is above down, and they share a
     // column and a row. Written out because "it looked fine" is how a mirrored pad
     // ships.
@@ -922,11 +1008,15 @@ static void test_controls() {
     CHECK(l.left.y == l.right.y);
     // ...and the actions are on the far side from the d-pad, or one thumb does both.
     CHECK(l.use.x > l.right.x);
+    // `save` sits a ROW ABOVE the thumb row, not beside it, so a reach for `use` — the
+    // verb pressed hundreds of times a day — cannot land on it.
+    CHECK(l.save.y < l.use.y);
+    CHECK(l.save.x == l.use.x);
+    // The hotbar is below the pad, not beside it: two things answering a tap in the
+    // same pixels is the coin toss the player always loses.
+    CHECK(l.tool[0].y > l.down.y);
 
     // Held direction, like an arrow key.
-    const auto at = [](const farm::Box& b, bool down, bool pressed) {
-        return farm::Pointer{b.x + b.w / 2, b.y + b.h / 2, down, pressed};
-    };
     farm::Action a = farm::read(l, at(l.right, true, true));
     CHECK(a.dx == 1 && a.dy == 0);
     CHECK(a.consumed);
@@ -947,24 +1037,187 @@ static void test_controls() {
     CHECK(a.consumed);
     CHECK(!a.seed && a.dx == 0 && a.dy == 0);
 
+    // Save is an edge too, and it is its own answer — not `use` with a flag on it.
+    a = farm::read(l, at(l.save, true, true));
+    CHECK(a.save && !a.use && !a.seed && a.tool == -1 && a.consumed);
+    CHECK(!farm::read(l, at(l.save, true, false)).save);
+
+    // ---- the hotbar answers taps --------------------------------------------------
+    // This is what chapter 126 is actually about: four rectangles that were a PICTURE
+    // of the selected tool since the farm existed, and are now the control for it.
+    for (int i = 0; i < 4; ++i) {
+        a = farm::read(l, at(l.tool[i], true, true));
+        CHECK(a.tool == i);
+        CHECK(a.consumed);
+        CHECK(!a.use && !a.save && a.dx == 0 && a.dy == 0);
+        // An edge, like every other action: a thumb resting on "Water" must not
+        // re-select it sixty times a second.
+        CHECK(farm::read(l, at(l.tool[i], true, false)).tool == -1);
+        // ...and resting on it still stops the world reading the pointer, or the tile
+        // under the hotbar reacts to a tap that was meant for the tool.
+        CHECK(farm::read(l, at(l.tool[i], false, false)).consumed);
+    }
+    // -1, never 0. Slot 0 is a real answer ("Hoe"), so "nothing was tapped" must not
+    // share its value — otherwise a tap on empty grass silently resets the tool.
+    CHECK(farm::read(l, farm::Pointer{640, 300, true, true}).tool == -1);
+
     // Off the controls, and off the screen entirely.
     a = farm::read(l, farm::Pointer{640, 300, true, true});
     CHECK(!a.consumed && a.dx == 0 && !a.use);
     a = farm::read(l, farm::Pointer{-1, -1, true, true});
     CHECK(!a.consumed);
 
-    // A screen too small to hold the pad AND leave the world visible draws nothing,
-    // and then nothing is consumed — the keyboard is the only honest answer there,
-    // and a control covering what it acts on is worse than one that is absent.
-    const farm::Layout tiny = farm::layout(320, 200);
+    // ---- the conflict pair --------------------------------------------------------
+    // The cloud chip has named two keys since the farm learned to sync, and a phone has
+    // neither: a player who opened the farm on a second device met a question they had
+    // no way to answer.
+    const farm::Layout cl = farm::layout(1280, 720, /*conflict*/ true);
+    CHECK(cl.visible());
+    CHECK(!cl.keep.empty() && !cl.take.empty());
+    CHECK(cl.save.empty());
+    // `keep` is the answer that changes nothing, so it gets the seat a thumb reaches
+    // without moving the hand. `take` discards the play on this device and costs a
+    // deliberate stretch — a destructive answer must never be the comfortable one.
+    CHECK(cl.keep.x > cl.take.x);
+    CHECK(cl.keep.x == cl.use.x);
+    a = farm::read(cl, at(cl.keep, true, true));
+    CHECK(a.keep && !a.take && !a.save && a.consumed);
+    a = farm::read(cl, at(cl.take, true, true));
+    CHECK(a.take && !a.keep && !a.save);
+    CHECK(!farm::read(cl, at(cl.keep, true, false)).keep);   // an edge
+
+    // THE ONE THAT MATTERS. The conflict pair occupies the save button's seat, so the
+    // same pixel means different things on the two layouts — and each must mean only
+    // its own. A button that is HIT but not DRAWN is the same bug as one drawn but not
+    // hit, seen from the other side, and it is the one a screenshot cannot show.
+    a = farm::read(l, farm::Pointer{cl.keep.x + 2, cl.keep.y + 2, true, true});
+    CHECK(!a.keep && !a.take);
+    CHECK(a.save);
+    a = farm::read(cl, farm::Pointer{l.save.x + 2, l.save.y + 2, true, true});
+    CHECK(!a.save);
+    CHECK(a.keep);
+
+    // ---- the screens without a pad ------------------------------------------------
+    // A screen too small to hold the pad AND leave the world visible draws no pad — a
+    // control covering what it acts on is worse than one that is absent. The hotbar is
+    // NOT part of that judgement: it is a label first, and was always drawn there.
+    const farm::Layout retro = farm::layout(480, 270, false);
+    CHECK(!retro.visible());
+    CHECK(retro.save.empty() && retro.keep.empty() && retro.take.empty());
+    CHECK(!retro.tool[0].empty());
+    CHECK(retro.tool[0].h == 24);
+    // ...and it still answers a click, because a mouse can hit 24 pixels even though a
+    // thumb cannot. Losing that on the retro build would be a regression dressed up as
+    // consistency.
+    CHECK(farm::read(retro, at(retro.tool[3], true, true)).tool == 3);
+    // The pad's buttons are gone, so nothing over where they would have been is
+    // consumed.
+    CHECK(!farm::read(retro, farm::Pointer{30, 100, true, true}).consumed);
+
+    // The 320x200 case: too small for the pad, and the top corner is free.
+    const farm::Layout tiny = farm::layout(320, 200, false);
     CHECK(!tiny.visible());
     CHECK(!farm::read(tiny, farm::Pointer{10, 10, true, true}).consumed);
 
-    // The retro 480x270 framebuffer the engine demo uses is deliberately in the "too
-    // small" case; the farm's own 1280x720 is not. Both are pinned so a change to the
-    // threshold has to be a decision.
-    CHECK(!farm::layout(480, 270).visible());
-    CHECK(farm::layout(960, 600).visible());
+    // Both thresholds pinned, so a change to them has to be a decision.
+    CHECK(!farm::layout(480, 270, false).visible());
+    CHECK(farm::layout(960, 600, false).visible());
+}
+
+// -----------------------------------------------------------------------------
+//  The dialogue panel. Talking to Anna was a HARD LOCK by hand: the scene's dialogue
+//  branch returns before it reads the pointer, so once the box was up nothing on
+//  screen answered — no choice, no walking away, no saving. There was no scene test
+//  for the dialogue at all, which is why the freeze outlived the chapter that promised
+//  hand-playability without anyone noticing.
+// -----------------------------------------------------------------------------
+static void test_talk_layout() {
+    // Three options is what anna.dlg actually offers at its first node.
+    const farm::Talk t = farm::talk_layout(1280, 720, 3);
+    CHECK(t.visible());
+    CHECK(t.count == 3);
+    CHECK(t.row == 44);                 // a row you press, not a row you read
+
+    // The options stack, they are all inside the panel, and they do not overlap.
+    for (int i = 0; i < t.count; ++i) {
+        const farm::Box r = t.choice(i);
+        CHECK(!r.empty());
+        CHECK(r.x >= t.panel.x && r.x + r.w <= t.panel.x + t.panel.w);
+        CHECK(r.y >= t.panel.y && r.y + r.h <= t.panel.y + t.panel.h);
+        if (i > 0) CHECK(r.y == t.choice(i - 1).y + t.choice(i - 1).h);
+    }
+    // Out of range is an EMPTY box, not undefined behaviour and not clamped to a real
+    // row — a clamp would make option 9 select option 3.
+    CHECK(t.choice(-1).empty());
+    CHECK(t.choice(3).empty());
+    CHECK(t.choice(99).empty());
+
+    // The panel clears the hotbar. The tool and the seed count are exactly what a
+    // player checks while an NPC explains what grows here, and the panel used to be
+    // placed a fixed distance from the bottom edge — a number that cleared a 24px
+    // strip and covered a 44px one.
+    const farm::Layout l = farm::layout(1280, 720, false);
+    for (int i = 0; i < 4; ++i) {
+        const farm::Box& b = l.tool[i];
+        CHECK(!overlaps(t.panel, b));
+        CHECK(t.panel.y + t.panel.h <= b.y);
+    }
+
+    // A tap on an option picks THAT option — not the one the keyboard cursor was on.
+    for (int i = 0; i < t.count; ++i) {
+        const farm::TalkAction a = farm::read(t, at(t.choice(i), true, true));
+        CHECK(a.choice == i);
+        CHECK(!a.advance);
+    }
+    // ...and every option is inside the panel, so an implementation that tested the
+    // panel first would turn the whole box into one "next" button and answer the
+    // question for you. This is that check.
+    {
+        const farm::TalkAction a = farm::read(t, at(t.choice(1), true, true));
+        CHECK(a.choice == 1 && !a.advance);
+    }
+
+    // A tap on the panel but off every option advances the line and chooses nothing.
+    const farm::Pointer head{t.panel.x + t.panel.w / 2, t.panel.y + 6, true, true};
+    farm::TalkAction a = farm::read(t, head);
+    CHECK(a.advance && a.choice == -1);
+
+    // Edges only: a finger resting on the box must not advance sixty lines a second.
+    CHECK(!farm::read(t, farm::Pointer{head.x, head.y, true, false}).advance);
+    // Off the panel, and off the screen.
+    CHECK(!farm::read(t, farm::Pointer{5, 5, true, true}).advance);
+    CHECK(farm::read(t, farm::Pointer{5, 5, true, true}).choice == -1);
+    CHECK(!farm::read(t, farm::Pointer{-1, -1, true, true}).advance);
+
+    // A line of prose: a panel, no options, and a tap anywhere in it moves on.
+    const farm::Talk prose = farm::talk_layout(1280, 720, 0);
+    CHECK(prose.visible());
+    CHECK(prose.count == 0);
+    CHECK(prose.choice(0).empty());
+    CHECK(farm::read(prose, at(prose.panel, true, true)).advance);
+    CHECK(prose.panel.h < t.panel.h);      // it grows with the options, and shrinks back
+
+    // On the retro framebuffer the rows are read, not pressed, and the panel is the
+    // same size it has always been.
+    const farm::Talk retro = farm::talk_layout(480, 270, 3);
+    CHECK(retro.visible());
+    CHECK(retro.row == 18);
+
+    // A dialogue with more options than the screen can hold lays out NOTHING rather
+    // than a panel running off the top: the box is the one thing here that has to be
+    // readable, so it either fits or the keyboard is the honest answer.
+    CHECK(!farm::talk_layout(1280, 720, 40).visible());
+    CHECK(farm::read(farm::talk_layout(1280, 720, 40), farm::Pointer{600, 400, true, true})
+              .advance == false);
+
+    // ...and there is no cap on the option count short of that. Six used to be one,
+    // written into an array, and a ceiling nobody meets today is a ceiling nobody sees
+    // when they finally do.
+    const farm::Talk many = farm::talk_layout(1280, 720, 9);
+    CHECK(many.visible());
+    CHECK(many.count == 9);
+    CHECK(!many.choice(8).empty());
+    CHECK(farm::read(many, at(many.choice(8), true, true)).choice == 8);
 }
 
 int main() {
@@ -974,6 +1227,8 @@ int main() {
     test_line_piece();
     test_path_sheet();
     test_controls();
+    test_controls_geometry();
+    test_talk_layout();
     test_the_crop_owns_the_price();
     test_overrides();
     test_sync_decision();
