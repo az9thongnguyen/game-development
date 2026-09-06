@@ -53,6 +53,33 @@ void drop_noops(std::vector<CellEdit>& cells);
 std::optional<doc::Command> make_command(tilemap::Map& m, std::string layer,
                                          std::vector<CellEdit> cells, std::string label);
 
+// ---- entities ---------------------------------------------------------------
+//  The half of a map that is NOT a grid, and the reason Map Lab outlived the Map
+//  workspace by ten chapters: painting moved here in chapter 112 and placing a
+//  player start did not, so the old lab stayed alive as the only way to author a
+//  spawn — and it wrote the old format while doing it.
+//
+//  An entity edit is a MOVE, not a stroke: its latest position subsumes every
+//  earlier one, which is exactly the shape `CommandStack` merges by merge_key. So
+//  dragging a spawn across the map is one undo step, and this returns a command
+//  with a merge key rather than accumulating like `Stroke`.
+
+// Place `name` at (x,y), creating it if the map has no such entity. The returned
+// command restores the previous position — or REMOVES the entity again, if it did
+// not exist before. Undo that leaves a spawn behind at its first position is not
+// undo, it is a different kind of edit.
+//
+// nullopt when the position is out of bounds or already what it would be set to:
+// an undo step that changes nothing makes Ctrl+Z look broken. The command is
+// returned UNAPPLIED, like make_command — `doc::CommandStack::push_apply` applies it.
+std::optional<doc::Command> place_entity(tilemap::Map& m, const std::string& name,
+                                         int x, int y);
+
+// Set one property on an entity, undoably (the spawn's facing is one). nullopt when
+// there is no such entity or the value is already that — same rule as above.
+std::optional<doc::Command> set_entity_prop(tilemap::Map& m, const std::string& name,
+                                            const std::string& key, const std::string& value);
+
 // A drag. Cells are written through as the mouse moves — you have to see the paint
 // under the cursor — and the whole gesture reaches the stack as ONE command when the
 // button comes up. Re-applying it is therefore idempotent, which is exactly what
