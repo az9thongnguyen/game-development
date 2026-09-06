@@ -978,6 +978,50 @@ trong file đó nói được điều này; chỉ khung đã render mới nói.
 tệ hơn. "Ô nhập giữ phím tắt" đúng; "và không bao giờ trả lại" là bug nặng hơn cái ban
 đầu. Viết test cho **cả hai chiều** của mọi guard, không chỉ chiều nó được sinh ra để đỡ.
 
+## S19 — trang nó xuất bản trên đó (chương 128) — XONG 2026-09-06
+
+**Vấn đề:** ch.126 làm mọi động từ của farm với tới được bằng ngón tay, ch.127 mở khoá vẽ
+art — cả hai đổ về **một trang web** mà người khác vào được, và trang đó vẫn là **debug
+shell**: font mono, panel log luôn hiện, canvas chặn ở `78vh`, **0 dòng** về chạm. Bản
+web chưa từng có ngón tay nào đưa vào.
+
+**Đã CHẠY, không chỉ viết:**
+
+- **Chạm THẬT, chứng minh bằng giá trị.** `scripts/web_touch_check.mjs` drive Chrome qua
+  CDP, bật touch emulation, bắn `Input.dispatchTouchEvent` (không phải click), rồi đọc
+  `var px` ra khỏi **file save game tự ghi**: giữ nút `>` → `px` 4 → 8. Bằng chứng mạnh
+  nhất đến từ việc **cố tình phá**: nhắm sang `<` → `px` 4 → **1**. Ngón tay không phải
+  "không tới" — nó tới, và đi sang **tây**.
+- **Nhắm bằng cách HỎI GAME.** Farm in một dòng stderr lúc render đầu:
+  `farm: controls 640x360 right=116,206,44,44 …`. Harness đọc dòng đó rồi ánh xạ
+  logical → CSS. Tự tính `44*390/640` là **bản sao thứ ba** của luật ch.126 và là bản
+  đầu tiên lạc hậu.
+- **SDL2 bản Emscripten DỰNG chuột từ ngón tay — không cần hint nào.** Trước nay chỉ là
+  câu trong tài liệu.
+
+**Lỗi thật lại nằm chỗ không ai ngờ: canvas BỊ KÉO GIÃN.** Emscripten tự đặt
+`style.width/height` inline; sau đó `max-width`/`max-height` **cắt hai trục độc lập** —
+quy tắc giữ tỉ lệ của phần tử thay thế hết hiệu lực. Trên máy 390px, game 1280×720 hiện
+ra **390×720**: mọi assertion xanh, chạm vẫn đúng ô (SDL ánh xạ qua **cùng** cái hộp sai
+hình đó), và hình cao gấp 2,5 lần. **Chỉ ảnh chụp nói ra** — chương thứ **ba liên tiếp**
+như vậy (126: nút vẽ đè chip; 127: nhãn tràn panel). Sửa bằng `fit()` + `ResizeObserver`
++ `MutationObserver`, và ghi assertion `|shown - drawn| <= 0.02`.
+
+**Một guard KHÔNG kiểm được, và nói thẳng là không kiểm được.** Lật `touch-action` sang
+`auto` → **vẫn qua hết**. Probe riêng cho biết vì sao: CDP bỏ qua `touch-action` hoàn
+toàn (kéo cuộn được **đúng 110px** ở cả hai giá trị). Nên nó là **tuyên bố ý định**, giữ
+lại vì pinch-zoom/double-tap-zoom; cái *được* kiểm là **trang không cuộn**, tức không có
+gì để cướp.
+
+- **4 phép biến đổi, 4 chết**: `fit()` thành no-op → bắt được kéo giãn; log hiện mặc
+  định; bar cao 300px; nhắm sai nút.
+- CI: job `web-build` trước đây **chỉ build** — nay có bước **chạy trang**.
+- Chạy ở **cả hai hướng màn hình** (390×844 và 844×390); đã render và **nhìn** cả hai.
+
+**Chưa xác minh:** `touch-action: none` (harness không thể) · vẫn **một ngón** · **portrait
+là con tem** (390×219 → nút d-pad 27px, dưới mọi khuyến nghị; trang chỉ khuyên xoay máy) ·
+chỉ Chrome, chưa có Safari/iOS · `?shell=` trên điện thoại chưa kiểm.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -986,7 +1030,7 @@ làm chín T6).
 
 | # | Slice | Size |
 |---|---|---|
-| **S19** | **Trang web thật + chứng minh chạm** — `shell.html` hiện là debug page **0 dòng touch**, trong khi ch.126 vừa làm farm chơi được bằng ngón tay | M |
+| ~~S19~~ | ~~Trang web thật + chứng minh chạm~~ — **XONG**, chương 128 | M |
 | S20 | CI chạy 23 test BaaS (container Drogon) — cả bộ đang **tối** | S |
 | S21 | Collection page + `cover`/`summary` trong manifest + README template | S/M |
 | S22 | Tạo asset mới + `.pack` + ATTRIBUTION tự sinh + asset card | M |

@@ -176,7 +176,12 @@ on one origin, which is what the SDK's relative base URL expects — the games t
 to the backend only work that way.
 
 The web build is **not** verified by linking. It had never been opened until chapter
-118, and it did not run when it was. `web/shell.html` is a LINK-time input (`LINK_DEPENDS`),
+118, and it did not run when it was. Since chapter 128 CI **runs the page**:
+`node scripts/web_touch_check.mjs --dir build-web` drives Chrome over CDP with touch
+emulation, dispatches a real `Input.dispatchTouchEvent` at the button the game printed,
+and checks the player moved by reading `var px` out of the save the game wrote.
+
+`web/shell.html` is a LINK-time input (`LINK_DEPENDS`),
 `saves/`/`releases/`/`channels/` are `--exclude-file`d out of the preload (they are this
 machine's state, and shipping `saves/device.id` gave every browser the same guest
 account), and `saves/` is mounted on IDBFS by the page so the web build has any memory

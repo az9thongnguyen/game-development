@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <chrono>
 #include <random>
 #include <sstream>
@@ -804,6 +805,29 @@ void FarmScene::render(const engine::Context& ctx) {
     // the exact "drawn in one place, hit in another" bug the moment it answered a tap.
     static const char* kToolNames[] = {"Hoe", "Water", "Seed", "Harvest"};
     const Layout pad = layout(W, H, conflict_);
+
+    // One line, once per process, to stderr — the same weight and the same reason as
+    // the platform seam's "renderer 'opengl' (accelerated)". A tap that did nothing and
+    // a tap that MISSED are different failures, and from outside the process nothing
+    // else tells them apart. It is also how the browser touch check aims: at the button
+    // the game says it drew, at the size the browser actually gave it, rather than at a
+    // second copy of the rule (ch. 126).
+    static bool announced = false;
+    if (!announced) {
+        announced = true;
+        const auto box = [](const Box& b) {
+            static char buf[64];
+            std::snprintf(buf, sizeof buf, "%d,%d,%d,%d", b.x, b.y, b.w, b.h);
+            return std::string(buf);
+        };
+        std::fprintf(stderr,
+                     "farm: controls %dx%d up=%s down=%s left=%s right=%s use=%s seed=%s "
+                     "save=%s tool0=%s\n",
+                     W, H, box(pad.up).c_str(), box(pad.down).c_str(), box(pad.left).c_str(),
+                     box(pad.right).c_str(), box(pad.use).c_str(), box(pad.seed).c_str(),
+                     box(pad.save).c_str(), box(pad.tool[0]).c_str());
+    }
+
     // Where the HUD strip begins, whether or not there is a hotbar in it. Anything
     // that sits above the hotbar has to keep sitting above it on the one screen too
     // small to have one, or a warning disappears exactly where it is hardest to spot.
