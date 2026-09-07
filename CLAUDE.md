@@ -252,6 +252,24 @@ two real `--pvp` processes did it on the first try and ran 500 turns (chapter 13
 act — the two guards are tested apart, because with the AI fixed a mirror match now
 *decides* and never reaches the cap.
 
+**Every read-then-write in the backend is a TRANSACTION with a locking read**
+(chapter 140). `db::lock_clause()` is `" FOR UPDATE"` on Postgres and `""` on SQLite,
+and it is the ONLY syntactic difference between the two backends. The old comment —
+*"atomic because the SQLite pool is size 1"* — was true of `purchase`, which opens a
+transaction, and false of `grant` and `consume`, which did not: a pool of one hands
+out the connection for a STATEMENT, not for a sequence. Two concurrent grants of a
+player's first item did not lose an update, they **crashed the process** with an
+uncaught `UniqueViolation`. `test_baas_concurrency` is eight threads on one purse and
+**has no teeth on SQLite by construction** — it says so in its own header, and
+`baas/ops/pg-test.sh` is the Docker harness that would give it teeth.
+**⚠️ POSTGRES DOES NOT WORK** — not "untested": Drogon does not translate `?` to `$1`
+and all 107 queries use `?`, `id INTEGER PRIMARY KEY` is not an auto-increment there,
+and `insertId()` needs `RETURNING`. `pg-test.sh` reproduces it in one command.
+**A transaction holds the only SQLite connection**, so anything reaching for
+`db::client()` while one is alive self-deadlocks — the suite STOPPED for 25 minutes
+before ctest's default timeout noticed, which is why every baas test now carries
+`TIMEOUT 120`.
+
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
 **28 of the 83 tests**: `ctest` here reports 83, a build configured without Drogon

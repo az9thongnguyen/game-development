@@ -27,7 +27,7 @@ static int g_failures = 0;
 int main() {
     const std::string db_path = "test_baas_liveops.db";
     baastest::cleanup_db(db_path);
-    auto db = web::db::make_db_client("sqlite://" + db_path);
+    auto db = web::db::make_db_client(baastest::db_url(db_path));
     web::db::set_client(db);
     web::db::run_migrations(db);
 

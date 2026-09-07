@@ -18,7 +18,10 @@
 #include <string>
 #include <vector>
 
+#include <cstdlib>
+
 #include <curl/curl.h>
+#include <drogon/orm/DbClient.h>
 #include <json/json.h>
 
 namespace baastest {
@@ -93,7 +96,52 @@ inline int find_free_port() {
     return port;
 }
 
+// ---- which database the tests run against -----------------------------------
+//
+// Default: a SQLite file named after the test. Set BAAS_TEST_DB to a postgres://
+// url and the SAME suite runs against Postgres — which is the only way the row
+// locks added in chapter 140 mean anything, since SQLite's pool of one hides every
+// race they exist to prevent.
+//
+//   BAAS_TEST_DB=postgres://baas:baas@127.0.0.1:5432/baas ctest --test-dir build/baas
+//
+// One shared database, wiped by `cleanup_db` at the start of each test. ctest runs
+// these serially (no -j), which is what makes one database safe; running them in
+// parallel against Postgres would need a schema each and does not today.
+inline const char* test_db_env() { return std::getenv("BAAS_TEST_DB"); }
+
+// `name` is the FULL sqlite filename, including its extension — the tests already
+// carry one ("test_baas_auth.db") and `cleanup_db` deletes exactly that path. The
+// first version of this helper appended ".db" itself, so every test wrote
+// `test_baas_auth.db.db` while cleanup deleted `test_baas_auth.db`: a suite that
+// passed once on a clean checkout and then failed on every run after, against a
+// database nothing ever emptied.
+inline std::string db_url(const std::string& name) {
+    if (const char* url = test_db_env()) return url;
+    return "sqlite://" + name;
+}
+
+// Start from nothing. On SQLite that is deleting the file; on Postgres it is
+// dropping the schema, because there is one database for all of them.
 inline void cleanup_db(const std::string& path) {
+    if (const char* url = test_db_env()) {
+        // LEAKED on purpose. Drogon's PgClient owns an event-loop thread, and letting
+        // the last reference go inside one of its own callbacks makes the destructor
+        // join that thread from itself — "Resource deadlock avoided", an abort with
+        // no output, before this file printed a single line. A test helper that runs
+        // once per process is exactly the place to hold a handle for the life of the
+        // process instead.
+        static drogon::orm::DbClientPtr* wipe = nullptr;
+        try {
+            if (!wipe) wipe = new drogon::orm::DbClientPtr(
+                drogon::orm::DbClient::newPgClient(url, 1));
+            (*wipe)->execSqlSync("DROP SCHEMA IF EXISTS public CASCADE");
+            (*wipe)->execSqlSync("CREATE SCHEMA public");
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "cleanup_db: %s\n", e.what());
+        }
+        return;
+    }
     for (const char* suffix : {"", "-journal", "-wal", "-shm"})
         std::remove((path + suffix).c_str());
 }

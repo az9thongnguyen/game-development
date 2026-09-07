@@ -76,7 +76,7 @@ int main() {
 
     const std::string db_path = "test_farm_live.db";
     baastest::cleanup_db(db_path);
-    auto db = web::db::make_db_client("sqlite://" + db_path);
+    auto db = web::db::make_db_client(baastest::db_url(db_path));
     web::db::set_client(db);
     web::db::run_migrations(db);
     web::db::seed(db);

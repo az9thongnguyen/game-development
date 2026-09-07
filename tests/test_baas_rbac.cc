@@ -30,7 +30,7 @@ int main() {
     if (sodium_init() < 0) { std::printf("FAIL: libsodium init\n"); return 1; }
     const std::string db_path = "test_baas_rbac.db";
     baastest::cleanup_db(db_path);
-    auto db = web::db::make_db_client("sqlite://" + db_path);
+    auto db = web::db::make_db_client(baastest::db_url(db_path));
     web::db::set_client(db);
     web::db::run_migrations(db);
 

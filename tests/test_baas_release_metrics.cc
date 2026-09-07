@@ -34,7 +34,7 @@ static long long tally(const std::vector<web::analytics::ReleaseCount>& s,
 int main() {
     const std::string db_path = "test_baas_release_metrics.db";
     baastest::cleanup_db(db_path);
-    auto db = web::db::make_db_client("sqlite://" + db_path);
+    auto db = web::db::make_db_client(baastest::db_url(db_path));
     web::db::set_client(db);
     web::db::run_migrations(db);   // must include migration 3 (the release column)
 

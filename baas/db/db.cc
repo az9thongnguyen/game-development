@@ -275,17 +275,36 @@ void exec_each_statement(const DbClientPtr& db, const std::string& sql) {
 
 }  // namespace
 
-DbClientPtr make_db_client(const std::string& url) {
+namespace {
+Dialect g_dialect = Dialect::Sqlite;
+}  // namespace
+
+Dialect dialect() { return g_dialect; }
+
+const char* lock_clause() {
+    // Not a table of two strings behind a flag for its own sake: this is the only
+    // syntactic difference between the two backends in the whole codebase, and it is
+    // the one that decides whether money can be spent twice.
+    return g_dialect == Dialect::Postgres ? " FOR UPDATE" : "";
+}
+
+DbClientPtr make_db_client(const std::string& url, int pool) {
     const std::string sqlite_pfx = "sqlite://";
     const std::string pg_pfx     = "postgres://";
     if (url.rfind(sqlite_pfx, 0) == 0) {
         const std::string path = url.substr(sqlite_pfx.size());
-        // SQLite is single-writer; one connection avoids "database is locked".
+        // SQLite is single-writer; one connection avoids "database is locked". The
+        // `pool` argument is deliberately ignored rather than clamped silently —
+        // there is no pool size that makes SQLite concurrent.
+        g_dialect = Dialect::Sqlite;
         return drogon::orm::DbClient::newSqlite3Client("filename=" + path, 1);
     }
     if (url.rfind(pg_pfx, 0) == 0) {
-        // Needs a Drogon build with libpq (the Homebrew bottle lacks it).
-        return drogon::orm::DbClient::newPgClient(url, 1);
+        // Needs a Drogon build with libpq. `newPgClient` exists as a symbol even in
+        // a build without it and throws at connect time, which is why the failure
+        // shows up as a runtime error rather than a link one.
+        g_dialect = Dialect::Postgres;
+        return drogon::orm::DbClient::newPgClient(url, pool < 1 ? 1 : pool);
     }
     throw std::runtime_error(
         "unsupported db url (expected sqlite:// or postgres://): " + url);

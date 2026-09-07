@@ -8,6 +8,7 @@
 #pragma once
 
 #include <optional>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -77,6 +78,17 @@ struct MatchResult {
 // `match_key` must be non-empty; it is scoped to the board inside.
 MatchResult apply_match(long project_id, const Board& board, long user_id,
                         long opponent_id, int result, const std::string& match_key);
+
+// The order two players' rows must be locked in: lowest id first, always.
+//
+// It is a pure function of two numbers and it looks like it does not need to be —
+// `std::min`/`std::max` inline is two words. It exists as a named function because
+// the property it carries ("both transactions take the same pair in the same order,
+// so they cannot deadlock") is TRUE ONLY ON POSTGRES, and there is no Postgres to
+// demonstrate it on. A mutation that replaced the ordering with arrival order
+// survived the whole suite. Moving the decision out where a test can read its VALUE
+// is the answer this project keeps arriving at.
+[[nodiscard]] std::pair<long, long> lock_order(long a, long b);
 
 // Is this user a player in this project? The match endpoint's tenant check: without
 // it a reporter could name any integer and mint a rating row for it.

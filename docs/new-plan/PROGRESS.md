@@ -1825,6 +1825,107 @@ không đầu hàng** · hub vẫn **single-node, in-memory** — phòng, hàng 
 ghép cặp · **K cố định 32** cho tất cả, không sàn, không placement, không decay.
 
 
+### S29a — cái pool CHÍNH LÀ cái khoá ✅ 2026-09-07 · chương 140
+
+Có một comment trong `inv_service.cc`, viết cẩn thận, và **đúng**: *"phép kiểm tiền
+SELECT-rồi-UPDATE chỉ nguyên tử vì pool của SQLite bằng 1, nên `newTransaction()` giữ
+kết nối duy nhất… Trên bản Postgres với pool > 1, TOCTOU sẽ mở lại."* Slice này lẽ ra
+để trả cái comment đó. Thực tế: comment **đúng về `purchase` và sai về chính file nó
+được viết trong**, còn bản Postgres mà nó cảnh báo thì **không tồn tại**.
+
+**Hai chỗ pool CHƯA BAO GIỜ là cái khoá.** `purchase` mở transaction nên trên SQLite
+nó thật sự giữ kết nối duy nhất suốt cả đoạn đọc-rồi-ghi. `grant` và `consume` thì
+không: **pool bằng 1 phát kết nối cho MỘT CÂU LỆNH, không phải cho một chuỗi**. Hai
+luồng gọi `execSqlSync` hai lần mỗi bên xen kẽ nhau trên pool 1 y hệt như trên pool 10.
+
+Và nó tệ hơn "mất một lần cập nhật". `test_baas_concurrency` chạy tám luồng cùng
+`grant` 1 món mà người chơi **chưa có**, và bản code cũ làm thế này:
+
+```
+libc++abi: terminating due to uncaught exception of type drogon::orm::UniqueViolation
+```
+
+Cả hai luồng đọc "không có dòng nào", cả hai đi nhánh INSERT, cái thứ hai vi phạm
+unique index. **Không ai bắt.** `inv::grant` gọi được từ `POST /v1/inventory/grant`,
+nên **hai request đồng thời giết chết tiến trình server** — không phải số dư sai, mà
+là crash. Nằm đó từ chương 102.
+
+**Một dòng SQL.** `db::lock_clause()` trả `" FOR UPDATE"` trên Postgres và `""` trên
+SQLite — khác biệt cú pháp *duy nhất* giữa hai backend trong toàn bộ codebase, và là
+cái quyết định tiền có tiêu được hai lần hay không. `""` trên SQLite **không phải "cùng
+thứ nhưng vô hại"**: SQLite không có `FOR UPDATE` và trả về lỗi cú pháp — nên một
+mutation đảo dòng này bị giết bởi một bộ test chỉ chạy trên SQLite.
+
+**Một bài test không có răng, và nói thẳng ra.** `test_baas_concurrency` **không thể
+fail trên SQLite** vì lý do mà các khoá tồn tại. Header của nó ghi rõ điều đó, và ghi
+luôn cách làm cho nó có răng. Cái nó *thật sự* chứng minh trên SQLite là các transaction
+mới **không deadlock** — và nó xứng đáng nói câu đó, vì bản đầu tiên của chúng deadlock.
+
+**Hai mươi lăm phút im lặng.** `lb::submit` tính rank *sau khi* ghi, mà transaction vẫn
+còn trong scope. Trên SQLite transaction giữ kết nối duy nhất, nên `rank_for_value` chờ
+một handle không thể được trả về cho tới khi hàm return. Bộ test **không fail. Nó
+DỪNG.** Timeout mặc định của ctest là 1500 giây. Bản vá là một cặp ngoặc; bài học là
+`TIMEOUT 120` cho mọi test trong thư mục baas.
+
+## Đường Postgres chưa bao giờ tồn tại
+
+`baas/ops/pg-test.sh` dựng nó bằng Docker: `postgres:16-alpine`, và build trong image
+`drogonframework/drogon` (image này **có** libpq, bottle của Homebrew thì không). Nó
+build được. Rồi câu lệnh **đầu tiên** chết:
+
+```
+ERROR:  syntax error at or near ","
+LINE 1: INSERT INTO schema_migrations(version, name) VALUES(?,?)
+```
+
+**Drogon không dịch `?` thành `$1`.** Cả **107** truy vấn trong `baas/` viết bằng `?`.
+Dưới đó còn hai tầng nữa: `id INTEGER PRIMARY KEY` là auto-increment ở SQLite và là một
+cột số bình thường ở Postgres, và mười lời gọi `insertId()` cần `RETURNING`.
+
+Nên dòng *"Postgres là một bản build lúc deploy, đã được ghi lại"* trong `db.h` là **một
+CÂU VĂN, không phải một khả năng**. Không có gì trong lịch sử backend này từng thực thi
+một câu lệnh với nó, và sẽ không có gì phát hiện ra cho tới lúc deploy.
+
+Phản ứng trung thực **không phải** là lặng lẽ mở rộng slice. Là để script lại trong repo
+như một **bản tái hiện**: một lệnh ai cũng chạy được và fail đúng lỗi đó, và một `❌`
+trong sổ xác minh ở chỗ trước đây là `⚠️`. CI **chưa** chạy nó, có chủ ý — một job đỏ mà
+không ai sửa được thì không dạy được gì. Làm nó xanh là một slice có tên riêng.
+
+## Một bộ test chỉ pass được MỘT lần
+
+`db_url(name)` bản đầu nối thêm `.db` vào một cái tên **đã có** `.db`. Mọi test ghi vào
+`test_baas_auth.db.db` trong khi `cleanup_db` xoá `test_baas_auth.db`. Lần chạy đầu:
+88/88 xanh, vì file mới tinh. Lần thứ hai: fail mười chỗ, trên những database chưa từng
+bị dọn. **Một bộ test xanh không phải bằng chứng nếu nó chưa xanh hai lần** — và lần
+chạy bắt được nó là lần thứ hai, chỉ vì mutation harness bắt đầu bằng một baseline.
+
+## Mutation: 14/15
+
+Nhiều cái chết dưới dạng **lỗi BUILD** hoặc **lỗi cú pháp từ chính SQLite**, không phải
+assertion fail — thay `newTransaction()` bằng `client()` thì không compile, đảo
+`lock_clause()` thì SQLite từ chối mọi câu đọc có khoá. Một seam mỏng như vậy sai là kêu
+to, và đó là phần lớn lý do nó đáng có.
+
+**Một cái sống sót, và ở đây KHÔNG THỂ giết được.** `apply_match` khoá hai dòng theo
+thứ tự id nhỏ trước, để hai transaction lấy cùng một cặp không thể deadlock. Đổi thành
+thứ tự đến thì **cả bộ test vẫn xanh**, vì SQLite không có row lock nên không có
+deadlock nào để mà có. Phản ứng **không phải** viết một assertion pass vì lý do thứ ba:
+quyết định được **đưa ra ngoài** thành `lb::lock_order(a,b)`, một hàm thuần của hai con
+số mà test đọc được **GIÁ TRỊ** — `lock_order(a,b) == lock_order(b,a)` với mọi cặp, và
+nó không phải hàm đồng nhất. Mutation trên *hàm* bị giết; mutation trên *chỗ dùng* vẫn
+sống, và sẽ sống cho tới khi có Postgres thật.
+
+Đây là lần thứ tư project làm đúng một nước đi này: **khi một tính chất chỉ quan sát
+được ở nơi không với tới, hãy đem quyết định ra khỏi nơi đó và kiểm giá trị của nó ở
+chỗ với tới được.**
+
+**⚠️ Chưa xác minh:** **Postgres KHÔNG chạy** (không phải "chưa test") — nên các khoá
+mới đúng về hình dạng và **chưa từng được thử ở tình huống cần chúng** · thứ tự khoá
+trong `apply_match` là **lập luận, không phải bằng chứng** · các đường đọc-rồi-ghi khác
+(cloud save, asset registry, hàng đợi test-run) **chưa rà** · **`/healthz` chưa có gì
+chọc vào** và **chưa có OpenAPI** — nửa còn lại của slice OPS chưa động tới.
+
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1845,7 +1946,9 @@ làm chín T6).
 | ~~S27b~~ | ~~Creatures — game (overworld, battle, manifest, controls)~~ — **XONG**, chương 137 | L |
 | ~~S28a~~ | ~~Replay như một FILE + verifier + chứng minh xuyên toolchain~~ — **XONG**, chương 138 | M |
 | ~~S28b~~ | ~~PvP realtime + ELO — consumer thật đầu tiên của realtime/matchmaking~~ — **XONG**, chương 139 | L |
-| S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |
+| ~~S29a~~ | ~~Khoá mọi đường đọc-rồi-ghi + seam dialect + bản tái hiện Postgres~~ — **XONG**, chương 140 | M |
+| S29b | **Làm Postgres CHẠY** — `?`→`$1`, DDL theo dialect, `insertId()`→`RETURNING`; rồi bật `pg-test.sh` trong CI | L |
+| S29c | OpenAPI `/v1/*` (sinh từ bảng route, không trôi được) + job Docker chọc `/healthz` | M |
 | S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
 
 Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,
