@@ -138,8 +138,27 @@ int main() {
         CHECK(scene.online() == nullptr);
         CHECK(scene.mode() == Mode::Overworld);
 
-        // ---- the opponent is the headless client `--pvp` runs ----------------
         const Dex& dex = scene.dex();
+
+        // ---- a client that cancelled must be OUT of the server's queue --------
+        // Kept alive and connected on purpose. If Cancel did not reach the server, this
+        // one is still in the queue and the two clients below would be matched with it
+        // instead of with each other — which is precisely the failure a player sees as
+        // "my opponent never moved". Dropping the socket would clear the queue too, and
+        // that is why `cancel()` no longer does: a guard another line already covers is
+        // a guard no test can tell from its own absence.
+        PvpClient ghost(dex, {base, pk});
+        ghost.start(make_party(dex, {{2, 5}, {6, 5}}));
+        for (int i = 0; i < 400 && ghost.state() != PvpClient::State::Queued; ++i) {
+            ghost.update();
+            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+        }
+        CHECK(ghost.state() == PvpClient::State::Queued);
+        ghost.cancel();
+        CHECK(ghost.state() == PvpClient::State::Idle);
+        CHECK(ghost.client().realtime().connected());   // still there, just not looking
+
+        // ---- the opponent is the headless client `--pvp` runs ----------------
         PvpClient ai(dex, {base, pk});
         // A team the player's fresh party can trade blows with. The first version of
         // this brought levels 19-21 against a level-5 starter and the match was over in
@@ -182,7 +201,9 @@ int main() {
         bool peer_owes = false;   // the peer has a turn to answer and has not answered it
         for (int i = 0; i < 1200 && scene.mode() != Mode::Ack; ++i) {
             ai.update();
+            ghost.update();          // kept alive: a ghost that stopped polling proves nothing
             const PvpClient* me = scene.online();
+            CHECK(ghost.state() == PvpClient::State::Idle);   // never matched
             // `waiting_for_action` is exactly "the protocol owes an action and I am not
             // going to invent one" — not "a match is running". Asked of both clients.
             if (me && me->state() == PvpClient::State::Playing)
@@ -225,6 +246,15 @@ int main() {
 
             // ...and now the peer answers, by the same door the screen uses.
             if (peer_owes && ai.waiting_for_action() && (saw_between || turns > 1)) {
+                // Asked BOTH ways at the one moment it can be: same client, same phase,
+                // no update in between, so the only thing that changed is the flag.
+                // Without this the flag is never exercised on a client that is Playing
+                // and owes an action, which is the only state it means anything in.
+                ai.set_auto_play(true);
+                CHECK(!ai.waiting_for_action());
+                CHECK(!ai.act(Action{Action::Kind::Move, 0}));
+                ai.set_auto_play(false);
+                CHECK(ai.waiting_for_action());
                 CHECK(ai.act(choose(dex, ai.net().battle(), ai.net().side())));
                 peer_owes = false;
             }

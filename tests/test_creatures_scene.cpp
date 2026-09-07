@@ -26,6 +26,7 @@
 #include "engine/renderer2d.hpp"
 #include "engine/text/font.hpp"
 #include "engine/ui/theme.hpp"
+#include "engine/ui/touch.hpp"
 #include "games/creatures/creatures_scene.hpp"
 #include "gbaas/gbaas.h"
 #include "games/creatures/replay.hpp"
@@ -508,6 +509,13 @@ int main() {
             const Box ten{0, 0, 10, 10};
             CHECK(!Box{}.overlaps(ten));
             CHECK(!ten.overlaps(Box{}));
+            // An empty box with a POSITION is the case that matters and the one a
+            // default-constructed `Box{}` cannot show: at the origin the arithmetic
+            // already answers false, so the guard looks load-bearing and is not. A
+            // layout's absent control is `Box{x, y, 0, 0}` as often as it is `Box{}`.
+            const Box degenerate{5, 5, 0, 0};
+            CHECK(!degenerate.overlaps(ten));
+            CHECK(!ten.overlaps(degenerate));
             const Box corner{9, 9, 10, 10}, beside{10, 0, 10, 10};
             CHECK(ten.overlaps(corner));
             CHECK(!ten.overlaps(beside));   // touching edges is not overlap
@@ -515,11 +523,17 @@ int main() {
             // On a screen too short for another row, the online button is ABSENT rather
             // than placed off the top edge. An empty box is hit by nothing, which is why
             // there is no `bool has_online` beside it.
-            const creature::Layout tiny = creature::layout(320, 170, creature::Mode::Overworld);
-            CHECK(tiny.online.empty() || tiny.online.y >= 0);
-            for (int h = 120; h <= 400; h += 7) {
+            for (int h = 120; h <= 400; h += 3) {
                 const creature::Layout t = creature::layout(480, h, creature::Mode::Overworld);
-                CHECK(t.online.empty() || (t.online.y >= 0 && t.online.y + t.online.h <= h));
+                if (t.online.empty()) continue;
+                // Inside the screen, off the margin, and clear of both neighbours. `>= 0`
+                // alone is not the claim: a button one pixel from the top edge is inside
+                // the framebuffer and outside a thumb's reach, and it passed that check.
+                CHECK(t.online.y >= touch::kMargin);
+                CHECK(t.online.y + t.online.h <= h);
+                CHECK(!t.online.overlaps(t.save));
+                CHECK(!t.online.overlaps(t.act));
+                CHECK(!t.online.overlaps(t.up));
             }
 
             // The search screen has no creature rects: there is nothing to draw yet, and

@@ -30,14 +30,19 @@ void PvpClient::cancel() {
     // `cancel()` on a socket that never opened is harmless — the SDK buffers ops — and
     // sending it is the point: a client that just stops updating stays in the server's
     // queue and gets matched with somebody who then waits for a peer that is not coming.
+    // The frame, and NOT a disconnect. Dropping the socket also clears the queue, which
+    // makes the frame look optional — and a guard whose job another line already does is
+    // a guard no test can tell apart from its own absence (chapter 145). The socket
+    // belongs to the client's lifetime, not to one search: a player who cancels and
+    // looks again should not pay for a new connection, and the server should be told
+    // rather than inferred from a hang-up.
     client_.realtime().cancel();
-    client_.realtime().disconnect();
     state_ = State::Idle;
     problem_.clear();
 }
 
 bool PvpClient::waiting_for_action() const {
-    return state_ == State::Playing && !auto_play_ && net_.phase() == NetPhase::MyTurn;
+    return state_ == State::Playing && net_.phase() == NetPhase::MyTurn;
 }
 
 bool PvpClient::act(Action a) {
