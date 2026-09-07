@@ -275,6 +275,7 @@ std::uint64_t hash(const Battle& b) {
             const Creature& c = b.side[s].member[i];
             feed(h, static_cast<std::uint64_t>(c.species));
             feed(h, static_cast<std::uint64_t>(c.level));
+            feed(h, static_cast<std::uint64_t>(c.exp));
             feed(h, static_cast<std::uint64_t>(c.hp));
             feed(h, static_cast<std::uint64_t>(c.max_hp));
             feed(h, static_cast<std::uint64_t>(c.atk));

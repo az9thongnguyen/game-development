@@ -38,7 +38,7 @@
 #include "engine/tilemap/tileset.hpp"
 #include "games/farm/dialogue.hpp"
 #include "games/farm/controls.hpp"
-#include "games/farm/theme.hpp"
+#include "engine/tilemap/theme.hpp"
 #include "games/farm/world.hpp"
 
 namespace farm {
@@ -167,7 +167,7 @@ private:
     // copies in agreement.
     int                                       screen_w_ = 0, screen_h_ = 0;
     platform::InputState                      in_{};   // the last one update() saw
-    Theme                                     theme_;
+    tilemap::Theme                            theme_;
     std::map<std::string, tilemap::Tileset>   tiles_;   // sheet name -> cut tiles
     Defs         defs_;
     World        world_;

@@ -77,14 +77,35 @@ struct SpeciesDef {
     std::vector<std::pair<int, std::string>> learnset;
 };
 
+// Where a wild creature comes from. One line per patch of long grass:
+//
+//     table route1 1:20:3-5 4:20:3-5 7:15:4-6
+//
+//  = species 1 at weight 20, levels 3..5. Weights are relative and need not sum to
+//  anything, because a table someone is balancing gets entries added to it and
+//  renormalising by hand is how a rare creature silently becomes common.
+struct EncounterEntry {
+    int species = 0;
+    int weight  = 10;
+    int lo = 2, hi = 4;
+};
+
+struct EncounterTable {
+    std::string                 name;
+    std::vector<EncounterEntry> entries;
+    [[nodiscard]] int total_weight() const;
+};
+
 struct Dex {
-    TypeChart               types;
-    std::vector<MoveDef>    moves;
-    std::vector<SpeciesDef> species;
+    TypeChart                   types;
+    std::vector<MoveDef>        moves;
+    std::vector<SpeciesDef>     species;
+    std::vector<EncounterTable> tables;
 
     [[nodiscard]] int move_index(const std::string& name) const;
     [[nodiscard]] const MoveDef* move(int index) const;
     [[nodiscard]] const SpeciesDef* species_by_id(int id) const;
+    [[nodiscard]] const EncounterTable* table(const std::string& name) const;
 };
 
 // Parse one definitions file into `into`. All three record kinds may appear in any

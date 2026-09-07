@@ -1,0 +1,15 @@
+# =============================================================================
+#  assets/creatures/encounters.def  —  what lives in which patch of long grass
+# =============================================================================
+#      table <name> <species>:<weight>:<lo>-<hi> ...
+#
+#  Weights are RELATIVE and do not have to sum to anything. That is not laziness:
+#  a table being balanced gets entries added to it, and renormalising the rest by
+#  hand is exactly how a creature meant to be rare silently becomes common.
+#
+#  Two tables, and the difference between them is the only progression the route
+#  has: the near grass is the three starters' lines at low level, the far grass is
+#  everything, higher, and holds the only stage-2 you can meet in the wild.
+# =============================================================================
+table near 1:25:3-5  4:25:3-5  7:25:3-5  16:25:2-4
+table far  1:12:6-9  4:12:6-9  7:12:6-9  10:16:6-9 13:16:6-9 16:12:5-8 2:7:9-11 11:7:9-11 14:6:9-11

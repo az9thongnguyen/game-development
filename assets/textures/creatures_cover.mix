@@ -1,0 +1,32 @@
+# The collection page's cover for Creatures, and a demonstration in itself: twelve
+# species laid out on one canvas, composed from twelve `.hrt` files that were each
+# themselves composed from one parts sheet. Nothing here was drawn and nothing was
+# cropped by hand — the cover is a recipe like everything else, so redrawing a part
+# redraws the cover.
+mix1
+name creatures_cover
+size 96 32
+sheet c03 textures/creature_03.hrt 16
+sheet c06 textures/creature_06.hrt 16
+sheet c09 textures/creature_09.hrt 16
+sheet c12 textures/creature_12.hrt 16
+sheet c15 textures/creature_15.hrt 16
+sheet c18 textures/creature_18.hrt 16
+sheet c01 textures/creature_01.hrt 16
+sheet c04 textures/creature_04.hrt 16
+sheet c07 textures/creature_07.hrt 16
+sheet c10 textures/creature_10.hrt 16
+sheet c13 textures/creature_13.hrt 16
+sheet c16 textures/creature_16.hrt 16
+part c03 0 at 0 0
+part c06 0 at 16 0
+part c09 0 at 32 0
+part c12 0 at 48 0
+part c15 0 at 64 0
+part c18 0 at 80 0
+part c01 0 at 0 16
+part c04 0 at 16 16
+part c07 0 at 32 16
+part c10 0 at 48 16
+part c13 0 at 64 16
+part c16 0 at 80 16

@@ -131,7 +131,7 @@ void FarmScene::load() {
     // farm rendered fine as flat colours for two chapters and still does. It IS
     // reported, because "the art silently did not load" is a bug that looks like a
     // design choice.
-    if (auto th = parse_theme(read_text("farm/theme.def"))) {
+    if (auto th = tilemap::parse_theme(read_text("farm/theme.def"))) {
         theme_ = *th;
         // Every declared sheet gets an entry even when its image will not load, so the
         // draw path has exactly one shape to handle: a sheet that is missing and a
@@ -191,7 +191,7 @@ bool FarmScene::draw_actor(gfx::Renderer2D& g, const std::string& name, int px, 
     // Deliberately the same two guards as draw_tile, and no third: an actor with no
     // `actor` line, a sheet that would not load and an index past the end of one that
     // did all arrive here as the same null sprite.
-    const Theme::Art* a = theme_.actor(name);
+    const tilemap::Theme::Art* a = theme_.actor(name);
     if (!a) return false;
     const gfx::Sprite s = sheet_of(a->sheet).sprite(static_cast<std::size_t>(a->index));
     if (s.w == 0) return false;
@@ -205,7 +205,7 @@ bool FarmScene::draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id
     // can never have a line, and find() returns nullptr for it like any other unmapped
     // id. The invariant lives in the parser; repeating it here was a guard a
     // mutation could delete with nothing noticing.
-    const Theme::Art* a = theme_.find(layer, static_cast<int>(id));
+    const tilemap::Theme::Art* a = theme_.find(layer, static_cast<int>(id));
     if (!a) return false;
     // ONE condition, three reasons, and none of them re-implemented here: Tileset
     // already answers "no such tile" with a null sprite, and sheet_of already turns a

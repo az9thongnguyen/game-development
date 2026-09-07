@@ -54,6 +54,7 @@ struct MoveSlot {
 struct Creature {
     int      species = 0;      // 0 = an empty party slot
     int      level   = 5;
+    int      exp     = 0;      // toward the NEXT level; see creatures/world.hpp
     int      hp      = 0;
     int      max_hp  = 0;
     int      atk = 0, def = 0, spd = 0;

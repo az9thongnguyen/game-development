@@ -151,6 +151,7 @@ Re-bake it with:
 | `textures/creature_16.hrt` | mixed | `textures/creature_16.mix` | this repository |
 | `textures/creature_17.hrt` | mixed | `textures/creature_17.mix` | this repository |
 | `textures/creature_18.hrt` | mixed | `textures/creature_18.mix` | this repository |
+| `textures/creatures_cover.hrt` | mixed | `textures/creatures_cover.mix` | this repository |
 | `textures/farm_anna.hrt` | mixed | `textures/farm_anna.mix` | this repository |
 | `textures/farm_path.hrt` | drawn | `textures/farm_path.pix` | this repository |
 | `textures/farm_player.hrt` | mixed | `textures/farm_player.mix` | this repository |
@@ -165,7 +166,7 @@ Re-bake it with:
 | `textures/wall_2.hrt` | declared | `ours.pack` | this repository |
 | `textures/wall_3.hrt` | declared | `ours.pack` | this repository |
 
-45 raster assets, 0 unrecorded.
+46 raster assets, 0 unrecorded.
 
 <!-- END LEDGER (generated) -->
 

@@ -42,6 +42,41 @@ const VW       = +arg('--width', 390);
 const VH       = +arg('--height', 844);
 const SHOT     = arg('--shot', '');            // write a PNG of the page and carry on
 const HEADLESS = !argv.includes('--head');
+
+// WHICH GAME. Two now (chapter 137), and the difference between them is four
+// strings: the manifest, the prefix of the line the game prints, the save it writes,
+// and how to read a position out of that save. Everything else — the layout probe,
+// the touch dispatch, the retry — is the same check, which is the point of both games
+// printing the same kind of line.
+const GAMES = {
+    farm: {
+        project: 'projects/farm.gameproject',
+        prefix:  'farm',
+        save:    '/assets/saves/farm/slot1.sav',
+        pos:     (t) => { const m = t.match(/^var px (-?\d+)/m); return m ? +m[1] : null; },
+        walked:  'a real finger walked the farm',
+    },
+    creatures: {
+        project: 'projects/creatures.gameproject',
+        prefix:  'creatures',
+        save:    '/assets/saves/creatures/slot1.sav',
+        pos:     (t) => { const m = t.match(/^pos (-?\d+) /m); return m ? +m[1] : null; },
+        walked:  'a real finger walked into the grass and out of a fight',
+        // The farm's proof does not transfer, and finding that out was the point of
+        // running it. There, you hold east and press Save. Here, holding east walks
+        // you into long grass, something jumps out, and the SAVE BUTTON IS GONE —
+        // during a battle the screen has a menu instead. The game was working
+        // perfectly and the check was asking it the wrong question.
+        //
+        // So the creature game is proved by finishing what it starts: walk until the
+        // battle screen announces itself, RUN from the fight, acknowledge it, and
+        // only then save. That is a stronger claim than the farm's, because touch had
+        // to reach the overworld, the encounter, the battle menu and the end screen.
+        drive: true,
+    },
+};
+const GAME = GAMES[arg('--game', 'farm')];
+if (!GAME) fail(`--game must be one of ${Object.keys(GAMES).join(', ')}`);
 const CHROME   = arg('--chrome', process.env.CHROME_PATH || defaultChrome());
 
 function defaultChrome() {
@@ -150,7 +185,7 @@ let chrome, server;
 try {
     if (!existsSync(join(DIR, 'demo.html'))) fail(`no demo.html in ${DIR} — build the web target first`);
     ({ server, port: globalThis.__port } = await serve(DIR));
-    const url = `http://127.0.0.1:${globalThis.__port}/demo.html?project=projects/farm.gameproject`;
+    const url = `http://127.0.0.1:${globalThis.__port}/demo.html?project=${GAME.project}`;
 
     const debugPort = 9333 + (process.pid % 500);
     chrome = spawn(CHROME, [
@@ -244,8 +279,9 @@ try {
        `backing, ratio kept, no scroll`);
 
     // ---- 3. ask the GAME where its buttons are ----------------------------
-    const line = await cdp.eval(`(document.getElementById('log').textContent.match(/^farm: controls .*$/m) || [''])[0]`);
-    if (!line) fail('the farm never printed its control layout');
+    const line = await cdp.eval(
+        `(document.getElementById('log').textContent.match(/^${GAME.prefix}: controls .*$/m) || [''])[0]`);
+    if (!line) fail(`the ${GAME.prefix} never printed its control layout`);
     const dims = line.match(/controls (\d+)x(\d+)/);
     const boxOf = (name) => {
         // Split, do not regex. A built RegExp needs its backslashes escaped twice on the
@@ -275,7 +311,7 @@ try {
     const readSave = `(() => { try {
         const fs = (typeof Module !== 'undefined' && Module.FS) || window.FS || window.__FS;
         if (!fs) return 'NOFS';
-        return fs.readFile('/assets/saves/farm/slot1.sav', { encoding: 'utf8' });
+        return fs.readFile('${GAME.save}', { encoding: 'utf8' });
     } catch (e) { return 'ERR ' + e; } })()`;
 
     const s0 = css(save);
@@ -285,7 +321,7 @@ try {
     if (before === 'NOFS') fail('the page does not expose the emscripten filesystem');
     if (typeof before !== 'string' || before.startsWith('ERR'))
         fail(`the save button did not write a save: ${before}`);
-    const pxOf = (t) => { const m = t.match(/^var px (-?\d+)/m); return m ? +m[1] : null; };
+    const pxOf = GAME.pos;
     const px0 = pxOf(before);
     if (px0 === null) fail('the save has no player position');
     ok(`a touch on Save wrote a save (px=${px0}) — touch reaches the game`);
@@ -300,21 +336,59 @@ try {
     const r0 = css(right);
     let px1 = null;
     let rounds = 0;
-    for (; rounds < 3; ++rounds) {
-        await touch(cdp, r0.x, r0.y, 700);
-        await touch(cdp, s0.x, s0.y, 150);
+
+    if (GAME.drive) {
+        // Walk east until the game says a battle screen exists. It announces itself
+        // the same way the overworld does, so the rectangles below are the renderer's
+        // own rather than a second copy of the layout rule.
+        let battle = '';
+        for (; rounds < 4 && !battle; ++rounds) {
+            await touch(cdp, r0.x, r0.y, 900);
+            await sleep(200);
+            battle = await cdp.eval(
+                `(document.getElementById('log').textContent.match(/^creatures: battle .*$/m) || [''])[0]`);
+        }
+        if (!battle) fail(`walking east ${rounds} times never met anything in the long grass`);
+        ok(`walked into the grass and something jumped out (${rounds} hold(s))`);
+
+        const bbox = (name) => {
+            const tok = battle.split(/\s+/).find((t) => t.startsWith(name + '='));
+            if (!tok) fail(`the battle line has no ${name}: ${battle}`);
+            const [x, y, w, h] = tok.slice(name.length + 1).split(',').map(Number);
+            if ([x, y, w, h].some(Number.isNaN) || w === 0) fail(`unreadable ${name}: ${tok}`);
+            return { x, y, w, h };
+        };
+        const run = css(bbox('run')), acknowledge = css(bbox('ack'));
+
+        await touch(cdp, run.x, run.y, 140);            // Run
+        await sleep(250);
+        await touch(cdp, acknowledge.x, acknowledge.y, 140);   // Continue
+        await sleep(250);
+        await touch(cdp, s0.x, s0.y, 150);              // ...and only NOW can it save
         await sleep(400);
         const after = await cdp.eval(readSave);
         px1 = pxOf(after);
-        if (px1 === null) fail('the second save has no player position');
-        if (px1 > px0) break;
+        if (px1 === null) fail('the save after the battle has no player position');
+        if (px1 <= px0)
+            fail(`ran from the fight but the player never moved (px ${px0} -> ${px1})`);
+        ok(`ran, acknowledged, saved: px ${px0} -> ${px1}`);
+    } else {
+        for (; rounds < 3; ++rounds) {
+            await touch(cdp, r0.x, r0.y, 700);
+            await touch(cdp, s0.x, s0.y, 150);
+            await sleep(400);
+            const after = await cdp.eval(readSave);
+            px1 = pxOf(after);
+            if (px1 === null) fail('the second save has no player position');
+            if (px1 > px0) break;
+        }
+        if (px1 <= px0)
+            fail(`holding the d-pad's east button did not move the player in ${rounds} holds `
+                 + `(px ${px0} -> ${px1})`);
+        ok(`held the east button: px ${px0} -> ${px1}` + (rounds ? `  (${rounds + 1} holds)` : ''));
     }
-    if (px1 <= px0)
-        fail(`holding the d-pad's east button did not move the player in ${rounds} holds `
-             + `(px ${px0} -> ${px1})`);
-    ok(`held the east button: px ${px0} -> ${px1}` + (rounds ? `  (${rounds + 1} holds)` : ''));
 
-    console.log('\nweb touch: PASS — a real finger walked the farm');
+    console.log(`\nweb touch: PASS — ${GAME.walked}`);
 } finally {
     if (chrome) chrome.kill();
     if (server) server.close();

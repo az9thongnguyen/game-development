@@ -203,7 +203,12 @@ static void test_a_broken_project_is_listed_not_hidden() {
 
 static void test_committed_index_is_what_the_manifests_bake_to() {
     assets::set_base_path(ASSET_ROOT);
-    const auto want = to_json(build_collection("projects", {"fps", "farm"}));
+    // MIRRORS main.cpp's `entries()`, which is not linkable from here (its table
+    // holds scene factories). That is a duplicated fact, and the reason it is
+    // tolerable is that it fails LOUDLY and immediately: adding a game to the table
+    // without touching this line turns this test red in the same commit, which is
+    // exactly what happened when `creatures` arrived in chapter 137.
+    const auto want = to_json(build_collection("projects", {"fps", "farm", "creatures"}));
 
     const auto got = assets::load_file("collection.json");
     CHECK(got.has_value());

@@ -158,6 +158,19 @@ them working). Paths are relative to the asset root — see `assets::` below:
                                               #  re-bakes it and compares bytes, like a .recipe)
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
+./build/demo --project projects/creatures.gameproject                # ...the creature game (entry `creatures`):
+                                              # walk a route, get ambushed in long grass, fight or
+                                              # run or throw a ball, level up and evolve, F5 saves.
+                                              # Whether a tile AMBUSHES you is `ground` id 3 in the
+                                              # MAP and which table it rolls is a `far` MASK layer —
+                                              # not arithmetic in world.cpp (the ch.134 rule, twice
+                                              # more). Every verb has an on-screen control, laid out
+                                              # by ONE creature::layout the renderer and the hit test
+                                              # both read; the parts that are facts about a HAND
+                                              # (44px, the proportion rule, the d-pad) are shared
+                                              # with the farm in engine/ui/touch.hpp, the LAYOUTS are
+                                              # not — one screen laid out for the other's neighbours
+                                              # is exactly the bug sharing them would buy
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
                                               # EVERY verb has an on-screen control (touch/mouse):
                                               # d-pad, Z/Q, the hotbar slots pick the tool, F5 saves,
@@ -197,8 +210,8 @@ ctest --test-dir build -R chess                # one suite by name (math, ecs, i
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**28 of the 81 tests**: `ctest` here reports 81, a build configured without Drogon
-reports 53. Since chapter 129 CI has a `baas-test` job in the
+**28 of the 83 tests**: `ctest` here reports 83, a build configured without Drogon
+reports 55. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that
@@ -258,6 +271,9 @@ at all.
 src/platform/   the platform seam (platform.hpp) + backend_sdl.cpp
 src/engine/     hand-written core: math, rand (THE deterministic RNG — xorshift64*,
                 because std::mt19937 is portable but its distributions are not),
+                ui/touch.hpp (the parts of an on-screen control that are facts about
+                a HAND — 44px, the proportion rule, the d-pad; each game keeps its own
+                LAYOUT, because the rule is a discipline and not a shape),
                 renderer2d, renderer3d, geometry, camera,
                 assets, image, text, ui, ecs/, jobs/, memory/, physics/, anim/,
                 fx/, audio/ + the platform spine: project/, resource/, release/, hub/
@@ -282,7 +298,10 @@ Understand these deliberate patterns before editing the build:
   types/moves/species as text, `step` returning string-free events, `hash` over the
   whole state, and `play` over a start state plus a list of actions; no float in the
   resolution path, the RNG is a hashed FIELD, and turn order is priority → speed →
-  one draw from the battle's own stream, never "side 0 first"),
+  one draw from the battle's own stream, never "side 0 first"; plus `world` — the
+  loop AROUND the battle: walking a `tilemap::Map`, the encounter roll, experience,
+  evolution that keeps the damage taken, the blackout, and a save that stores no
+  stats because stats are a pure function of species and level; and `controls`),
   `farm_core` (day loop, crops, NPC schedules, dialogue, the pure
   cloud-save verdict `decide_sync`, the art `theme` — NAMED sheets, so imported
   and self-drawn art never share a file, plus `line_piece`, which picks one of a

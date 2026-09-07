@@ -81,6 +81,18 @@ const MoveDef* Dex::move(int index) const {
     return &moves[static_cast<std::size_t>(index)];
 }
 
+int EncounterTable::total_weight() const {
+    int sum = 0;
+    for (const EncounterEntry& e : entries) sum += e.weight;
+    return sum;
+}
+
+const EncounterTable* Dex::table(const std::string& name) const {
+    for (const EncounterTable& t : tables)
+        if (t.name == name) return &t;
+    return nullptr;
+}
+
 const SpeciesDef* Dex::species_by_id(int id) const {
     for (const SpeciesDef& s : species)
         if (s.id == id) return &s;
@@ -209,6 +221,31 @@ bool parse_into(Dex& into, const std::string& text, std::string* why) {
                 return fail(why, "species '" + s.name + "' catch rate out of 1..255" + at);
             into.species.push_back(s);
 
+        } else if (kind == "table") {
+            EncounterTable tb;
+            if (!(ln >> tb.name)) return fail(why, "table needs a name" + at);
+            if (into.table(tb.name))
+                return fail(why, "table '" + tb.name + "' declared twice" + at);
+            std::string tok;
+            while (ln >> tok) {
+                const auto parts = split(tok, ':');
+                if (parts.size() != 3)
+                    return fail(why, "table wants <species>:<weight>:<lo>-<hi>, got '" + tok + "'" + at);
+                EncounterEntry e;
+                if (!to_int(parts[0], e.species) || e.species < 1)
+                    return fail(why, "table: '" + parts[0] + "' is not a species id" + at);
+                if (!to_int(parts[1], e.weight) || e.weight < 1)
+                    return fail(why, "table: weight '" + parts[1] + "' must be at least 1" + at);
+                const auto band = split(parts[2], '-');
+                if (band.size() != 2 || !to_int(band[0], e.lo) || !to_int(band[1], e.hi) ||
+                    e.lo < 1 || e.hi < e.lo)
+                    return fail(why, "table: '" + parts[2] + "' is not a level band" + at);
+                tb.entries.push_back(e);
+            }
+            if (tb.entries.empty())
+                return fail(why, "table '" + tb.name + "' is empty — a patch of grass with nothing in it" + at);
+            into.tables.push_back(tb);
+
         } else {
             return fail(why, "unknown record '" + kind + "'" + at);
         }
@@ -244,6 +281,11 @@ std::vector<std::string> validate(const Dex& d) {
         if (s.sprite.empty())
             bad.push_back("species '" + s.name + "' has no sprite");
     }
+    for (const EncounterTable& t : d.tables)
+        for (const EncounterEntry& e : t.entries)
+            if (!d.species_by_id(e.species))
+                bad.push_back("table '" + t.name + "' rolls unknown species " +
+                              std::to_string(e.species));
     return bad;
 }
 
