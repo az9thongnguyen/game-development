@@ -98,6 +98,13 @@ static void test_defs() {
     CHECK(!parse_defs("crop bad days\n").has_value());
     // An unknown record kind is skipped: the same file may later carry shop lines.
     CHECK(parse_defs("shop pierre open=9\ncrop ok days=2 stages=2\n").has_value());
+    // ...and so is an unknown FIELD, which is the other half of the same promise: a
+    // file written for a later build still loads in this one. This assertion did not
+    // exist until chapter 143, and without it the two parsers' one real difference —
+    // a FILE ignores an unknown key, an OVERRIDE refuses it — had nothing holding it
+    // in place.
+    CHECK(parse_defs("crop ok days=2 stages=2 water=3\n").has_value());
+    CHECK(parse_defs("item thing type=tool future=1\n").has_value());
 
     // Later definitions override earlier ones, which is what an override file is for.
     Defs base = *d;

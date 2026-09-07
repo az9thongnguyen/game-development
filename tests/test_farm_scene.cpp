@@ -22,6 +22,8 @@
 #include "engine/assets.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/text/font.hpp"
+#include "engine/ui/theme.hpp"
+#include "games/farm/defs.hpp"
 #include "engine/document/save.hpp"
 #include "games/farm/farm_scene.hpp"
 #include "games/farm/world.hpp"
@@ -86,6 +88,18 @@ int ink(const std::vector<std::uint32_t>& b, int x, int y, int w, int h) {
     for (const auto& [c, n] : hist) { total += n; if (n > best) { best = n; bg = c; } }
     (void)bg;
     return total - best;
+}
+
+// How many pixels in a logical rect are exactly `c`. `ink` answers "is anything drawn
+// here"; this answers "is THIS drawn here", which is the only way to check a decision
+// that is expressed as a colour (chapter 143's out-of-season seed chip).
+int count_colour(const std::vector<std::uint32_t>& b, const farm::Box& r,
+                 std::uint32_t c) {
+    int n = 0;
+    for (int py = r.y * SS; py < (r.y + r.h) * SS && py < PH; ++py)
+        for (int px = r.x * SS; px < (r.x + r.w) * SS && px < PW; ++px)
+            if (b[static_cast<std::size_t>(py) * PW + px] == c) ++n;
+    return n;
 }
 
 // The top-left corner, which nothing draws in. `save`, `keep` and `take` take turns
@@ -729,6 +743,51 @@ int main() {
         CHECK(hoe_on > hoe_off);          // the Hoe slot lost its border
         CHECK(water_on > water_off);      // ...and the Water slot gained one
         dump_ppm(buf, "farm_hotbar.ppm");
+    }
+
+    // ---- the seed chip says OUT OF SEASON before the refusal does -----------
+    // `season` became a rule in chapter 143: a seed is refused outside its season and
+    // anything left in the ground when the season turns dies. A rule a player meets
+    // only as a rejection is a rule they hit once per seed cycling through eight of
+    // them, so the chip is drawn dim. That is a decision expressed as a COLOUR, and a
+    // mutation removing it survived every other test in this file.
+    {
+        scene.update(1.0 / 60.0, key(platform::Key::Num3));   // hold the Seed tool
+        render(idle);
+        CHECK(scene.tool_index() == 2);
+        const farm::Layout hud = scene.controls();
+        const farm::Box&   chip = hud.tool[2];
+
+        // Slot 2 is the SELECTED tool, so its name is drawn in `text` and never in
+        // ui::theme::text_muted — so any muted pixel inside this rect is the sub-label,
+        // and the sub-label is the only thing there that knows about seasons.
+        const auto dim = [&] { return count_colour(buf, chip, ui::theme::text_muted); };
+
+        // Day 1 is spring and the first crop in crops.def is a spring crop, so the
+        // chip starts bright.
+        CHECK(farm::season_of(1) == farm::Season::Spring);
+        CHECK(dim() == 0);
+
+        // Q cycles the seed. Somewhere in the list is a crop that does not grow today,
+        // and somewhere is one that does — both directions, because a chip that is
+        // always dim passes a test that only looks for dim.
+        bool saw_dim = false, saw_bright = false;
+        int  seen = 0;
+        for (int i = 0; i < 64 && !(saw_dim && saw_bright); ++i) {
+            scene.update(1.0 / 60.0, key(platform::Key::Q));
+            render(idle);
+            const int d = dim();
+            if (d > 0) saw_dim = true; else saw_bright = true;
+            ++seen;
+        }
+        std::printf("  seed chip: %d seeds cycled, dim=%d bright=%d\n", seen,
+                    saw_dim ? 1 : 0, saw_bright ? 1 : 0);
+        CHECK(saw_dim);
+        CHECK(saw_bright);
+        dump_ppm(buf, "farm_seed_chip.ppm");
+
+        scene.update(1.0 / 60.0, key(platform::Key::Num1));   // put the hoe back
+        render(idle);
     }
 
     // ---- the hotbar is now the CONTROL, not a picture of one ----------------
