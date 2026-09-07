@@ -25,6 +25,7 @@
 #include "engine/assets.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/text/font.hpp"
+#include "engine/ui/theme.hpp"
 #include "games/creatures/creatures_scene.hpp"
 #include "gbaas/gbaas.h"
 #include "games/creatures/replay.hpp"
@@ -542,6 +543,35 @@ int main() {
         CHECK(scene.online() != nullptr);
         CHECK(scene.online()->state() == creature::PvpClient::State::Failed);
         CHECK(!scene.online()->problem().empty());
+
+        // The Continue button is DRAWN, not merely present in the layout. The first
+        // version of this screen chose its text and then `break`ed out of the switch,
+        // skipping the draw, the button and the return — so it was hittable and
+        // INVISIBLE, and every assertion above passed, because they all tap the rect the
+        // layout reports and the layout was right. Only a rendered frame showed it.
+        render(idle);
+        {
+            const creature::Layout a = scene.controls();
+            CHECK(!a.ack.empty());
+            int accent = 0;
+            for (int yy = a.ack.y * SS; yy < (a.ack.y + a.ack.h) * SS; ++yy)
+                for (int xx = a.ack.x * SS; xx < (a.ack.x + a.ack.w) * SS; ++xx)
+                    if (buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)] ==
+                        ui::theme::accent)
+                        ++accent;
+            CHECK(accent > 0);
+            // ...and the panel says something. Ink where the message goes, counted the
+            // same way, because a blank strip and a strip with a sentence on it are the
+            // same rectangle otherwise.
+            int ink = 0;
+            for (int yy = a.log.y * SS; yy < (a.log.y + a.log.h) * SS; ++yy)
+                for (int xx = a.log.x * SS; xx < (a.log.x + a.log.w) * SS; ++xx) {
+                    const std::uint32_t px =
+                        buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)];
+                    if (px != 0 && px != gfx::rgba(0x10, 0x14, 0x1a, 235)) ++ink;
+                }
+            CHECK(ink > 0);
+        }
 
         // ...and Continue puts the game back, without healing the party as a blackout
         // would: a rated match never touched `world_.phase`.

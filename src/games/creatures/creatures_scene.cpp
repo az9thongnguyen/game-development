@@ -568,6 +568,11 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
 
     const bool net = online_ != nullptr;
     const Battle& shown = shown_battle();
+    // A session that failed before a battle began has nothing to draw: no parties were
+    // exchanged, so both sides are species 0 and the screen showed two blank placeholder
+    // squares over two empty health bars. `net_battle_live()` is the same question
+    // `shown_battle()` asks, which is why it is one function and not two conditions.
+    const bool have_creatures = !net || net_battle_live();
     const Creature& mine = shown.side[my_side()].now();
     const Creature& them = shown.side[1 - my_side()].now();
 
@@ -582,10 +587,16 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
             g.fill_rect(b.x, b.y, b.w, b.h, type_colour(s ? s->type : 0));
         }
     };
-    creature(l.theirs, them);
-    creature(l.mine, mine);
-    bar(24, 26, 150, them, net ? "Rival" : "Wild");
-    bar(fb_w_ / 2 + 24, l.panel.y - 54, 150, mine, "Your");
+    if (have_creatures) {
+        creature(l.theirs, them);
+        creature(l.mine, mine);
+        bar(24, 26, 150, them, net ? "Rival" : "Wild");
+        bar(fb_w_ / 2 + 24, l.panel.y - 54, 150, mine, "Your");
+    } else {
+        g.set_font_size(th::sz_title);
+        g.draw_text(fb_w_ / 2 - 110, fb_h_ / 2 - 40, "No match", th::text_dim);
+        g.set_font_size(th::sz_body);
+    }
 
     // ---- the panel ----
     g.fill_rect(l.panel.x, l.panel.y, l.panel.w, l.panel.h, gfx::rgba(0x10, 0x14, 0x1a, 235));
@@ -595,11 +606,18 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
     char sub[96];
     switch (mode()) {
         case Mode::Ack:
+            // The rating is the whole point of a RATED match, so it is on the screen
+            // that ends one. `rating_applied()` is a separate fact from the number:
+            // both clients report, exactly one report moves the ladder, and a player
+            // told "+0" without being told why would read it as a bug.
+            //
+            // ONE line chosen, then ONE line drawn. The first version of this `break`ed
+            // out of the switch after choosing the online text — skipping the draw, the
+            // Continue button and the `return` — so the result screen was blank with a
+            // button that was hittable and invisible. Every test passed: they tap the
+            // rect the LAYOUT reports, and the layout was right. Only the picture showed
+            // it, which is now four chapters running.
             if (online_) {
-                // The rating is the whole point of a RATED match, so it is on the
-                // screen that ends one. `rating_applied()` is a separate fact from the
-                // number: both clients report, exactly one report moves the ladder, and
-                // a player told "+0" without being told why would read it as a bug.
                 if (online_->state() == PvpClient::State::Failed)
                     std::snprintf(sub, sizeof sub, "%s", online_->problem().c_str());
                 else
@@ -609,13 +627,13 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
                                                                  : "You lost.",
                                   online_->rating(), online_->rating_delta(),
                                   online_->rating_applied() ? "" : "  (already counted)");
-                break;
+            } else {
+                std::snprintf(sub, sizeof sub, "%s",
+                    world_.phase == Phase::Won      ? "It fainted."
+                  : world_.phase == Phase::Caught   ? "It joined your party."
+                  : world_.phase == Phase::Blackout ? "You blacked out."
+                                                    : "You got away.");
             }
-            std::snprintf(sub, sizeof sub, "%s",
-                world_.phase == Phase::Won      ? "It fainted."
-              : world_.phase == Phase::Caught   ? "It joined your party."
-              : world_.phase == Phase::Blackout ? "You blacked out."
-                                                : "You got away.");
             g.draw_text(l.log.x, l.log.y + 26, sub, th::text_dim);
             g.fill_rect(l.ack.x, l.ack.y, l.ack.w, l.ack.h, th::accent);
             g.draw_text(l.ack.x + 28, l.ack.y + 14, "Continue", ink_on(th::accent));
