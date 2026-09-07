@@ -13,8 +13,45 @@
 
 namespace creature {
 
-PvpClient::PvpClient(const Dex& d, gbaas::Config cfg, std::string board)
-    : dex_(d), client_(std::move(cfg)), board_(std::move(board)) {}
+PvpClient::PvpClient(const Dex& d, gbaas::Config cfg, std::string board,
+                     std::unique_ptr<gbaas::ITransport> transport)
+    : dex_(d),
+      client_(transport ? gbaas::Client(std::move(cfg), std::move(transport))
+                        : gbaas::Client(std::move(cfg))),
+      board_(std::move(board)) {}
+
+void PvpClient::cancel() {
+    // Only while LOOKING. Written the other way round first — a list of states to skip —
+    // and `Done` was not on it, so cancelling a finished session reset it to Idle and
+    // threw away the result the screen was still showing. A whitelist of the states an
+    // operation applies to cannot forget a state; a blacklist can, and did.
+    if (state_ != State::SigningIn && state_ != State::Connecting && state_ != State::Queued)
+        return;
+    // `cancel()` on a socket that never opened is harmless — the SDK buffers ops — and
+    // sending it is the point: a client that just stops updating stays in the server's
+    // queue and gets matched with somebody who then waits for a peer that is not coming.
+    // The frame, and NOT a disconnect. Dropping the socket also clears the queue, which
+    // makes the frame look optional — and a guard whose job another line already does is
+    // a guard no test can tell apart from its own absence (chapter 145). The socket
+    // belongs to the client's lifetime, not to one search: a player who cancels and
+    // looks again should not pay for a new connection, and the server should be told
+    // rather than inferred from a hang-up.
+    client_.realtime().cancel();
+    state_ = State::Idle;
+    problem_.clear();
+}
+
+bool PvpClient::waiting_for_action() const {
+    return state_ == State::Playing && !auto_play_ && net_.phase() == NetPhase::MyTurn;
+}
+
+bool PvpClient::act(Action a) {
+    if (!waiting_for_action()) return false;
+    net_.act(dex_, a);
+    // NOT sent here: `update()` drains and sends every frame the protocol produced,
+    // and one sender is what keeps "the wire carries what the protocol decided" true.
+    return true;
+}
 
 void PvpClient::fail(std::string why) {
     state_   = State::Failed;
@@ -78,7 +115,7 @@ void PvpClient::update() {
         return;
     }
 
-    if (net_.phase() == NetPhase::MyTurn)
+    if (net_.phase() == NetPhase::MyTurn && auto_play_)
         net_.act(dex_, choose(dex_, net_.battle(), net_.side()));
     for (const auto& f : net_.drain()) client_.realtime().send(f);
 

@@ -25,7 +25,10 @@
 #include "engine/assets.hpp"
 #include "engine/renderer2d.hpp"
 #include "engine/text/font.hpp"
+#include "engine/ui/theme.hpp"
+#include "engine/ui/touch.hpp"
 #include "games/creatures/creatures_scene.hpp"
+#include "gbaas/gbaas.h"
 #include "games/creatures/replay.hpp"
 
 #ifndef ASSET_ROOT
@@ -468,6 +471,244 @@ int main() {
             scene.update(1.0 / 30.0, in);
         }
         CHECK(scene.world().px == before);
+    }
+
+    // ---- 10. the rated match, with no server anywhere (chapter 146) ---------------
+    // Everything the network can be asked is asked by `test_creature_pvp_live` against
+    // a real one. What only THIS file can answer is whether a hand can reach any of it:
+    // is the button drawn where a finger lands, does tapping it change the screen, and
+    // does the way out work. Pointed at a closed port on purpose — a session that
+    // cannot connect is the state a player on a train is in, and it has to say so.
+    {
+        // Walk back to a calm overworld first: a wild battle must refuse to start one.
+        while (scene.mode() != creature::Mode::Overworld) {
+            const creature::Layout l = scene.controls();
+            const auto [ax, ay] = centre(l.ack.empty() ? l.cell[3] : l.ack);
+            tap(ax, ay);
+            render(idle);
+        }
+        CHECK(scene.online() == nullptr);
+
+        const creature::Layout over = scene.controls();
+        // Drawn, and clear of the two buttons beside it — the whole reason it is a row
+        // above `save` is that starting a rated match by mis-reaching is the worst
+        // stray tap in the game.
+        CHECK(!over.online.empty());
+        CHECK(over.online.w >= 44 && over.online.h >= 44);
+        CHECK(!over.online.overlaps(over.act));
+        CHECK(!over.online.overlaps(over.save));
+        CHECK(!over.online.overlaps(over.up));
+
+        // ---- the layout, asked directly (no session, no server) ----------------
+        // Three claims that are cheap here and expensive anywhere else, each of which
+        // survived a mutation until it was written down.
+        {
+            using creature::Box;
+            // An empty box overlaps nothing — the rule `contains` already follows, and
+            // what every "these two controls do not sit on each other" check rests on.
+            const Box ten{0, 0, 10, 10};
+            CHECK(!Box{}.overlaps(ten));
+            CHECK(!ten.overlaps(Box{}));
+            // An empty box with a POSITION is the case that matters and the one a
+            // default-constructed `Box{}` cannot show: at the origin the arithmetic
+            // already answers false, so the guard looks load-bearing and is not. A
+            // layout's absent control is `Box{x, y, 0, 0}` as often as it is `Box{}`.
+            const Box degenerate{5, 5, 0, 0};
+            CHECK(!degenerate.overlaps(ten));
+            CHECK(!ten.overlaps(degenerate));
+            const Box corner{9, 9, 10, 10}, beside{10, 0, 10, 10};
+            CHECK(ten.overlaps(corner));
+            CHECK(!ten.overlaps(beside));   // touching edges is not overlap
+
+            // On a screen too short for another row, the online button is ABSENT rather
+            // than placed off the top edge. An empty box is hit by nothing, which is why
+            // there is no `bool has_online` beside it.
+            // Heights where the pad ACTUALLY exists. The first version of this swept
+            // 120..400 and the pad does not appear below ~360, so almost every pass hit
+            // the `continue` and the loop asserted nothing at all — a sweep that never
+            // reaches its body is decoration.
+            int swept = 0;
+            for (int h = 300; h <= 900; h += 3) {
+                const creature::Layout t = creature::layout(480, h, creature::Mode::Overworld);
+                if (t.online.empty()) continue;
+                ++swept;
+                // Inside the screen, off the margin, and clear of both neighbours. `>= 0`
+                // alone is not the claim: a button one pixel from the top edge is inside
+                // the framebuffer and outside a thumb's reach, and it passed that check.
+                CHECK(t.online.y >= touch::kMargin);
+                CHECK(t.online.y + t.online.h <= h);
+                CHECK(!t.online.overlaps(t.save));
+                CHECK(!t.online.overlaps(t.act));
+                CHECK(!t.online.overlaps(t.up));
+            }
+            CHECK(swept > 50);   // ...and the loop above ran
+
+            // The search screen has no creature rects: there is nothing to draw yet, and
+            // a renderer that forgets to check must draw nothing rather than draw at 0,0.
+            const creature::Layout on = creature::layout(640, 360, creature::Mode::Online);
+            CHECK(on.mine.empty());
+            CHECK(on.theirs.empty());
+            CHECK(on.cell[0].empty());
+            CHECK(!on.back.empty());
+        }
+
+        // A rated match cannot be started from inside a wild one — one fight at a time.
+        // Checked by walking into a fight rather than by faking a phase.
+        {
+            gbaas::Config unused;
+            unused.base_url = "http://127.0.0.1:9";
+            unused.api_key  = "pk_demo_creatures";
+            for (int i = 0; i < 400 && scene.mode() == creature::Mode::Overworld; ++i) {
+                platform::InputState in{};
+                in.mouse_x = scene.controls().right.x + 4;
+                in.mouse_y = scene.controls().right.y + 4;
+                in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+                scene.update(1.0 / 60.0, in);
+                render(in);
+            }
+            CHECK(scene.mode() != creature::Mode::Overworld);   // in a battle
+            CHECK(!scene.start_online(unused));
+            CHECK(scene.online() == nullptr);
+            while (scene.mode() != creature::Mode::Overworld) {
+                const creature::Layout l = scene.controls();
+                const auto [ax, ay] = centre(l.ack.empty() ? l.cell[3] : l.ack);
+                tap(ax, ay);
+                render(idle);
+            }
+        }
+
+        gbaas::Config nowhere;
+        nowhere.base_url = "http://127.0.0.1:9";   // discard: refused immediately
+        nowhere.api_key  = "pk_demo_creatures";
+        CHECK(scene.start_online(nowhere));
+        CHECK(scene.online() != nullptr);
+        CHECK(scene.mode() == creature::Mode::Online);
+
+        // The d-pad is GONE while a session is up. Walking off while a server holds you
+        // in its queue is how a player gets matched with somebody who is not looking.
+        const creature::Layout on = scene.controls();
+        CHECK(on.up.empty() && on.down.empty() && on.left.empty() && on.right.empty());
+        CHECK(on.online.empty());
+        CHECK(!on.back.empty());                       // ...and Cancel is there
+        CHECK(!on.back.overlaps(on.log));
+
+        // A second session is refused while one is running — both directions, because a
+        // guard that never lets go is the failure this project keeps finding.
+        CHECK(!scene.start_online(nowhere));
+
+        // The world does not move while the match screen is up, even with the d-pad's
+        // old coordinates pressed. This is the reverse test that matters most here:
+        // an empty Box is hit by nothing, and that is the only thing stopping it.
+        {
+            const int before = scene.world().px;
+            for (int i = 0; i < 30; ++i) {
+                platform::InputState in{};
+                in.mouse_x = over.right.x + over.right.w / 2;
+                in.mouse_y = over.right.y + over.right.h / 2;
+                in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+                scene.update(1.0 / 30.0, in);
+            }
+            CHECK(scene.world().px == before);
+        }
+
+        // Pump until the connection is refused. The failure must reach the SCREEN — a
+        // session that fails silently leaves a player staring at "Looking for an
+        // opponent..." forever.
+        for (int i = 0; i < 400 && scene.mode() == creature::Mode::Online; ++i) {
+            scene.update(1.0 / 60.0, idle);
+            render(idle);
+        }
+        CHECK(scene.mode() == creature::Mode::Ack);
+        CHECK(scene.online() != nullptr);
+        CHECK(scene.online()->state() == creature::PvpClient::State::Failed);
+        CHECK(!scene.online()->problem().empty());
+
+        // The Continue button is DRAWN, not merely present in the layout. The first
+        // version of this screen chose its text and then `break`ed out of the switch,
+        // skipping the draw, the button and the return — so it was hittable and
+        // INVISIBLE, and every assertion above passed, because they all tap the rect the
+        // layout reports and the layout was right. Only a rendered frame showed it.
+        render(idle);
+        {
+            const creature::Layout a = scene.controls();
+            CHECK(!a.ack.empty());
+            int accent = 0;
+            for (int yy = a.ack.y * SS; yy < (a.ack.y + a.ack.h) * SS; ++yy)
+                for (int xx = a.ack.x * SS; xx < (a.ack.x + a.ack.w) * SS; ++xx)
+                    if (buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)] ==
+                        ui::theme::accent)
+                        ++accent;
+            CHECK(accent > 0);
+            // ...and the panel says something. Ink where the message goes, counted the
+            // same way, because a blank strip and a strip with a sentence on it are the
+            // same rectangle otherwise.
+            // From +20 down: `message_` is drawn at the TOP of the log rect, so an ink
+            // count over the whole box is satisfied by a leftover toast and says nothing
+            // about the result line. It survived a mutation that deleted the result line
+            // entirely until this offset was here.
+            int ink = 0;
+            for (int yy = (a.log.y + 20) * SS; yy < (a.log.y + a.log.h) * SS; ++yy)
+                for (int xx = a.log.x * SS; xx < (a.log.x + a.log.w) * SS; ++xx) {
+                    const std::uint32_t px =
+                        buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)];
+                    if (px != 0 && px != gfx::rgba(0x10, 0x14, 0x1a, 235)) ++ink;
+                }
+            CHECK(ink > 0);
+
+            // ...and NOTHING is drawn where the two creatures would go. A session that
+            // failed before the parties were exchanged has no creatures, and the screen
+            // drew two blank placeholder squares over two empty health bars until it
+            // was asked this. Both rects come from the battle layout, which the Ack
+            // screen shares.
+            const creature::Layout bl = creature::layout(LW, LH, creature::Mode::Menu);
+            int sprite_ink = 0;
+            for (int yy = bl.theirs.y * SS; yy < (bl.theirs.y + bl.theirs.h) * SS; ++yy)
+                for (int xx = bl.theirs.x * SS; xx < (bl.theirs.x + bl.theirs.w) * SS; ++xx) {
+                    const std::uint32_t px =
+                        buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)];
+                    if (px != gfx::rgb(0x2e, 0x3d, 0x4e)) ++sprite_ink;   // the sky
+                }
+            CHECK(sprite_ink == 0);
+        }
+
+        // ...and Continue puts the game back, without healing the party as a blackout
+        // would: a rated match never touched `world_.phase`.
+        const int hp_before = scene.world().party.member[0].hp;
+        const creature::Layout ack = scene.controls();
+        const auto [kx, ky] = centre(ack.ack);
+        tap(kx, ky);
+        render(idle);
+        CHECK(scene.online() == nullptr);
+        CHECK(scene.mode() == creature::Mode::Overworld);
+        CHECK(scene.world().party.member[0].hp == hp_before);
+
+        // ---- Cancel, by TAPPING it -------------------------------------------
+        // Not by calling cancel_online() behind the screen: four chapters of this
+        // project shipped a control drawn perfectly and wired to nothing.
+        CHECK(scene.start_online(nowhere));
+        CHECK(scene.mode() == creature::Mode::Online);
+        {
+            const creature::Layout q = scene.controls();
+            const auto [cx, cy] = centre(q.back);
+            tap(cx, cy);
+        }
+        CHECK(scene.online() == nullptr);
+        CHECK(scene.mode() == creature::Mode::Overworld);
+
+        // ---- ...and the BUTTON starts one, a second time ----------------------
+        // What is asserted is that the button created a session — that is the button's
+        // job. Where the session then gets to belongs to the config it was given, and
+        // this one is the real default: a test that also asserted the outcome would be
+        // asserting whatever happens to be listening on this machine's port 8080.
+        {
+            const creature::Layout again = scene.controls();
+            CHECK(!again.online.empty());
+            const auto [ox, oy] = centre(again.online);
+            tap(ox, oy);
+            CHECK(scene.online() != nullptr);
+            scene.cancel_online();
+            CHECK(scene.online() == nullptr);
+        }
     }
 
     clear_file("saves/creatures/slot1.sav");

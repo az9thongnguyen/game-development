@@ -96,11 +96,94 @@ void CreaturesScene::load() {
 }
 
 Mode CreaturesScene::mode() const {
+    // A rated session owns the screen while it exists. Checked FIRST, and derived from
+    // the client's own state rather than from a flag this file keeps beside it: a
+    // second copy of "what is happening" is how the menu and the renderer end up
+    // disagreeing about which battle they are showing.
+    if (online_) {
+        switch (online_->state()) {
+            case PvpClient::State::Playing:
+                return in_moves_ ? Mode::Moves : (in_party_ ? Mode::Party : Mode::Menu);
+            case PvpClient::State::Done:
+            case PvpClient::State::Failed:
+                return Mode::Ack;
+            default:
+                return Mode::Online;
+        }
+    }
     switch (world_.phase) {
         case Phase::Overworld: return Mode::Overworld;
         case Phase::Battle:    return in_moves_ ? Mode::Moves : (in_party_ ? Mode::Party : Mode::Menu);
         default:               return Mode::Ack;
     }
+}
+
+// Keyed on the PROTOCOL having started, not on the session still being in `Playing`.
+// It was the latter for about an hour, and the result screen — which by definition is
+// reached after the match is over — then drew `world_.battle`: the last wild fight, or
+// nothing at all. A "what is on screen" question answered by a state that has already
+// moved on is answered for every frame except the one that matters.
+bool CreaturesScene::net_battle_live() const {
+    return online_ && online_->net().phase() != NetPhase::Idle;
+}
+
+const Battle& CreaturesScene::shown_battle() const {
+    return net_battle_live() ? online_->net().battle() : world_.battle;
+}
+
+int CreaturesScene::my_side() const {
+    return net_battle_live() ? online_->net().side() : 0;
+}
+
+gbaas::Config CreaturesScene::default_online_config() {
+    // `default_base_url()` is the SDK's own answer and is `#ifdef`'d once, in one place:
+    // relative on the web (the page and the API are one origin) and 127.0.0.1:8080
+    // natively. Writing `""` here instead — which this function did for about an hour —
+    // means a desktop build has no server at all and the button fails instantly.
+    // The api key is the project `--pvp` uses, so a match found from this screen and one
+    // found from a terminal are the same ladder.
+    return {gbaas::default_base_url(), "pk_demo_creatures"};
+}
+
+bool CreaturesScene::start_online(gbaas::Config cfg,
+                                  std::unique_ptr<gbaas::ITransport> transport) {
+    if (online_) return false;                       // one session at a time
+    if (world_.phase != Phase::Overworld) return false;   // one fight at a time
+    // The party goes over the wire as `species:level` (netbattle rebuilds the creatures
+    // from the dex on both sides), so what is sent is a fresh, unhurt copy of the team
+    // — a rated match does not start with the damage a wild one left behind.
+    //
+    // Built by `make_party`, NOT by filling a Party in place. The first version of this
+    // did the latter, set `member[]` and `active`, and forgot `count` — which is the
+    // field `write_party` iterates, so the wire carried an empty party and the peer
+    // refused the match. A struct with a constructor function has that function for a
+    // reason: it is the only place that knows all of its fields.
+    std::vector<std::pair<int, int>> spec;
+    for (int i = 0; i < kPartySize; ++i) {
+        const Creature& c = world_.party.member[i];
+        if (c.species != 0) spec.emplace_back(c.species, c.level);
+    }
+    if (spec.empty()) { say("No party to bring"); return false; }
+    const Party mine = make_party(dex_, spec);
+
+    online_ = std::make_unique<PvpClient>(dex_, std::move(cfg), std::string(kLadderBoard),
+                                          std::move(transport));
+    // The screen picks the action. This one line is the whole difference between the
+    // headless client and this one, which is what pvp.hpp predicted it would be.
+    online_->set_auto_play(false);
+    online_->start(mine);
+    online_ack_ = false;
+    online_note_.clear();
+    in_moves_ = in_party_ = false;
+    return true;
+}
+
+void CreaturesScene::cancel_online() {
+    if (!online_) return;
+    online_->cancel();
+    online_.reset();
+    online_note_.clear();
+    in_moves_ = in_party_ = false;
 }
 
 const tilemap::Tileset& CreaturesScene::sheet_of(const std::string& name) const {
@@ -190,25 +273,53 @@ void CreaturesScene::narrate() {
 
 void CreaturesScene::choose_cell(int cell) {
     if (cell < 0) return;
-    if (world_.phase != Phase::Battle) return;
+    const bool net = online_ && online_->state() == PvpClient::State::Playing;
+    if (!net && world_.phase != Phase::Battle) return;
+
+    // In a rated match the peer has to agree before anything resolves, so a tap while
+    // the last turn is still in flight must do NOTHING — not queue, not resolve
+    // locally. `waiting_for_action()` is the one place that decides, and it says no
+    // between turns as well as when it is the opponent's move.
+    if (net && !online_->waiting_for_action()) {
+        if (cell == 3 && !in_moves_ && !in_party_) return;   // Run: handled below
+        say("Waiting for your opponent");
+        return;
+    }
+
+    const Party& mine_side = shown_battle().side[my_side()];
 
     if (in_moves_) {
         if (cell > 3) return;
-        const Creature& me = world_.battle.side[0].now();
+        const Creature& me = mine_side.now();
         if (me.moves[cell].move < 0) { say("No move there"); return; }
         in_moves_ = false;
+        if (net) { online_->act(Action{Action::Kind::Move, cell}); return; }
         battle_turn(dex_, world_, Action{Action::Kind::Move, cell});
         narrate();
         return;
     }
     if (in_party_) {
         if (cell >= kPartySize) return;
-        const Party& p = world_.battle.side[0];
+        const Party& p = mine_side;
         if (cell == p.active)            { say("Already out"); return; }
         if (!p.member[cell].alive())     { say("It has fainted"); return; }
         in_party_ = false;
+        if (net) { online_->act(Action{Action::Kind::Switch, cell}); return; }
         battle_turn(dex_, world_, Action{Action::Kind::Switch, cell});
         narrate();
+        return;
+    }
+    if (net) {
+        // A rated match has no ball and no running away: a wild creature can be caught
+        // and a trainer's cannot, and "Run" against a person is a forfeit the protocol
+        // has no frame for. Both refusals are SAID rather than silently ignored.
+        switch (cell) {
+            case 0: in_moves_ = true; break;
+            case 1: say("No balls in a rated match"); break;
+            case 2: in_party_ = true; break;
+            case 3: say("You cannot run from a rated match"); break;
+            default: break;
+        }
         return;
     }
     switch (cell) {
@@ -230,6 +341,14 @@ void CreaturesScene::choose_cell(int cell) {
 // placed in three of them is a recording that is missing exactly one outcome.
 void CreaturesScene::update(double dt, const platform::InputState& input) {
     if (!ready_) return;
+    // The session is pumped BEFORE the input is read, so the mode the pointer is tested
+    // against is the one the last frame drew. A tap resolved against a mode that
+    // changed between the pump and the read is a tap on a button that is not there.
+    if (online_) {
+        online_->update();
+        if (online_->state() == PvpClient::State::Failed && online_note_.empty())
+            online_note_ = online_->problem();
+    }
     const bool was_fighting = world_.phase == Phase::Battle;
     update_world(dt, input);
     if (was_fighting && world_.phase != Phase::Battle) write_tape();
@@ -272,6 +391,9 @@ void CreaturesScene::update_world(double dt, const platform::InputState& input) 
         }
         if (press.save || hit(platform::Key::F5))
             say(save_game() ? "Saved" : "Could not save");
+        if (press.online || hit(platform::Key::O)) {
+            if (!start_online()) say("Cannot start a match now");
+        }
         if (press.act || hit(platform::Key::Z)) {
             // Home is the only interaction on the route, and it is a heal — which is
             // also what a blackout does for you, so the two paths share a function.
@@ -288,9 +410,21 @@ void CreaturesScene::update_world(double dt, const platform::InputState& input) 
         return;
     }
 
+    if (m == Mode::Online) {
+        // Cancel is the only control, and it is also Escape. A player who leaves must
+        // leave the SERVER's queue too, which is what PvpClient::cancel does.
+        if (press.back || hit(platform::Key::X) || hit(platform::Key::Escape))
+            cancel_online();
+        return;
+    }
+
     if (m == Mode::Ack) {
         if (press.ack || hit(platform::Key::Z) || hit(platform::Key::Enter) ||
             hit(platform::Key::Space)) {
+            // A rated match ends by dropping the session, not by ending a wild battle
+            // — `world_.phase` never left Overworld, and calling end_battle here would
+            // heal the party as though a blackout had happened.
+            if (online_) { online_.reset(); online_ack_ = true; return; }
             end_battle(dex_, world_);
             in_moves_ = in_party_ = false;
         }
@@ -325,7 +459,7 @@ void CreaturesScene::render(const engine::Context& ctx) {
     }
     cam_.set_viewport(static_cast<float>(fb_w_), static_cast<float>(fb_h_));
     if (mode() == Mode::Overworld) render_overworld(ctx);
-    else                           render_battle(ctx);
+    else                           render_battle(ctx);   // Online included: same screen
 }
 
 void CreaturesScene::render_overworld(const engine::Context& ctx) {
@@ -407,8 +541,40 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
         }
     };
 
-    const Creature& mine = world_.battle.side[0].now();
-    const Creature& them = world_.battle.side[1].now();
+    // ---- looking for an opponent: no creatures yet, one line and Cancel -------
+    if (mode() == Mode::Online) {
+        const PvpClient::State st = online_ ? online_->state() : PvpClient::State::Idle;
+        const char* line = st == PvpClient::State::SigningIn  ? "Signing in..."
+                         : st == PvpClient::State::Connecting ? "Connecting..."
+                         : st == PvpClient::State::Queued     ? "Looking for an opponent..."
+                         : st == PvpClient::State::Reporting  ? "Reporting the result..."
+                                                              : "Starting...";
+        g.fill_rect(l.panel.x, l.panel.y, l.panel.w, l.panel.h, gfx::rgba(0x10, 0x14, 0x1a, 235));
+        g.draw_line(l.panel.x, l.panel.y, l.panel.x + l.panel.w, l.panel.y, th::border);
+        g.set_font_size(th::sz_title);
+        g.draw_text(fb_w_ / 2 - 90, fb_h_ / 2 - 30, "Rated match", th::text);
+        g.set_font_size(th::sz_body);
+        g.draw_text(l.log.x, l.log.y + 4, line, th::text);
+        if (!online_note_.empty())
+            g.draw_text(l.log.x, l.log.y + 26, online_note_.c_str(), th::warn);
+        if (!l.back.empty()) {
+            g.fill_rect(l.back.x, l.back.y, l.back.w, l.back.h, gfx::rgba(0x10, 0x14, 0x1a, 220));
+            g.draw_rect(l.back.x, l.back.y, l.back.w, l.back.h, th::border);
+            g.draw_text(l.back.x + 12, l.back.y + l.back.h / 2 - 6, "Cancel", th::text);
+        }
+        render_controls(g);
+        return;
+    }
+
+    const bool net = online_ != nullptr;
+    const Battle& shown = shown_battle();
+    // A session that failed before a battle began has nothing to draw: no parties were
+    // exchanged, so both sides are species 0 and the screen showed two blank placeholder
+    // squares over two empty health bars. `net_battle_live()` is the same question
+    // `shown_battle()` asks, which is why it is one function and not two conditions.
+    const bool have_creatures = !net || net_battle_live();
+    const Creature& mine = shown.side[my_side()].now();
+    const Creature& them = shown.side[1 - my_side()].now();
 
     // Both sprite rects come from the LAYOUT, like every other rectangle on this
     // screen. A creature placed by its own arithmetic is what `Back` was drawn on top
@@ -421,10 +587,16 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
             g.fill_rect(b.x, b.y, b.w, b.h, type_colour(s ? s->type : 0));
         }
     };
-    creature(l.theirs, them);
-    creature(l.mine, mine);
-    bar(24, 26, 150, them, "Wild");
-    bar(fb_w_ / 2 + 24, l.panel.y - 54, 150, mine, "Your");
+    if (have_creatures) {
+        creature(l.theirs, them);
+        creature(l.mine, mine);
+        bar(24, 26, 150, them, net ? "Rival" : "Wild");
+        bar(fb_w_ / 2 + 24, l.panel.y - 54, 150, mine, "Your");
+    } else {
+        g.set_font_size(th::sz_title);
+        g.draw_text(fb_w_ / 2 - 110, fb_h_ / 2 - 40, "No match", th::text_dim);
+        g.set_font_size(th::sz_body);
+    }
 
     // ---- the panel ----
     g.fill_rect(l.panel.x, l.panel.y, l.panel.w, l.panel.h, gfx::rgba(0x10, 0x14, 0x1a, 235));
@@ -434,11 +606,34 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
     char sub[96];
     switch (mode()) {
         case Mode::Ack:
-            std::snprintf(sub, sizeof sub, "%s",
-                world_.phase == Phase::Won      ? "It fainted."
-              : world_.phase == Phase::Caught   ? "It joined your party."
-              : world_.phase == Phase::Blackout ? "You blacked out."
-                                                : "You got away.");
+            // The rating is the whole point of a RATED match, so it is on the screen
+            // that ends one. `rating_applied()` is a separate fact from the number:
+            // both clients report, exactly one report moves the ladder, and a player
+            // told "+0" without being told why would read it as a bug.
+            //
+            // ONE line chosen, then ONE line drawn. The first version of this `break`ed
+            // out of the switch after choosing the online text — skipping the draw, the
+            // Continue button and the `return` — so the result screen was blank with a
+            // button that was hittable and invisible. Every test passed: they tap the
+            // rect the LAYOUT reports, and the layout was right. Only the picture showed
+            // it, which is now four chapters running.
+            if (online_) {
+                if (online_->state() == PvpClient::State::Failed)
+                    std::snprintf(sub, sizeof sub, "%s", online_->problem().c_str());
+                else
+                    std::snprintf(sub, sizeof sub, "%s   rating %d (%+d)%s",
+                                  online_->net().won()           ? "You won."
+                                : online_->net().winner() < 0    ? "A draw."
+                                                                 : "You lost.",
+                                  online_->rating(), online_->rating_delta(),
+                                  online_->rating_applied() ? "" : "  (already counted)");
+            } else {
+                std::snprintf(sub, sizeof sub, "%s",
+                    world_.phase == Phase::Won      ? "It fainted."
+                  : world_.phase == Phase::Caught   ? "It joined your party."
+                  : world_.phase == Phase::Blackout ? "You blacked out."
+                                                    : "You got away.");
+            }
             g.draw_text(l.log.x, l.log.y + 26, sub, th::text_dim);
             g.fill_rect(l.ack.x, l.ack.y, l.ack.w, l.ack.h, th::accent);
             g.draw_text(l.ack.x + 28, l.ack.y + 14, "Continue", ink_on(th::accent));
@@ -454,7 +649,14 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
         gfx::Color tint = th::ctrl;
         if (mode() == Mode::Menu && i < 4) {
             label = kMenu[i];
-            if (i == 1) label += " x" + std::to_string(world_.balls);
+            if (net) {
+                // Drawn DIM rather than hidden: a menu whose shape changes between a
+                // wild fight and a rated one teaches two layouts, and a control that
+                // vanishes is a control a player looks for. Tapping one says why.
+                if (i == 1 || i == 3) tint = th::ctrl_disabled;
+            } else if (i == 1) {
+                label += " x" + std::to_string(world_.balls);
+            }
         } else if (mode() == Mode::Moves && i < kMoveSlots) {
             const MoveSlot& ms = mine.moves[i];
             if (const MoveDef* mv = dex_.move(ms.move)) {
@@ -462,7 +664,7 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
                 tint  = type_colour(mv->type);
             }
         } else if (mode() == Mode::Party && i < kPartySize) {
-            const Creature& c = world_.battle.side[0].member[i];
+            const Creature& c = shown.side[my_side()].member[i];
             if (c.species != 0) {
                 const SpeciesDef* s = dex_.species_by_id(c.species);
                 label = (s ? s->name : "?") + "  " + std::to_string(c.hp);
@@ -498,10 +700,11 @@ void CreaturesScene::render_controls(gfx::Renderer2D& g) const {
     if (!announced && l.pad_visible()) {
         announced = true;
         std::fprintf(stderr,
-                     "creatures: controls %dx%d up=%s down=%s left=%s right=%s act=%s save=%s\n",
+                     "creatures: controls %dx%d up=%s down=%s left=%s right=%s act=%s "
+                     "save=%s online=%s\n",
                      fb_w_, fb_h_, box(l.up).c_str(), box(l.down).c_str(),
                      box(l.left).c_str(), box(l.right).c_str(),
-                     box(l.act).c_str(), box(l.save).c_str());
+                     box(l.act).c_str(), box(l.save).c_str(), box(l.online).c_str());
     }
 
     // A SECOND line, the first time a battle is on screen. The farm needed one line
@@ -509,8 +712,13 @@ void CreaturesScene::render_controls(gfx::Renderer2D& g) const {
     // browser check cannot finish a fight it cannot aim at. Printed from here, at the
     // moment the screen exists, for the same reason as the first: the numbers a
     // checker uses have to be the numbers the renderer used.
+    // Gated on the CELLS existing, not merely on "not the overworld". Chapter 146 added
+    // a second non-overworld mode with no cells at all (looking for an opponent), and
+    // this line fired on it first — announcing `fight=0,0,0,0` to a browser check whose
+    // whole job is to aim at those numbers. A diagnostic that describes the wrong screen
+    // is worse than none: it is a set of coordinates that look usable.
     static bool announced_battle = false;
-    if (!announced_battle && mode() != Mode::Overworld && !l.panel.empty()) {
+    if (!announced_battle && !l.panel.empty() && !l.cell[0].empty()) {
         announced_battle = true;
         std::fprintf(stderr,
                      "creatures: battle %dx%d fight=%s ball=%s party=%s run=%s ack=%s back=%s\n",
@@ -527,7 +735,7 @@ void CreaturesScene::render_controls(gfx::Renderer2D& g) const {
         g.draw_text(b.x + b.w / 2 - 8, b.y + b.h / 2 - 6, label, th::text);
     };
     btn(l.up, "^"); btn(l.down, "v"); btn(l.left, "<"); btn(l.right, ">");
-    btn(l.act, "Z"); btn(l.save, "S");
+    btn(l.act, "Z"); btn(l.save, "S"); btn(l.online, "O");
 }
 
 } // namespace creature

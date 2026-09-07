@@ -33,11 +33,18 @@ using Pointer = touch::Pointer;
 
 // What the screen is asking for right now.
 enum class Mode : unsigned char {
-    Overworld = 0,   // walking: the pad and two buttons
+    Overworld = 0,   // walking: the pad and three buttons
     Menu,            // in a battle: Fight / Ball / Party / Run
     Moves,           // ...Fight was chosen: four moves, and Back
     Party,           // ...Party was chosen: six slots, and Back
-    Ack              // the battle ended: one button to carry on
+    Ack,             // the battle ended: one button to carry on
+    // Looking for a rated opponent (chapter 146): a line of status and ONE control,
+    // which is Cancel. It is a battle mode rather than an overworld one because the
+    // screen is the battle screen — the panel is already there and the sprites are
+    // about to be — and because the d-pad must be gone: walking off while a server
+    // holds you in a queue is how a player ends up matched with somebody who is not
+    // looking at the game.
+    Online
 };
 
 // `cell` is six boxes because the widest mode needs six; a mode that needs four
@@ -45,9 +52,9 @@ enum class Mode : unsigned char {
 // test is one loop, and a loop cannot forget the mode it is in.
 struct Layout {
     Box up, down, left, right;   // the d-pad — Overworld only
-    Box act, save;               // the thumb row — Overworld only
+    Box act, save, online;       // the thumb row — Overworld only
     Box cell[6];                 // Menu / Moves / Party
-    Box back;                    // Moves / Party
+    Box back;                    // Moves / Party, and CANCEL while Online
     Box ack;                     // Ack
     Box panel;                   // the strip the cells sit in
     Box log;                     // where narration goes — not a control, but it must
@@ -69,6 +76,7 @@ struct Press {
     int  dx = 0, dy = 0;     // a HELD direction, like the arrow keys
     bool act  = false;       // a fresh press, like Z
     bool save = false;       // ...like F5
+    bool online = false;     // ...like O: look for a rated opponent
     int  cell = -1;          // a menu/move/party slot was tapped: 0..5
     bool back = false;
     bool ack  = false;

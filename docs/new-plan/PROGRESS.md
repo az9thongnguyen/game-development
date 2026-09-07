@@ -2108,6 +2108,83 @@ không phải sót · `/v1/ws` không so được với bảng route theo phươ
 mô tả Drogon tự ghi · chưa có UI đọc spec (Swagger/Redoc cần CDN, mà trang này không có).
 
 
+### S31 — một trận không ai chơi được ✅ 2026-09-07 · chương 146
+
+Chương 139 xây PvP có xếp hạng: matchmaking, trận đấu qua socket, replay lưu lại, bảng
+Elo dịch chuyển. Chương 138 xây định dạng replay. Cả hai đều được kiểm chứng với server
+thật, cả hai đều **chạy**.
+
+**Không ai chơi được một trận nào.**
+
+`--pvp` là worker headless; client của nó chọn nước đi bằng `choose`, tức là AI.
+`test_creature_pvp_live` cho hai con AI đánh nhau. **Không có đường nào từ màn hình game
+tới bất kỳ phần nào của nó** — cả tính năng tồn tại cho một terminal và một test. Đó là
+dạng mạnh nhất của cái bug repo này liên tục tìm thấy: không phải một control được vẽ ở
+chỗ không bấm được, mà là **một tính năng không có control nào cả**.
+
+**Comment lại tự đặt tên cho slice, lần thứ hai liên tiếp.** `pvp.hpp` viết từ chương 139:
+*"A player-driven one would take the action from a screen instead; everything else here is
+unchanged, which is the point of the protocol being pure."* Nó **đúng**:
+`set_auto_play(false)` cộng một `act()` là toàn bộ khác biệt, và `--pvp` vẫn chơi đúng
+trận cũ.
+
+**Ba bug, ba dụng cụ khác nhau.**
+
+1. **Dây dẫn mang một party rỗng.** Lần chạy live đầu tiên bị từ chối:
+   `peer sent an illegal party`. `start_online` dựng `Party` tại chỗ — điền `member[]`,
+   đặt `active`, và **quên `count`**, đúng cái field `write_party` duyệt. `make_party()`
+   tồn tại vì nó là **nơi duy nhất biết hết các field**. Đáng nói: **chính validation của
+   giao thức bắt được nó** trong một dòng debug — `read_party` viết ra để chặn peer khai
+   một con level 9000, và nó cũng chặn peer khai *không có gì*, tức hình dạng một bug
+   trong client của chính mình nhìn từ phía bên kia.
+2. **Màn hình kết quả nói về sai trận.** `shown_battle()` ban đầu khoá theo
+   `state() == Playing`. Màn hình kết quả **theo định nghĩa** được tới **sau** khi trận
+   xong, lúc state đã sang `Reporting` rồi `Done` — nên nó vẽ `world_.battle`: trận hoang
+   dã cuối cùng, hoặc không gì cả. Một câu hỏi "cái gì đang trên màn hình" trả lời bằng
+   một state đã đi tiếp thì đúng ở **mọi khung trừ khung quan trọng**.
+3. **Cái nút bấm được nhưng vô hình.** Và rồi tấm ảnh. Nhánh `Ack` chọn câu chữ cho trận
+   xếp hạng rồi `break` ra khỏi `switch` — bỏ qua phần vẽ, bỏ qua nút Continue, bỏ qua
+   `return`. Màn hình kết quả **không vẽ gì**. Và **mọi test đều pass**, kể cả những test
+   mới, vì chúng bấm vào cái rect mà **layout** báo, và layout thì đúng. Đây là **mặt
+   ngược** của bài học "drawn but dead": control được nối hoàn hảo và **không được vẽ**.
+   Test nào với tới control bằng TÊN (luật chương 144, và là luật đúng) đều không thấy
+   được, vì cái tên trả về một hình chữ nhật bất kể có ai tô gì vào đó hay không. Cách bắt
+   là bài học chương 143 áp lên một control thay vì một trạng thái: **đếm màu, trong khung
+   hình renderer thật sự tạo ra.** Bốn chương liên tiếp có bug chỉ ảnh mới thấy.
+
+**Hai mươi lăm mutation, mười bốn sống sót.** Và từng cái nói một điều:
+sáu là lỗ hổng thường; **hai là assertion không nói gì** (`my_side()` hard-code 0 sống sót
+vì scene vào hàng đợi **trước** nên được side 0 — giờ đối thủ vào trước, người chơi là
+side 1); **ba là một cờ chỉ một caller từng bật**; **một là không quan sát được** (với
+auto-play, client hành động ngay trong chính `update()` dựng trận, nên peer luôn đi trước
+và trạng thái "tôi đã đi, đối thủ chưa" ngắn hơn một cú chạm — giờ peer cũng được lái tay);
+**hai là lỗi của code** (`cancel()` dùng **danh sách đen** các state để bỏ qua và `Done`
+không có trong đó, nên huỷ một session đã xong sẽ vứt mất kết quả đang hiển thị — danh
+sách trắng thì **không thể quên** một state, danh sách đen thì có, và đã quên; `cancel()`
+cũng vừa gửi frame vừa đóng socket, mà đóng socket đã tự dọn hàng đợi rồi — **hai cơ chế
+phủ nhau**, đúng bài chương 145, nên không test nào phân biệt được frame với sự vắng mặt
+của nó. Giờ giữ socket, và test nuôi một **con ma**: đã huỷ, vẫn kết nối, và không bao giờ
+được ghép); và **một tương đương** (`if (oy >= kMargin)` không thể sai vì d-pad chỉ xuất
+hiện từ ~360px chiều cao, lúc đó hàng phía trên đã ở 150px — **code chết**, xoá đi, và
+chuyển phép kiểm sang test nơi hồi quy sẽ **kêu to** thay vì âm thầm không vẽ nút nào).
+Rồi chính cái test đó lại quét chiều cao 120–400, nơi d-pad **không tồn tại** dưới 360, nên
+gần như mọi vòng đều `continue` và thân vòng lặp **không khẳng định gì**. Quét không tới
+thân là trang trí.
+
+Chung cuộc: **25 mutation, 24 giết, 1 tương đương (xoá chứ không ghim)**, qua ba vòng.
+
+**Cổng:** 95/95 ctest **hai lần** · golden path xanh, 0 rò `.tmp` · web build xanh ·
+**đã nhìn khung hình thật** (chính nó tìm ra bug thứ ba).
+
+**Chưa xác minh:** **chưa ai chơi một trận xếp hạng trong cửa sổ native hay trong trình
+duyệt** — mọi khẳng định đều từ driver headless, và ws transport của bản web là một hiện
+thực khác · backend mặc định là `127.0.0.1:8080`: không có danh sách server, không có ô
+nhập địa chỉ · mất kết nối giữa trận chỉ là `fail()` — không reconnect, không xử thua,
+không hệ quả lên bảng xếp hạng · một guard **cố ý không test và ghi rõ**: `start_online`
+từ chối party rỗng, mà party luôn có con khởi đầu nên nhánh đó không tới được trừ khi save
+hỏng.
+
+
 ### S30c — hai game băm ra cùng một số ✅ 2026-09-07 · chương 145
 
 Một slice có hai việc nhỏ: cho `--bench-ui` đo được **game**, và cấp manifest cho `iso`
@@ -2391,6 +2468,7 @@ làm chín T6).
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
 | ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
+| S31 | **PvP chơi được bằng tay** — `Mode::Online`, `set_auto_play`, và test live lái chính `CreaturesScene` — **XONG**, chương 146 |
 | ~~S30c~~ | ~~`--bench-ui` chạy được cả farm/creatures; manifest cho `iso` và `colony`~~ — **XONG**, chương 145: và hai game không có asset nào **băm ra cùng một release id** | S |
 
 Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,

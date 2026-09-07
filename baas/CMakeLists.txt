@@ -268,6 +268,23 @@ if(GBAAS_CURL_WS_INC AND GBAAS_CURL_WS_LIB)
   target_link_libraries(test_creature_pvp_live
                         PRIVATE gbaas_sdk baas_core creature_pvp CURL::libcurl engine_flags)
   add_test(NAME creature_pvp_live COMMAND test_creature_pvp_live)
+
+  # The same match, with one side replaced by the actual game SCREEN (chapter 146).
+  # Its sibling proves the protocol; both of that one's players are an AI, and an AI
+  # never presses a button.
+  add_executable(test_creatures_online_live
+                 ${CMAKE_SOURCE_DIR}/tests/test_creatures_online_live.cc
+                 ${CMAKE_SOURCE_DIR}/src/games/creatures/creatures_scene.cpp
+                 ${CMAKE_SOURCE_DIR}/src/engine/renderer2d.cpp
+                 ${CMAKE_SOURCE_DIR}/src/engine/image.cpp
+                 ${CMAKE_SOURCE_DIR}/src/engine/assets.cpp)
+  target_include_directories(test_creatures_online_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_compile_definitions(test_creatures_online_live PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+  target_link_libraries(test_creatures_online_live
+                        PRIVATE gbaas_sdk baas_core creature_pvp ui_core text_core
+                                CURL::libcurl engine_flags)
+  add_test(NAME creatures_online_live COMMAND test_creatures_online_live)
+  set_tests_properties(creatures_online_live PROPERTIES TIMEOUT 120)
 else()
   message(STATUS
     "baas: SKIPPING sdk_realtime_live and creature_pvp_live — this libcurl has no "

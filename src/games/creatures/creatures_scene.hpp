@@ -27,6 +27,7 @@
 #include "engine/tilemap/theme.hpp"
 #include "engine/tilemap/tileset.hpp"
 #include "games/creatures/controls.hpp"
+#include "games/creatures/pvp.hpp"
 #include "games/creatures/world.hpp"
 
 namespace creature {
@@ -55,6 +56,26 @@ public:
     // Where the camera put the world, so a test can turn a tile into a screen point.
     [[nodiscard]] int origin_x() const { return org_x_; }
     [[nodiscard]] int origin_y() const { return org_y_; }
+
+    // ---- the rated match (chapter 146) --------------------------------------
+    // Begin looking for an opponent. Refused while a session is already running, and
+    // while a wild battle is up — a player is in one fight at a time.
+    bool start_online(gbaas::Config cfg = default_online_config(),
+                      std::unique_ptr<gbaas::ITransport> transport = nullptr);
+    void cancel_online();
+    [[nodiscard]] const PvpClient* online() const { return online_.get(); }
+    [[nodiscard]] static gbaas::Config default_online_config();
+
+    // The battle ON SCREEN: the wild one, or the rated one. ONE function, because the
+    // renderer, the menu and the hit test must not each decide which battle they mean
+    // — that is the same rule `layout()` exists for, one level up.
+    [[nodiscard]] const Battle& shown_battle() const;
+    // Which side of it is yours. Always 0 in a wild battle; in a rated one the SERVER
+    // decides, and a screen that assumed 0 would show you your opponent's party.
+    [[nodiscard]] int my_side() const;
+    // Has the rated battle begun? True from the moment the parties are exchanged until
+    // the session is dropped — including the result screen, which is AFTER the match.
+    [[nodiscard]] bool net_battle_live() const;
 
     void update_world(double dt, const platform::InputState& input);
     void write_tape();
@@ -92,6 +113,10 @@ private:
     // answer to "what is on screen" and the renderer and the hit test share it.
     bool  in_moves_ = false;
     bool  in_party_ = false;
+
+    std::unique_ptr<PvpClient> online_;
+    std::string online_note_;      // the last thing the session said, for the panel
+    bool        online_ack_ = false;   // the result has been shown and acknowledged
 
     double step_cool_ = 0;      // grid movement: one tile, then a wait
     int    fb_w_ = 640, fb_h_ = 360;

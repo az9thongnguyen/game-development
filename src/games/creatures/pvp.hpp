@@ -12,9 +12,12 @@
 //  be the same code. A protocol glued together twice is a protocol with two
 //  behaviours, and the one under test would be the one nobody ships.
 //
-//  The ACTION is chosen by `choose` — this is a headless client, and there is
-//  nobody to ask. A player-driven one would take the action from a screen instead;
-//  everything else here is unchanged, which is the point of the protocol being pure.
+//  The ACTION used to be chosen by `choose` unconditionally, and the comment here said
+//  "a player-driven one would take the action from a screen instead; everything else
+//  here is unchanged, which is the point of the protocol being pure." Chapter 146 is
+//  that screen, and the comment was right — `set_auto_play(false)` and one `act()` is
+//  the whole difference. Everything below it is the same code, which is why `--pvp`
+//  still plays the same match.
 //
 //  Non-blocking. `update()` is one tick: it pumps the client, drains the socket and
 //  returns. Nothing here waits, because the same rule that forbids a `while(true)`
@@ -23,6 +26,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "games/creatures/defs.hpp"
@@ -46,13 +50,41 @@ public:
         Failed
     };
 
-    // `transport`/`ws` are the SDK's own unless a caller injects them, which is what
-    // lets a test drive this without opening a socket to a port somebody else owns.
-    PvpClient(const Dex& d, gbaas::Config cfg, std::string board = kLadderBoard);
+    // `transport` is the SDK's own unless a caller injects one. The WEBSOCKET is not
+    // injectable — `gbaas::Client` builds its `Realtime` on first use with the SDK's
+    // own ws transport and takes no parameter for it — so a test that wants a whole
+    // match still needs a server on a port, which is what `test_creature_pvp_live`
+    // does. This header claimed otherwise for nine chapters; the claim was about a
+    // constructor parameter that did not exist.
+    PvpClient(const Dex& d, gbaas::Config cfg, std::string board = kLadderBoard,
+              std::unique_ptr<gbaas::ITransport> transport = nullptr);
 
     // Sign in, connect, queue — all driven by `update()`, none of it blocking.
     void start(const Party& mine);
     void update();
+
+    // Give up LOOKING: leave matchmaking and stop. Safe to call at any point, and a
+    // no-op unless a search is actually running — a player who taps Cancel while the
+    // socket is still opening must not be left queued on a server that will later match
+    // them with somebody who then waits for a peer that is not coming. A match in
+    // progress, and a finished one whose result is still on screen, are both untouched.
+    void cancel();
+
+    // ---- who picks the action (chapter 146) --------------------------------------
+    // On by default: `--pvp` is headless and has nobody to ask. A scene turns it off
+    // and calls `act()` from a button.
+    void set_auto_play(bool on) { auto_play_ = on; }
+    [[nodiscard]] bool auto_play() const { return auto_play_; }
+
+    // True exactly when the protocol wants an action and this client will not invent
+    // one. False while the peer's frame is still in flight, which is the state a
+    // screen has to be able to tell apart from "your turn" — a menu that stays live
+    // between turns lets a player queue an action the protocol has nowhere to put.
+    [[nodiscard]] bool waiting_for_action() const;
+
+    // Play one. Refused (returns false) unless `waiting_for_action()`, so a second tap
+    // on the same button cannot send a second action for one turn.
+    bool act(Action a);
 
     [[nodiscard]] State state() const { return state_; }
     [[nodiscard]] const NetBattle&   net()      const { return net_; }
@@ -83,6 +115,7 @@ private:
     NetBattle      net_;
     Party          mine_{};
 
+    bool        auto_play_ = true;
     State       state_ = State::Idle;
     std::string problem_;
     long long   user_id_ = 0;

@@ -253,7 +253,19 @@ them working). Paths are relative to the asset root — see `assets::` below:
                                               # Two of these against one backend is a real match
                                               # between two processes; that is how the 500-turn
                                               # stalemate was found that every in-process test
-                                              # passed through. Seeded project: pk_demo_creatures
+                                              # passed through. Seeded project: pk_demo_creatures.
+                                              # A HAND plays one from the game's own screen
+                                              # since ch.146: the `O` button (or key) starts a
+                                              # search, Cancel leaves the SERVER's queue (a
+                                              # client that just stops updating leaves a ghost
+                                              # the next player is matched with), and the
+                                              # battle screen is the SAME one — ONE
+                                              # `shown_battle()`/`my_side()` decides which
+                                              # battle is on it and which half is yours,
+                                              # because the SERVER hands out sides. The only
+                                              # difference from `--pvp` is
+                                              # `set_auto_play(false)` plus one `act()`, which
+                                              # is exactly what pvp.hpp predicted in ch.139
 ./build/demo --bench-ui [frames] [all|<entry>|<manifest>]   # frame cost, no window.
                                               # `all` (the default) does the Studio at
                                               # ss=1 and ss=2 AND every game in `entries()`
@@ -336,7 +348,7 @@ builds the image, asserts the container is still RUNNING, then probes it.
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**34 of the 94 tests**: `ctest` here reports 94, a build configured without Drogon
+**35 of the 95 tests**: `ctest` here reports 95, a build configured without Drogon
 reports 60. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
