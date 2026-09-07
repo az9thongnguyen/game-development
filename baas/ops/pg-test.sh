@@ -15,22 +15,28 @@
 #      sh baas/ops/pg-test.sh              # build + run every baas test on Postgres
 #      sh baas/ops/pg-test.sh baas_purchase   # ...or one, by ctest regex
 #
-#  IT FAILS TODAY, and that is the point of it existing (chapter 140). The first time
-#  this repository ever pointed its backend at Postgres, the very first statement
-#  died:
+#  IT PASSED ON 2026-09-07, and it took four runs of this script to get there
+#  (chapter 141). What it found, in order, is the whole story of the difference
+#  between "the code compiles against both" and "it runs on both":
 #
-#      ERROR:  syntax error at or near ","
-#      LINE 1: INSERT INTO schema_migrations(version, name) VALUES(?,?)
+#    1. `?` is not a Postgres placeholder. Drogon does not translate it, so the very
+#       first statement died — `INSERT INTO schema_migrations(version, name) VALUES(?,?)`.
+#       Now `db::portable` does, along with AUTOID, CURRENT_TIMESTAMP and BYTELEN.
+#    2. Drogon binds an integer in BINARY, sizeof(T) bytes, with no type OID. A C++
+#       `long` into an INTEGER column is "incorrect binary data format in bind
+#       parameter 1", fifty-eight times. Postgres parameters go as text now.
+#    3. `FOR UPDATE` cannot lock a row that does not exist, so the FIRST write to a key
+#       was still a race — chapter 140 had closed only the second one.
+#    4. And the quietest of the four: Drogon ENQUEUES its COMMIT. With a pool of one the
+#       next statement queues behind it; with a real pool it does not, and every value
+#       came back one write stale.
 #
-#  Drogon does not translate `?` placeholders to `$1`, and every one of the 107
-#  queries in baas/ is written with `?`. The schema is SQLite-shaped too — `id
-#  INTEGER PRIMARY KEY` is an auto-increment there and a plain column in Postgres,
-#  and `insertId()` needs a RETURNING clause. So "Postgres is a documented
-#  deploy-time build" was a sentence, not a capability.
+#  None of those four could be seen on SQLite, and all four were in code with tests.
+#  CI runs the whole baas suite twice now — once per backend — so number five, whatever
+#  it is, gets found by the test that already covers the feature.
 #
-#  This script is therefore a REPRODUCTION, not a gate: it is what turns that
-#  sentence into a failing command anybody can run. Making it pass is its own slice.
-#  CI does not call it yet, deliberately — a red job nobody can fix teaches nothing.
+#  This script remains the way to run it locally, and the way to bisect a Postgres-only
+#  failure without pushing.
 # =============================================================================
 set -eu
 

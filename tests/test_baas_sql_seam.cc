@@ -94,10 +94,16 @@ int main() {
     EQ(portable("SELECT 1 WHERE a <= CURRENT_TIMESTAMP AND b >= CURRENT_TIMESTAMP", pg),
        std::string("SELECT 1 WHERE a <= ") + kNow + " AND b >= " + kNow);
 
-    // Whole words only. A column called `autoid_at` or `current_timestamp_utc` is a
-    // column, not a token — a substring rewriter would have produced garbage that
-    // still parsed in one place and not the other.
-    EQ(portable("SELECT autoidx, my_autoid FROM t", pg), "SELECT autoidx, my_autoid FROM t");
+    // Whole words only, at BOTH ends. The tokens are uppercase, so the names here have
+    // to be too — the first version of this check used lowercase ones, which the
+    // case-sensitive matcher never looked at twice, and a mutation that deleted the
+    // trailing-boundary test survived it (chapter 141).
+    EQ(portable("SELECT AUTOIDX, MY_AUTOID FROM t", pg), "SELECT AUTOIDX, MY_AUTOID FROM t");
+    EQ(portable("SELECT CURRENT_TIMESTAMPX, X_CURRENT_TIMESTAMP FROM t", pg),
+       "SELECT CURRENT_TIMESTAMPX, X_CURRENT_TIMESTAMP FROM t");
+    EQ(portable("SELECT BYTELENX(a) FROM t", pg), "SELECT BYTELENX(a) FROM t");
+    // ...and the lowercase spellings stay untouched too, which is a separate promise:
+    // this rewriter reads TOKENS this codebase writes, not SQL in general.
     EQ(portable("SELECT current_timestamp_utc FROM t", pg), "SELECT current_timestamp_utc FROM t");
 
     // BYTELEN — the one rewrite that has to read its own argument, because the two
