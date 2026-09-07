@@ -852,6 +852,13 @@ target_compile_definitions(test_provenance PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DI
 target_link_libraries(test_provenance PRIVATE engine_flags)
 add_test(NAME provenance COMMAND test_provenance)
 
+# The decision index. Not a docs test for its own sake: an index of thirty chapter
+# pointers rots in exactly three mechanical ways, and all three are checkable.
+add_executable(test_adr_index tests/test_adr_index.cpp)
+target_compile_definitions(test_adr_index PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_adr_index PRIVATE engine_flags)
+add_test(NAME adr_index COMMAND test_adr_index)
+
 add_executable(test_collection tests/test_collection.cpp
   src/engine/project/collection.cpp
   src/engine/project/inspect.cpp

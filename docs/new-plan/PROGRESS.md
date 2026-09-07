@@ -2108,6 +2108,82 @@ không phải sót · `/v1/ws` không so được với bảng route theo phươ
 mô tả Drogon tự ghi · chưa có UI đọc spec (Swagger/Redoc cần CDN, mà trang này không có).
 
 
+### S30a — một field không ai đọc ✅ 2026-09-07 · chương 143
+
+`assets/farm/crops.def` viết `season=spring` từ chương 113. `defs.cpp` **parse** nó vào
+`CropDef::season`. `world.cpp` **chưa bao giờ nhìn tới** — không lúc trồng, không ở ranh
+giới ngày, không trong file save, không trên màn hình. Mười tám chương. Trồng bí ngô vào
+mùa xuân được, trồng củ cải vào mùa đông được, và tất cả những gì cái từ đó làm là **nằm
+trong một struct**.
+
+**Một field được GHI mà không ai ĐỌC thì không phải dữ liệu, nó là một lời tuyên bố.**
+Cái này tuyên bố rằng game có mùa.
+
+**Giờ nó có nghĩa gì.** Một năm bốn mùa, mỗi mùa `kDaysPerSeason` ngày. **Bảy**, không
+phải hai tám: một ngày ở đây là mười hai phút thật, nên một mùa dài kiểu Stardew là năm
+tiếng rưỡi và người chơi **không bao giờ thấy nổi một lần chuyển mùa**. Bảy làm một mùa
+khoảng chín mươi phút — đủ dài để lên kế hoạch bên trong, đủ ngắn để gặp được.
+
+Hai thời điểm, **một luật**: hạt bị từ chối ngoài mùa (và câu từ chối **nói tên mùa hiện
+tại**), còn thứ gì còn trong đất khi mùa xoay thì **chết** — chín hay không cũng vậy, đó
+chính là áp lực. Cả hai đi qua `grows_in`, cố ý: chúng là **cùng một câu hỏi hỏi ở hai
+lúc**, và hai bản sao của nó chính là cách một cây trở nên trồng-được rồi chết ngay.
+Đất **sống sót** — héo không phải là bỏ cày.
+
+**Cái trùng lặp đã cho phép nó mục.** Lần đầu đặt luật kiểm tra vào `assign_crop`, và
+test "file có `season=sprnig` phải bị từ chối" **FAIL**. Vì `assign_crop` là đường
+*override*; đường *FILE* — `parse_defs` — mang **bản sao riêng** của cùng cái dispatch
+đó. Hai hàm cùng quyết định một cây có những key nào và giá trị nào hợp lệ. Chúng đồng ý
+suốt ba mươi chương và bất đồng **đúng lúc** một trong các field mọc ra một luật.
+
+Giờ là **một hàm**, với đúng một cờ là khác biệt THẬT giữa hai người gọi: một **FILE**
+`.def` bỏ qua key nó chưa từng nghe (nên file mới vẫn load được trên build cũ), còn một
+**OVERRIDE** từ remote config phải từ chối — không thì operator gõ `sel=40` và tin rằng
+mình đã đổi giá. Nửa "tương thích tiến" của lời hứa đó **chưa từng có test** cho tới
+chương này.
+
+**Nhìn thấy được, không chỉ được thi hành.** Một luật có răng mà màn hình không nhắc là
+một luật người chơi trải nghiệm như một cái bug. Ba chỗ nói ra: HUD đọc
+`Day 8  summer 1/7`, báo cáo buổi sáng nói `3 withered`, và **chip hạt được vẽ MỜ** khi
+cây đang chọn không thể xuống đất hôm nay.
+
+## Mutation: 18 — và cái sống sót là một QUYẾT ĐỊNH VIẾT BẰNG MÀU
+
+`S18 the seed chip never says out of season` **sống sót**: mọi test khác trong
+`test_farm_scene` vẫn xanh với cái chip sáng vĩnh viễn. Không gì trong file đó nhìn thấy
+một lựa chọn màu — `ink()` đếm pixel **không phải** nền, mà đó là câu hỏi sai cho "cái
+NÀY có được vẽ ở đây không". Nên có `count_colour`, và test chọn slot Seed trước (để
+nhãn của chính nó là `text`, không bao giờ `text_muted`, nên mọi pixel mờ trong ô đó
+**phải** là dòng phụ), rồi bấm Q cho tới khi thấy chip **cả mờ lẫn sáng**. Hai chiều —
+vì một cái chip lúc nào cũng mờ sẽ pass một test chỉ đi tìm cái mờ. Sau khi vá: **18/18**.
+
+## Và một chỗ để ghi lại các quyết định
+
+Nửa còn lại của slice: `docs/adr/` — một **chỉ mục**, không phải kho lưu trữ. Bốn mươi
+chín dòng, mỗi dòng gọi tên một quyết định bằng một câu và trỏ vào chương nơi lập luận
+**đã** nằm sẵn. **Không có prose mới**, cố ý — một bản sao thứ hai của một lập luận là
+một thứ thứ hai để quên, đúng bài học của hai cái parser ở trên.
+
+Thứ nó thêm vào mà cuốn sách không có là **các lần ĐẢO NGƯỢC**: tám dòng ghi
+`Superseded by N` — ba cửa `.hrt` → bốn; attribution phải nhớ → provenance suy ra;
+`fpsmap1` → `map2`; mười hai cờ lab → một cửa mỗi loại; "pool 1 nên nguyên tử" →
+transaction + locking read; "Postgres là bản build lúc deploy" → một dialect trong nguồn
+hai trên dây; `--seed` thoát → `--seed` phục vụ; và **`season` là nhãn → `season` là
+luật**, tức chính chương này tự ghi lần đảo ngược của mình vào sổ.
+
+Một chỉ mục 49 con trỏ mục theo **ba cách máy kiểm được** — chương bị đổi tên, id dùng
+hai lần, `Superseded by` trỏ vào dòng không tồn tại — nên `test_adr_index` kiểm cả ba.
+Nó bắt được một cái ngay: dấu `|` escape trong `` `HRT1\|w\|h\|RGBA8` `` khiến dòng 20
+đọc thành chín cột vô nghĩa.
+
+**⚠️ Chưa xác minh:** chưa chơi tay qua **một lần chuyển mùa thật** trong cửa sổ (test
+mô phỏng bảy lần ngủ; ảnh chụp chỉ là ngày 1) · cân bằng kinh tế của tám cây **chưa đo**
+— số tiền là ước lượng, không phải kết quả chơi thử · save cũ (trước chương này) mở lại
+sẽ **héo sạch** ở lần chuyển mùa đầu nếu cây không đúng mùa; đúng luật, nhưng chưa ai
+thử migrate · `docs/adr/` kiểm được **liên kết**, không kiểm được **nội dung** — một
+dòng mô tả sai quyết định vẫn pass.
+
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -2131,7 +2207,9 @@ làm chín T6).
 | ~~S29a~~ | ~~Khoá mọi đường đọc-rồi-ghi + seam dialect + bản tái hiện Postgres~~ — **XONG**, chương 140 | M |
 | ~~S29b~~ | ~~**Làm Postgres CHẠY**~~ — **XONG**, chương 141: 30/30 trên Postgres thật, CI chạy cả bộ test **hai lần**, một lần mỗi backend | L |
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
-| S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
+| ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
+| S30b | Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap | M |
+| S30c | `--bench-ui` chạy được cả farm/creatures; manifest cho `iso` và `colony` | S |
 
 Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,
 chọn một cái, chơi. Điểm tiếp theo là **sau S28** (hai game + PvP).

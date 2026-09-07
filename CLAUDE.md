@@ -12,7 +12,10 @@ platform) — read it before touching the platform spine. `docs/book/` is a 100+
 guidebook where each chapter maps to the code that implements it; **the guidebook
 chapter is the best explanation of any given subsystem** (e.g. `93` = release store,
 `95`–`97` = Hub/Studio shell). `docs/guides/author-to-url.md` walks the operator
-golden path end to end. **`docs/PROJECT-BRIEF.md` is the single orientation document**:
+golden path end to end. **`docs/adr/README.md` is the decision index** — one line per
+architectural decision, pointing at the chapter that argues it, and eight rows marked
+`Superseded by N` so a reversed decision says so instead of surviving as folklore
+(`test_adr_index` checks the pointers, the ids and the supersessions). **`docs/PROJECT-BRIEF.md` is the single orientation document**:
 current state, full feature inventory, a verified-vs-unproven ledger, the roadmap
 position, and the decision rules for choosing what to build next — read it before
 picking work.
@@ -197,6 +200,17 @@ them working). Paths are relative to the asset root — see `assets::` below:
                                               # not — one screen laid out for the other's neighbours
                                               # is exactly the bug sharing them would buy
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
+                                              # `season` is a RULE, not a label (ch.143):
+                                              # four seasons of SEVEN days, a seed refused
+                                              # out of season, and anything still in the
+                                              # ground when the season turns DIES (the soil
+                                              # survives — withering is not un-tilling).
+                                              # Both moments go through ONE farm::grows_in.
+                                              # Said on screen three times, because a rule
+                                              # the screen never mentions is a bug to the
+                                              # player: `Day 8  summer 1/7` on the HUD, the
+                                              # morning report's "3 withered", and an
+                                              # out-of-season seed chip drawn DIM
                                               # EVERY verb has an on-screen control (touch/mouse):
                                               # d-pad, Z/Q, the hotbar slots pick the tool, F5 saves,
                                               # and the dialogue is answered by tapping an option.

@@ -496,6 +496,10 @@ void FarmScene::sleep_now(bool collapsed) {
     std::string msg = "day " + std::to_string(r.day);
     if (r.gold_earned > 0) msg += "   +" + std::to_string(r.gold_earned) + "g";
     if (r.crops_grown > 0) msg += "   " + std::to_string(r.crops_grown) + " ready";
+    if (r.season_changed) msg += "   " + std::string(season_name(season_of(r.day)));
+    // Never silent. A field that empties overnight with no message reads as a bug.
+    if (r.crops_withered > 0)
+        msg += "   " + std::to_string(r.crops_withered) + " withered";
     if (collapsed) msg += "   (you passed out)";
     say(msg, 5.0);
 
@@ -783,7 +787,14 @@ void FarmScene::render(const engine::Context& ctx) {
     const int hud_h = 34;
     g.fill_rect_blend(0, 0, W, hud_h, 0xE0121420);
     g.set_font_size(th::sz_body);
-    const std::string clock = "Day " + std::to_string(world_.day) + "   " + world_.time_text();
+    // The season is on the HUD because it is a RULE with teeth (chapter 143): a crop
+    // planted too late dies, so "which day of which season is it" has to be readable
+    // without counting. `spring 3/7` is the whole calendar in six characters.
+    const Season szn = season_of(world_.day);
+    const std::string clock = "Day " + std::to_string(world_.day) + "  " +
+                              season_name(szn) + " " +
+                              std::to_string(day_of_season(world_.day)) + "/" +
+                              std::to_string(kDaysPerSeason) + "   " + world_.time_text();
     g.draw_text(th::space_sm, 8, clock.c_str(), th::text);
 
     const int bar_x = 150, bar_w = 120;
@@ -891,7 +902,13 @@ void FarmScene::render(const engine::Context& ctx) {
                 const auto have = world_.inventory.find(seed_item(c.name));
                 const std::string sv = c.name + " x" +
                     std::to_string(have == world_.inventory.end() ? 0 : have->second);
-                g.draw_text(b.x + 4, ty + 10, sv.c_str(), on ? th::accent : th::text_dim);
+                // OUT OF SEASON is said here, on the chip, and not only by the refusal
+                // afterwards. A rule the player meets as a rejection they have to
+                // decode is a rule they will hit eight times cycling through seeds;
+                // one dim colour is the difference (chapter 143).
+                const bool sowable = grows_in(c, season_of(world_.day));
+                g.draw_text(b.x + 4, ty + 10, sv.c_str(),
+                            !sowable ? th::text_muted : (on ? th::accent : th::text_dim));
             }
         }
         const Box& last = pad.tool[3];

@@ -119,6 +119,11 @@ struct DayReport {
     int crops_grown = 0;
     int day = 0;
     bool collapsed = false;    // the player did not choose to sleep; the clock did
+    // Crops cleared because the season turned under them (chapter 143). Reported
+    // rather than silent: a field that empties overnight with no message reads as a
+    // bug, and this one is a rule.
+    int crops_withered = 0;
+    bool season_changed = false;
 };
 DayReport end_day(World& w, const Defs& defs, bool collapsed = false);
 

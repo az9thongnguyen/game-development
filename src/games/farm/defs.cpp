@@ -49,6 +49,50 @@ const ItemDef* Defs::item(const std::string& name) const {
     return nullptr;
 }
 
+namespace {
+
+// One `key=value` onto a crop. Returns an error phrase, or "" when it assigned.
+//
+// `unknown_is_error` is the ONE difference between this function's two callers, and it
+// is a real difference: a `.def` FILE must stay forward-compatible, so a key it has
+// never heard of is ignored and a newer file still loads in an older build. An
+// OVERRIDE arriving from remote config must not silently no-op — an operator who types
+// `sel=40` has to be told, or the price they think they changed is the price they did
+// not.
+//
+// Everything else — which keys exist and which values are legal — lives here once. It
+// did not until chapter 143: `parse_defs` carried its own copy of this dispatch, and
+// when `season` grew a validity rule the copy never got it, so a file could define a
+// crop whose season did not exist and the game refused to plant it with no explanation.
+std::string assign_crop(CropDef& c, const std::string& k, const std::string& v,
+                        bool unknown_is_error) {
+    if (k == "season") {
+        if (!valid_season_word(v)) return "'" + v + "' is not a season";
+        c.season = v;
+        return {};
+    }
+    if (k == "days")   return to_int(v, c.days)   ? std::string() : "'" + v + "' is not a number";
+    if (k == "stages") return to_int(v, c.stages) ? std::string() : "'" + v + "' is not a number";
+    if (k == "sell")   return to_int(v, c.sell)   ? std::string() : "'" + v + "' is not a number";
+    if (k == "seed")   return to_int(v, c.seed)   ? std::string() : "'" + v + "' is not a number";
+    return unknown_is_error ? "unknown field '" + k + "'" : std::string();
+}
+
+std::string assign_item(ItemDef& i, const std::string& k, const std::string& v,
+                        bool unknown_is_error) {
+    if (k == "type") { i.type = v; return {}; }
+    if (k == "sell") return to_int(v, i.sell) ? std::string() : "'" + v + "' is not a number";
+    if (k == "tier") return to_int(v, i.tier) ? std::string() : "'" + v + "' is not a number";
+    return unknown_is_error ? "unknown field '" + k + "'" : std::string();
+}
+
+// A crop with no stages divides by zero when its growth is drawn; a crop with no days
+// is ripe the instant it is planted. Checked on both roads in, because remote config
+// must not be able to brick a running game either.
+bool playable(const CropDef& c) { return c.days >= 1 && c.stages >= 2; }
+
+}  // namespace
+
 std::optional<Defs> parse_defs(const std::string& text) {
     Defs d;
     std::istringstream in(text);
@@ -65,16 +109,12 @@ std::optional<Defs> parse_defs(const std::string& text) {
             std::string tok, k, v;
             while (ln >> tok) {
                 if (!split_kv(tok, k, v)) return std::nullopt;
-                if      (k == "season") c.season = v;
-                else if (k == "days")   { if (!to_int(v, c.days))   return std::nullopt; }
-                else if (k == "stages") { if (!to_int(v, c.stages)) return std::nullopt; }
-                else if (k == "sell")   { if (!to_int(v, c.sell))   return std::nullopt; }
-                else if (k == "seed")   { if (!to_int(v, c.seed))   return std::nullopt; }
-                // anything else: ignored, so a later field is purely additive
+                // false: an unknown key is IGNORED here, so a later field is purely
+                // additive and an older build still reads a newer file.
+                if (!assign_crop(c, k, v, /*unknown_is_error=*/false).empty())
+                    return std::nullopt;
             }
-            // A crop with no stages would divide by zero when growth is drawn; a crop
-            // with no days would be ripe the instant it is planted.
-            if (c.days < 1 || c.stages < 2) return std::nullopt;
+            if (!playable(c)) return std::nullopt;
             d.crops.push_back(std::move(c));
         } else if (kind == "item") {
             ItemDef it;
@@ -82,9 +122,8 @@ std::optional<Defs> parse_defs(const std::string& text) {
             std::string tok, k, v;
             while (ln >> tok) {
                 if (!split_kv(tok, k, v)) return std::nullopt;
-                if      (k == "type") it.type = v;
-                else if (k == "sell") { if (!to_int(v, it.sell)) return std::nullopt; }
-                else if (k == "tier") { if (!to_int(v, it.tier)) return std::nullopt; }
+                if (!assign_item(it, k, v, /*unknown_is_error=*/false).empty())
+                    return std::nullopt;
             }
             d.items.push_back(std::move(it));
         }
@@ -94,28 +133,55 @@ std::optional<Defs> parse_defs(const std::string& text) {
     return d;
 }
 
+// ---- the calendar ----------------------------------------------------------------
+
+Season season_of(int day) {
+    // `day` is 1-based and could be anything a save file says. Floor-divide so day 0
+    // and a negative day still land somewhere real rather than reading off the end.
+    const int index = (day - 1) % (kSeasonsPerYear * kDaysPerSeason);
+    const int wrapped = index < 0 ? index + kSeasonsPerYear * kDaysPerSeason : index;
+    return static_cast<Season>(wrapped / kDaysPerSeason);
+}
+
+int day_of_season(int day) {
+    const int index = (day - 1) % kDaysPerSeason;
+    return (index < 0 ? index + kDaysPerSeason : index) + 1;
+}
+
+const char* season_name(Season s) {
+    switch (s) {
+        case Season::Spring: return "spring";
+        case Season::Summer: return "summer";
+        case Season::Autumn: return "autumn";
+        case Season::Winter: return "winter";
+    }
+    return "spring";
+}
+
+std::optional<Season> season_from_string(const std::string& s) {
+    if (s == "spring") return Season::Spring;
+    if (s == "summer") return Season::Summer;
+    if (s == "autumn") return Season::Autumn;
+    if (s == "winter") return Season::Winter;
+    return std::nullopt;   // including "all" — that is not A season, it is all of them
+}
+
 namespace {
+// The one place the year-round spelling lives. `valid_season_word` and `grows_in` are
+// two different questions about the same word, and this is what stops them answering
+// differently — which is how `season=any` becomes loadable and unplantable.
+bool is_every_season(const std::string& s) { return s == "all" || s == "any"; }
+}  // namespace
 
-// One `key=value` onto a crop. Returns an error phrase, or "" when it assigned.
-// Split out so the two record kinds share the "what went wrong" wording, and so the
-// caller can decide to apply nothing when any field fails.
-std::string assign_crop(CropDef& c, const std::string& k, const std::string& v) {
-    if (k == "season") { c.season = v; return {}; }
-    if (k == "days")   return to_int(v, c.days)   ? std::string() : "'" + v + "' is not a number";
-    if (k == "stages") return to_int(v, c.stages) ? std::string() : "'" + v + "' is not a number";
-    if (k == "sell")   return to_int(v, c.sell)   ? std::string() : "'" + v + "' is not a number";
-    if (k == "seed")   return to_int(v, c.seed)   ? std::string() : "'" + v + "' is not a number";
-    return "unknown field '" + k + "'";
+bool valid_season_word(const std::string& s) {
+    return is_every_season(s) || season_from_string(s).has_value();
 }
 
-std::string assign_item(ItemDef& i, const std::string& k, const std::string& v) {
-    if (k == "type") { i.type = v; return {}; }
-    if (k == "sell") return to_int(v, i.sell) ? std::string() : "'" + v + "' is not a number";
-    if (k == "tier") return to_int(v, i.tier) ? std::string() : "'" + v + "' is not a number";
-    return "unknown field '" + k + "'";
+bool grows_in(const CropDef& c, Season s) {
+    if (is_every_season(c.season)) return true;
+    const auto want = season_from_string(c.season);
+    return want && *want == s;
 }
-
-} // namespace
 
 OverrideReport apply_overrides(Defs& into, const std::string& text) {
     OverrideReport rep;
@@ -157,13 +223,14 @@ OverrideReport apply_overrides(Defs& into, const std::string& text) {
         std::string tok, k, v, why;
         while (why.empty() && (ln >> tok)) {
             if (!split_kv(tok, k, v)) { why = "'" + tok + "' is not key=value"; break; }
-            why = kind == "crop" ? assign_crop(c, k, v) : assign_item(i, k, v);
+            why = kind == "crop" ? assign_crop(c, k, v, /*unknown_is_error=*/true)
+                                 : assign_item(i, k, v, /*unknown_is_error=*/true);
             if (why.empty()) ++applied;
         }
         // Remote config must not be able to brick a running game: a crop that never
         // grows, or one whose stage count divides by zero when it is drawn, is refused
         // here rather than discovered on the field.
-        if (why.empty() && kind == "crop" && (c.days < 1 || c.stages < 2))
+        if (why.empty() && kind == "crop" && !playable(c))
             why = "days/stages would make it unplayable";
 
         if (!why.empty()) { rep.problems.push_back(where + ": " + why); continue; }

@@ -1,5 +1,16 @@
 # Crops. days = waterings from planting to harvest; stages = drawn growth steps
 # (the last stage is the ripe one). Edit and rerun — no build needed.
+#
+# `season` is a RULE, not a label (chapter 143): a seed cannot be planted outside its
+# season, and anything still in the ground when the season turns dies. `all` grows
+# year-round. A year is four seasons of seven days.
 crop parsnip season=spring days=4 stages=5 sell=35 seed=20
 crop turnip  season=spring days=2 stages=3 sell=15 seed=8
+crop melon   season=summer days=6 stages=5 sell=110 seed=60
+crop corn    season=summer days=4 stages=4 sell=55  seed=30
 crop pumpkin season=autumn days=6 stages=4 sell=90 seed=50
+crop beet    season=autumn days=3 stages=4 sell=45  seed=25
+crop kale    season=winter days=5 stages=4 sell=70  seed=40
+# The one that does not care. It pays badly, which is the point: a crop you can plant
+# on any day of the year should not also be the best one.
+crop clover  season=all    days=2 stages=3 sell=12  seed=6
