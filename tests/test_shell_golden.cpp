@@ -13,6 +13,7 @@
 // =============================================================================
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -1275,6 +1276,15 @@ int main() {
     // drag survives being let go of. A widget that works in isolation and is drawn
     // somewhere unclickable passes every test but this one.
     {
+        // Start from NO saved layout. This block writes one, so the second run of the
+        // suite would otherwise open the Studio already dragged — and "drag it 90px
+        // further" then runs into the clamp and moves nothing. Green once is not green:
+        // a suite only ever run on a clean tree proves nothing about the state it left.
+        std::error_code lec;
+        std::filesystem::remove(std::filesystem::path(ASSET_ROOT) / "assets" /
+                                    studioshell::kLayoutPath,
+                                lec);
+
         studioshell::StudioShellScene sc(kProject, kKnownEntries);
         std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
         platform::Framebuffer f{b.data(), PW, PH, PW};
