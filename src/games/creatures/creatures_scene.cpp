@@ -459,6 +459,42 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
 
 void CreaturesScene::render_controls(gfx::Renderer2D& g) const {
     const Layout l = layout(fb_w_, fb_h_, mode());
+
+    // One line, once per process, to stderr — the same line the farm prints and for
+    // the same reason (chapter 126): a tap that did nothing and a tap that MISSED are
+    // different failures, and from outside the process nothing else tells them apart.
+    // It is also how the browser check aims — at the button the game says it drew, at
+    // the size the browser actually gave it, rather than at a second copy of the rule.
+    const auto box = [](const Box& b) {
+        char buf[64];
+        std::snprintf(buf, sizeof buf, "%d,%d,%d,%d", b.x, b.y, b.w, b.h);
+        return std::string(buf);
+    };
+    static bool announced = false;
+    if (!announced && l.pad_visible()) {
+        announced = true;
+        std::fprintf(stderr,
+                     "creatures: controls %dx%d up=%s down=%s left=%s right=%s act=%s save=%s\n",
+                     fb_w_, fb_h_, box(l.up).c_str(), box(l.down).c_str(),
+                     box(l.left).c_str(), box(l.right).c_str(),
+                     box(l.act).c_str(), box(l.save).c_str());
+    }
+
+    // A SECOND line, the first time a battle is on screen. The farm needed one line
+    // because everything it can do is on one screen; this game has two, and the
+    // browser check cannot finish a fight it cannot aim at. Printed from here, at the
+    // moment the screen exists, for the same reason as the first: the numbers a
+    // checker uses have to be the numbers the renderer used.
+    static bool announced_battle = false;
+    if (!announced_battle && mode() != Mode::Overworld && !l.panel.empty()) {
+        announced_battle = true;
+        std::fprintf(stderr,
+                     "creatures: battle %dx%d fight=%s ball=%s party=%s run=%s ack=%s back=%s\n",
+                     fb_w_, fb_h_, box(l.cell[0]).c_str(), box(l.cell[1]).c_str(),
+                     box(l.cell[2]).c_str(), box(l.cell[3]).c_str(),
+                     box(layout(fb_w_, fb_h_, Mode::Ack).ack).c_str(), box(l.back).c_str());
+    }
+
     if (!l.pad_visible()) return;
     const auto btn = [&](const Box& b, const char* label) {
         if (b.empty()) return;

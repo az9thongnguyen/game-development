@@ -173,7 +173,14 @@ jobs:
           which google-chrome || which chromium-browser || which chromium
           google-chrome --version || true
           node --version
-          node scripts/web_touch_check.mjs --dir build-web
+          node scripts/web_touch_check.mjs --dir build-web --game farm
+          # ...and the second game, which is NOT the same check with a different
+          # manifest. The farm is proved by holding east and pressing Save; walking
+          # east in the creature game puts you in a fight, where there IS no save
+          # button — so that run drives the whole loop instead: into the grass, out
+          # of the battle, acknowledged, then saved. Two games, two shapes, one
+          # script, because both games print where their buttons are.
+          node scripts/web_touch_check.mjs --dir build-web --game creatures
 
       # -----------------------------------------------------------------------
       #  The other half of "one link": a page that lists what there is, and a Play
