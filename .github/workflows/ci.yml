@@ -271,7 +271,7 @@ jobs:
         # --test-dir <build>/baas selects exactly the tests that directory registers.
         run: ctest --test-dir build-baas/baas --output-on-failure
 
-      - name: ...and there really were 27 of the 28
+      - name: ...and there really were 27 of the 29
         run: |
           n=$(ctest --test-dir build-baas/baas -N | grep -cE 'Test +#')
           echo "registered baas tests: $n"
@@ -279,8 +279,10 @@ jobs:
           # about. Assert a floor, not an exact count: adding a test must not break
           # CI, losing the directory must.
           #
-          # 27, not 28: `sdk_realtime_live` needs libcurl >= 7.86 for the WebSocket
-          # API, and this image is Ubuntu 22.04 with 7.81. The configure output above
-          # names it. That one test still only runs on a machine with a modern curl —
-          # see the chapter; it is a ceiling, not an oversight.
+          # 27, not 29: `sdk_realtime_live` and `creature_pvp_live` both need libcurl
+          # >= 7.86 for the WebSocket API, and this image is Ubuntu 22.04 with 7.81.
+          # The configure output above names both. They still only run on a machine
+          # with a modern curl — see chapters 129 and 139; it is a ceiling, not an
+          # oversight, and it is now TWO tests wide rather than one, which is a cost
+          # worth stating rather than a number worth quietly editing.
           [ "$n" -ge 27 ] || { echo "::error::only $n baas tests were registered"; exit 1; }

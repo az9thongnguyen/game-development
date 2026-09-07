@@ -888,6 +888,77 @@ void test_type_chart_survives_growth() {
 
 
 // -----------------------------------------------------------------------------
+// A battle can run out of things to do. When nobody has PP left nothing takes
+// damage, and before chapter 139 the AI then switched to the first living creature
+// on the bench — whatever ITS pp — so two teams rotated at each other forever. Two
+// real `--pvp` processes did exactly that for five hundred turns while every test in
+// this file passed, because no test had ever given both sides the same party.
+//
+// Two guards came out of it, and each is checked here on its own.
+// -----------------------------------------------------------------------------
+void test_a_stalemate_ends(const Dex& d) {
+    const auto drain_pp = [](Party& p) {
+        for (int i = 0; i < p.count; ++i)
+            for (int m = 0; m < kMoveSlots; ++m) p.member[i].moves[m].pp = 0;
+    };
+
+    Battle b;
+    b.side[0] = make_party(d, {{1, 20}, {5, 20}, {9, 20}});
+    b.side[1] = make_party(d, {{1, 20}, {5, 20}, {9, 20}});
+    drain_pp(b.side[0]);
+    drain_pp(b.side[1]);
+    b.rng = 0xDEADFA11;
+
+    // GUARD ONE: `choose` must not offer a switch when no benched creature can act
+    // either. Without this the two sides never stop moving and never do anything.
+    for (int s = 0; s < 2; ++s) CHECK(choose(d, b, s).kind != Action::Kind::Switch);
+
+    // GUARD TWO: even if it did, the battle ends. Stepped far past the cap on
+    // purpose — a loop that merely ran out would look identical from outside.
+    for (int t = 0; t < 3 * kMaxTurns && !b.over; ++t)
+        step(d, b, choose(d, b, 0), choose(d, b, 1));
+    CHECK(b.over);
+    CHECK(b.turn == kMaxTurns);
+    CHECK(b.winner == -1);          // a stalemate is a draw, not a win for side 0
+    CHECK(b.side[0].any_alive());   // ...and nobody actually died
+    CHECK(b.side[1].any_alive());
+    std::printf("  a no-PP stalemate ends at turn %d, drawn\n", b.turn);
+
+    // A FAINTED creature keeps its PP, so "has a usable move" is not enough on its
+    // own — `act` would refuse the switch and the turn would be spent going nowhere.
+    // The mutation that dropped the alive() check survived the case above, where
+    // every creature was alive and none had PP.
+    Battle f;
+    f.side[0] = make_party(d, {{1, 20}, {5, 20}});
+    f.side[1] = make_party(d, {{4, 20}});
+    for (int m = 0; m < kMoveSlots; ++m) f.side[0].member[0].moves[m].pp = 0;
+    f.side[0].member[1].hp = 0;                       // the only one with PP is down
+    CHECK(choose(d, f, 0).kind != Action::Kind::Switch);
+
+    // ...and the reverse direction, which is the half that matters: a creature whose
+    // ACTIVE is out of PP but whose bench is not must still switch, or the fix would
+    // have bought termination by making the AI worse.
+    Battle c;
+    c.side[0] = make_party(d, {{1, 20}, {5, 20}});
+    c.side[1] = make_party(d, {{4, 20}});
+    for (int m = 0; m < kMoveSlots; ++m) c.side[0].member[0].moves[m].pp = 0;
+    const Action a = choose(d, c, 0);
+    CHECK(a.kind == Action::Kind::Switch);
+    CHECK(a.index == 1);
+
+    // And a normal battle is untouched by the cap — it ends long before it.
+    Battle n;
+    n.side[0] = make_party(d, {{1, 20}});
+    n.side[1] = make_party(d, {{4, 20}});
+    n.rng = 7;
+    for (int t = 0; t < 3 * kMaxTurns && !n.over; ++t)
+        step(d, n, choose(d, n, 0), choose(d, n, 1));
+    CHECK(n.over);
+    CHECK(n.turn < kMaxTurns);
+    CHECK(n.winner >= 0);
+}
+
+// -----------------------------------------------------------------------------
 // The reference battle, as committed bytes.
 //
 // Every other determinism check in this file runs the sim twice in ONE process,
@@ -1320,6 +1391,7 @@ int main() {
     test_the_two_catch_doors_agree(d);
     test_the_format_refuses(d);
     test_the_verifier_tells_the_two_faults_apart(d);
+    test_a_stalemate_ends(d);
     test_the_reference_battle_is_bytes(d);
 
     if (g_failures == 0) std::printf("test_creature: all checks passed\n");

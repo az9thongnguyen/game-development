@@ -179,7 +179,7 @@ if(EMSCRIPTEN)
     VERBATIM)
   add_dependencies(demo web_pages)
 endif()
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core creature_core map_edit_core paint_core mix_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core creature_core creature_pvp map_edit_core paint_core mix_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -586,9 +586,18 @@ add_test(NAME farm_scene COMMAND test_farm_scene)
 # so `test_creature` plays a thousand random battles and asserts the replay reaches
 # the same hash, turn by turn. That test is the reason this is a library and not a
 # scene: a determinism claim you cannot run a thousand times is a hope.
+# ---- Elo (subsystem: a rating, as integer arithmetic) ------------------------
+# Header-only, like engine/rand.hpp, so anything can rate a match without a link
+# line. The test is what pins the table to the real curve.
+add_executable(test_elo tests/test_elo.cpp)
+target_include_directories(test_elo PRIVATE src)
+target_link_libraries(test_elo PRIVATE engine_flags)
+add_test(NAME elo COMMAND test_elo)
+
 add_library(creature_core STATIC
   src/games/creatures/defs.cpp
   src/games/creatures/battle.cpp
+  src/games/creatures/netbattle.cpp
   src/games/creatures/replay.cpp
   src/games/creatures/world.cpp
   src/games/creatures/controls.cpp
@@ -608,6 +617,23 @@ target_include_directories(test_creature PRIVATE src)
 target_compile_definitions(test_creature PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_creature PRIVATE creature_core mix_core engine_flags)
 add_test(NAME creature COMMAND test_creature)
+
+# The PvP protocol, with no sockets: two NetBattle objects handed each other's
+# frames. That is the whole transport a match needs, so a thousand of them run here
+# in milliseconds — including forty where one peer deliberately holds different
+# tables and both sides have to notice.
+add_executable(test_netbattle tests/test_netbattle.cpp src/engine/assets.cpp)
+target_include_directories(test_netbattle PRIVATE src)
+target_compile_definitions(test_netbattle PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_netbattle PRIVATE creature_core engine_flags)
+add_test(NAME netbattle COMMAND test_netbattle)
+
+# The glue between the protocol and a socket, as a library rather than as a loop in
+# main.cpp — so `--pvp` and `test_creature_pvp_live` are the same code. It links the
+# SDK; `creature_core` stays pure and knows nothing about any of this.
+add_library(creature_pvp STATIC src/games/creatures/pvp.cpp)
+target_include_directories(creature_pvp PUBLIC src)
+target_link_libraries(creature_pvp PUBLIC creature_core gbaas_sdk PRIVATE engine_flags)
 
 # The loop AROUND the battle, still with no window: walking the real route, being
 # ambushed only where the map says, growing without being healed by it, blacking out,

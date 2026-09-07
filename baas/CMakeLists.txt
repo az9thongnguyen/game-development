@@ -29,6 +29,7 @@ add_library(baas_core OBJECT
   app_config.cc
   db/db.cc
   common/errors.cc
+  common/idempotency.cc
   gateway/api_key_filter.cc
   gateway/auth_filter.cc
   gateway/rate_limiter.cc
@@ -66,7 +67,13 @@ add_library(baas_core OBJECT
   observability/metrics.cc
   app_setup.cc
 )
-target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR})   # so "baas/..." headers resolve
+# ${CMAKE_SOURCE_DIR} so "baas/..." headers resolve; ${CMAKE_SOURCE_DIR}/src so the
+# ONE header the backend shares with the engine does — engine/elo.hpp, header-only,
+# constexpr, no library. That is a deliberate exception to "links no engine code" and
+# it is the narrowest possible one: the whole point of an integer rating curve is that
+# the client and the server compute the SAME number, and a copy of the table in each
+# is precisely the bug it exists to prevent. Nothing is linked; see chapter 139.
+target_include_directories(baas_core PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(baas_core PUBLIC Drogon::Drogon PkgConfig::SODIUM PRIVATE engine_flags)
 
 # ---- the server executable ---------------------------------------------------
@@ -210,11 +217,20 @@ if(GBAAS_CURL_WS_INC AND GBAAS_CURL_WS_LIB)
   add_executable(test_sdk_realtime_live ${CMAKE_SOURCE_DIR}/tests/test_sdk_realtime_live.cc)
   target_link_libraries(test_sdk_realtime_live PRIVATE gbaas_sdk baas_core CURL::libcurl engine_flags)
   add_test(NAME sdk_realtime_live COMMAND test_sdk_realtime_live)
+  # Two players, one battle, a real socket (chapter 139). Same gate, same reason:
+  # without a ws-capable curl there is no transport for a match to happen over.
+  add_executable(test_creature_pvp_live ${CMAKE_SOURCE_DIR}/tests/test_creature_pvp_live.cc
+                 ${CMAKE_SOURCE_DIR}/src/engine/assets.cpp)
+  target_include_directories(test_creature_pvp_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_compile_definitions(test_creature_pvp_live PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
+  target_link_libraries(test_creature_pvp_live
+                        PRIVATE gbaas_sdk baas_core creature_pvp CURL::libcurl engine_flags)
+  add_test(NAME creature_pvp_live COMMAND test_creature_pvp_live)
 else()
   message(STATUS
-    "baas: SKIPPING sdk_realtime_live — this libcurl has no WebSocket API (needs >= 7.86). "
-    "The SDK's native realtime is a stub in this build too, so the test would have "
-    "nothing to drive.")
+    "baas: SKIPPING sdk_realtime_live and creature_pvp_live — this libcurl has no "
+    "WebSocket API (needs >= 7.86). The SDK's native realtime is a stub in this build "
+    "too, so the tests would have nothing to drive.")
 endif()
 
 # ---- one target for the Drogon-gated half ------------------------------------

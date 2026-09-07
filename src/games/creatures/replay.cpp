@@ -13,6 +13,8 @@ namespace {
 
 constexpr const char* kMagic = "crep";
 
+} // namespace
+
 std::string hex16(std::uint64_t v) {
     char buf[17];
     std::snprintf(buf, sizeof buf, "%016llx", static_cast<unsigned long long>(v));
@@ -32,6 +34,8 @@ bool parse_hex16(const std::string& s, std::uint64_t& out) {
     out = v;
     return true;
 }
+
+namespace {
 
 bool fail(std::string* why, std::string msg) {
     if (why) *why = std::move(msg);

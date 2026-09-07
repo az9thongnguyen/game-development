@@ -1702,6 +1702,129 @@ save**: `to_text` không lưu được trận đánh, nên không có trạng th
 bị mắc kẹt — đó là một **giới hạn mặc áo đơn giản hoá**, và đáng nói rõ nó là cái nào.
 
 
+### S28b — bốn byte một lượt ✅ 2026-09-07 · chương 139
+
+Chương 136 dựng một trận đánh là số nguyên từ đầu tới cuối. Chương 138 biến bản ghi
+của nó thành một file ba toolchain đồng ý. Cả hai đang trả lời một câu hỏi chưa ai
+hỏi — và header đã nói thẳng ra: *"…thứ cho phép hai người chơi đánh nhau qua mạng
+bằng cách trao đổi bốn byte một lượt thay vì một world state"*. Đây là chương có
+người hỏi.
+
+**Hai bên gửi cho nhau cái gì.** Không phải thanh máu. Không phải con số sát thương.
+Mỗi bên gửi **hành động mình chọn** — một kind và một index — rồi cả hai tự tính cả
+lượt. Sau đó cả hai gửi `hash(battle)` và so. Đo được: **34 byte một lượt**, trong đó
+16 byte là cái hash — *kiểm tra* lượt đấu tốn gấp bốn lần *chơi* nó, và vẫn là không
+đáng kể. Một giao thức trao đổi **kết quả** thì buộc phải tin kết quả đó. Cái này
+không cần tin, vì nó biết khi nào hai bên khác nhau.
+
+**Ba thứ người chơi KHÔNG được chọn.** *Mình là phe nào, và seed* — cả hai đến từ sự
+kiện `matched` của server. Phương án "mỗi client góp một nửa seed rồi trộn" nghe công
+bằng hơn nhưng tệ hơn: **ai gửi sau có thể mài nửa của mình** cho tới khi kết quả trộn
+vừa ý; sửa cho đúng phải commit-reveal. Server không có lợi ích trong trận đấu, nên
+server chọn. Seed đi dưới dạng **16 ký tự hex, không phải số JSON** — số JSON là double
+trong mọi trình duyệt, mà bit thấp của một seed 64-bit chính là toàn bộ vấn đề. *Và
+sinh vật của mình là gì*: dây gửi `species:level`, hai bên cùng gọi `make` — nên một
+peer **nói dối được nó mang con nào, không nói dối được con đó là gì**. Đúng luật của
+save và của replay, lần thứ ba.
+
+**Bắt desync, từ CẢ HAI phía.** Bài test đáng nói không phải một nghìn trận khớp nhau,
+mà **bốn mươi trận mà một peer cố tình chạy bản có một move mạnh hơn** — tức là một
+client cũ, trường hợp bình thường của một game đã phát hành. **40/40 lệch, 40/40 được
+CẢ HAI bên bắt, ở CÙNG một lượt**, và không bên nào tuyên bố người thắng. Cả hai cùng
+bắt mới là điểm mấu chốt: một giao thức mà chỉ nạn nhân nhận ra là một giao thức mà
+người kia tiếp tục chơi một ván đã kết thúc. Và một trận desync **không báo gì lên
+ladder** — không bên nào biết chuyện gì xảy ra sau lượt hai bên thôi đồng ý.
+
+**Bảng xếp hạng giữ điểm CAO NHẤT thì không chứa được rating.** Elo **đi xuống**. Một
+bảng lặng lẽ từ chối hạ nó biến ladder thành sổ ghi ngày đẹp nhất của mọi người. Một
+cột `mode` (`'best'` mặc định, nên mọi bảng đã ship không đổi) + migration 9.
+
+**Và một ladder mà client chọn CON SỐ thì không phải ladder.** Project này có luật
+chống giả mạo ở khắp nơi — *điểm thuộc về user của JWT, không bao giờ là một field
+trong body* — và luật đó vô nghĩa trên ladder nếu **giá trị** vẫn là một field trong
+body. Nên ladder có verb riêng: `POST /v1/leaderboards/{key}/match` nhận **kết quả**,
+server tự tính. Nghĩa là server cần đúng cái Elo client dùng để dự đoán → `baas` giờ
+có `src/` trên include path cho **một** header `constexpr` thuần. Đó là **ngoại lệ có
+chủ ý** của "backend không link engine code", và là ngoại lệ hẹp nhất có thể: không
+link gì cả, chia sẻ một header, và **lý do chính là lý do bảng số đó tồn tại** — một
+rating tính từ hai bản sao của một đường cong chính là cái bug nó sinh ra để chặn.
+
+Cả hai người chơi đều báo cáo, vì cả hai đều đã chơi. Đó không phải retry, đó là
+trường hợp bình thường — nên `match` id làm nó idempotent, và **kho idempotency
+chuyển sang `baas/common/`** theo đúng ghi chú nằm trong `inv_service.cc` từ ch.102:
+*"khi có endpoint THỨ HAI cần idempotency thì hãy chuyển"*. Endpoint thứ hai đã đến.
+Đây là lời hứa thứ ba project trả đúng điều kiện đã ghi (ch.137 trả hai).
+
+Người báo cáo thứ hai nhận `delta: 0`, có chủ ý: delta đã lưu thuộc về người báo
+trước, và đưa nó cho người thứ hai đã **nói với kẻ thua trận PvP thật đầu tiên rằng
+họ được cộng 16 điểm**. Một con số đúng với người khác còn tệ hơn không có số.
+
+**Cũng không phải ladder nếu client chọn ĐỐI THỦ.** Một client không giả được rating
+vẫn báo cáo được bốn mươi trận thắng người đứng đầu. Chỉ server biết nó ghép ai với
+ai, nên hub **nhớ 4096 cặp gần nhất**, và endpoint trả `403` nếu trận đó không phải
+do nó ghép. Giá phải trả được ghi rõ: `/match` chỉ dùng được cho game dùng matchmaking
+của hub, và chỉ tới lần restart kế tiếp — cả hai vốn đã đúng với chính cái hub.
+
+## Cái bug hai TIẾN TRÌNH tìm ra mà một tiến trình không thể
+
+Mọi thứ trên đều xanh. `test_netbattle` chơi một nghìn trận; `test_creature_pvp_live`
+chơi một trận qua WebSocket thật với Drogon thật rồi kiểm ladder. Rồi hai tiến trình
+`--pvp` được chĩa vào một backend đang chạy, và **trận đấu chạy năm trăm lượt và vẫn
+đang chạy**.
+
+Trace nói hết: `recv <party 1 1:20 5:18 9:22>` / `send <party 1 1:20 5:18 9:22>` — hai
+đội **giống hệt nhau**, vì client headless có một đội cố định. **Mọi test trong repo
+đều dựng đội hình từ loài bốc ngẫu nhiên, nên chưa test nào từng cho hai đội GIỐNG
+HỆT nhau vào một trận.** Năm trăm lượt sau, mọi con của cả hai bên hết PP; không gì
+gây được sát thương; và nước cuối cùng của `choose` là *"đổi sang con còn sống đầu
+tiên"* — bất kể PP của nó. Nên hai bên xoay băng ghế vào nhau, mãi mãi, mỗi bên đều
+đang đi nước duy nhất nó có.
+
+Không nửa nào của bản vá là phần thú vị; **cặp** mới là. `choose` thôi đổi sang một
+con cũng không hành động được, và — **riêng biệt** — một trận chạm 200 lượt là **HÒA**.
+Cái thứ hai không phải van an toàn bắt bên ngoài: nó là **luật của trò chơi**, trong
+`battle.hpp`, nên game hoang dã, một replay đã lưu và một trận xếp hạng cùng được bảo
+vệ. 200 vượt xa mọi trận thật (dài nhất trong một nghìn trận là 28), nên không bản ghi
+đã commit nào dịch, và `test_creature` bake lại `reference.crep` từng byte để chứng
+minh. Với AI đã sửa, một trận gương giờ **phân thắng bại trong 28 lượt** chứ không
+chỉ dừng ở cap — nên hai guard được test **tách nhau**.
+
+**Ba chương liên tiếp một bằng chứng không chuyển được, và ba lần việc phát hiện ra
+điều đó đáng giá hơn chính bằng chứng.** ch.137: bằng chứng chạm của farm không sống
+sót khi gặp game thứ hai. ch.138: tất định trong một tiến trình không nói gì về hai
+toolchain. Ở đây: một tiến trình chơi cả hai phe chưa bao giờ đưa cho chúng cùng một
+đội.
+
+**Mutation: 29/32 vòng đầu — và một cái sống sót CHỨNG MINH một comment là SAI.**
+`elo_update` làm tròn ra xa số 0, và comment phía trên nói đó là thứ giữ cho trận đấu
+zero-sum. Đổi thành phép chia nguyên thường **sống sót mọi test trong `test_elo`** — vì
+phép cắt của C++ **đối xứng**: tử số của người thắng và người thua là số đối chính xác
+dù làm tròn kiểu nào. Cái làm tròn thật sự mua được là **độ lớn**: cắt luôn làm tròn
+phần được xuống và phần mất lên, nên một kết quả sít sao đáng 15 trong khi số học nói
+16, ở khoảng một nửa số ván.
+
+Đó là một hình dạng đáng đặt tên riêng: **không phải thiếu test, cũng không phải sai
+code — mà là một dòng ĐÚNG được bảo vệ bằng một lập luận SAI.** Nó qua review y hệt một
+lập luận đúng, và sẽ bị xoá ngay lần đầu có ai đó "đơn giản hoá".
+
+Hai cái còn lại: **một guard chưa từng được kiểm ở nửa kia** (bỏ `alive()` trong vòng
+quét băng ghế mới sống sót, vì trong ca no-PP mọi con đều còn sống — mà một con **ngất
+vẫn giữ PP**, nên nó sẽ được chọn rồi `act` từ chối và phí lượt), và **một khả năng
+không ai dùng** (`begin()` reset object, mà mọi test đều dựng `NetBattle` mới — trong
+khi client nào chơi ván thứ hai đều dùng lại một cái).
+
+Chốt **35/35** cả hai vòng, baseline sau restore GREEN cả hai lần.
+
+
+**⚠️ Chưa xác minh:** **game KHÔNG có PvP** — `--pvp` là client headless chơi bằng
+`choose`; màn battle không có lobby, không có nút "tìm trận" · **không có trọng tài**:
+server gán phe/seed/cặp đấu và chỉ chấm trận nó ghép, nhưng **không replay lại trận**,
+nên hai client bị sửa giống nhau vẫn đồng ý với nhau (tape đã lưu là thứ khiến điều đó
+**kiểm được sau**, và chưa có gì tự động kiểm) · **không reconnect, không timeout,
+không đầu hàng** · hub vẫn **single-node, in-memory** — phòng, hàng đợi, và giờ cả sổ
+ghép cặp · **K cố định 32** cho tất cả, không sàn, không placement, không decay.
+
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1721,7 +1844,7 @@ làm chín T6).
 | ~~S27a~~ | ~~`creature_core` + 18 loài dựng từ Mixer~~ — **XONG**, chương 136 | L |
 | ~~S27b~~ | ~~Creatures — game (overworld, battle, manifest, controls)~~ — **XONG**, chương 137 | L |
 | ~~S28a~~ | ~~Replay như một FILE + verifier + chứng minh xuyên toolchain~~ — **XONG**, chương 138 | M |
-| S28b | PvP realtime + ELO — consumer thật đầu tiên của realtime/matchmaking | L |
+| ~~S28b~~ | ~~PvP realtime + ELO — consumer thật đầu tiên của realtime/matchmaking~~ — **XONG**, chương 139 | L |
 | S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |
 | S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
 

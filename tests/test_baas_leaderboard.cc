@@ -16,6 +16,7 @@
 #include "baas/app_config.h"
 #include "baas/app_setup.h"
 #include "baas/db/db.h"
+#include "baas/realtime/hub.h"
 #include "tests/baas_test_util.h"
 
 using baastest::http;
@@ -52,6 +53,17 @@ int main() {
                     static_cast<long>(insB.insertId()), std::string("colony_high"),
                     std::string("B board"), std::string("desc"));
     const std::string pkB = "pk_b";
+
+    // A RATING board on project A. Same project, same sort, different `mode`: a
+    // rating has to be able to go DOWN, and every board before chapter 139 kept the
+    // better of the two values — which turns a ladder into a record of everybody's
+    // best day.
+    db->execSqlSync(
+        "INSERT INTO leaderboards(project_id, key, name, sort, mode) VALUES(?,?,?,?,?)",
+        static_cast<long>(db->execSqlSync("SELECT id FROM projects WHERE public_key=?", pkA)[0]
+                              ["id"].as<long>()),
+        std::string("rating"), std::string("A ladder"), std::string("desc"),
+        std::string("last"));
 
     const int         port = baastest::find_free_port();
     const std::string base = "http://127.0.0.1:" + std::to_string(port);
@@ -133,6 +145,152 @@ int main() {
         Resp topB = http("GET", board + "/top?limit=10", {keyB});
         CHECK(parse(topB.body)["entries"].size() == 1);
         CHECK(parse(topB.body)["entries"][0]["user_id"].asInt64() == idB);
+
+        // --- a RATING board stores what it is handed, including a lower number ---
+        {
+            const std::string ladder = base + "/v1/leaderboards/rating";
+            Resp r = http("POST", ladder + "/scores", {keyA, bearer(tokA1)}, R"({"value":1200})");
+            CHECK(r.status == 200);
+            CHECK(parse(r.body)["value"].asInt64() == 1200);
+
+            r = http("POST", ladder + "/scores", {keyA, bearer(tokA1)}, R"({"value":1150})");
+            CHECK(r.status == 200);
+            CHECK(parse(r.body)["updated"].asBool() == true);
+            CHECK(parse(r.body)["value"].asInt64() == 1150);        // it went DOWN
+            CHECK(parse(http("GET", ladder + "/me", {keyA, bearer(tokA1)}).body)["value"]
+                      .asInt64() == 1150);
+
+            // ...and back up, so this is not a board that only ever overwrites in one
+            // direction either.
+            r = http("POST", ladder + "/scores", {keyA, bearer(tokA1)}, R"({"value":1400})");
+            CHECK(parse(r.body)["value"].asInt64() == 1400);
+
+            // The control, on the SAME server with the same user: the 'best' board
+            // still refuses to lower. Without this the test above would pass on a
+            // build where every board overwrites.
+            Resp c = http("POST", board + "/scores", {keyA, bearer(tokA2)}, R"({"value":1})");
+            CHECK(parse(c.body)["updated"].asBool() == false);
+            CHECK(parse(c.body)["value"].asInt64() == 200);
+
+            // ...and the ladder ranks by the rating, not by who submitted last.
+            CHECK(http("POST", ladder + "/scores", {keyA, bearer(tokA2)},
+                       R"({"value":1300})").status == 200);
+            const auto lt = parse(http("GET", ladder + "/top?limit=10", {keyA}).body);
+            CHECK(lt["entries"].size() == 2);
+            CHECK(lt["entries"][0]["user_id"].asInt64() == idA1);   // 1400 > 1300
+            CHECK(lt["entries"][1]["value"].asInt64() == 1300);
+        }
+
+        // --- a RATED MATCH: the server owns the arithmetic ---------------------
+        // Everything above is a client PUTTING a number. A ladder cannot work that
+        // way — the anti-spoof rule ("the score belongs to the JWT's user") means
+        // nothing if the VALUE is still a body field — so this endpoint takes the
+        // outcome and computes both ratings itself.
+        {
+            const std::string ladder = base + "/v1/leaderboards/rating";
+            const std::string match  = ladder + "/match";
+            const auto [tokC, idC] = reg(keyA, "c@x.com", "A-Three");
+            const auto [tokD, idD] = reg(keyA, "d@x.com", "A-Four");
+
+            // The server will only rate a match IT paired, so the pairings this test
+            // reports have to exist. Registering them directly (rather than opening
+            // four WebSockets) keeps this an HTTP test; `creature_pvp_live` is where
+            // the real matchmaking path is driven.
+            const long pidA = db->execSqlSync(
+                "SELECT id FROM projects WHERE public_key=?", pkA)[0]["id"].as<long>();
+            for (const char* room : {"match_1", "match_2", "match_3", "self", "m", "cross",
+                                     "match_nope"})
+                web::rt::RealtimeHub::instance().remember_match(pidA, room, idC, idD);
+
+            const std::string body = R"({"opponent_id":)" + std::to_string(idD) +
+                                     R"(,"result":"win","match":"match_1"})";
+            Resp m = http("POST", match, {keyA, bearer(tokC)}, body);
+            CHECK(m.status == 200);
+            CHECK(parse(m.body)["applied"].asBool() == true);
+            // Both fresh, so both started at 1200 and the win is worth K/2.
+            CHECK(parse(m.body)["value"].asInt64() == 1216);
+            CHECK(parse(m.body)["opponent_value"].asInt64() == 1184);
+            CHECK(parse(m.body)["delta"].asInt() == 16);
+            CHECK(parse(http("GET", ladder + "/me", {keyA, bearer(tokD)}).body)["value"]
+                      .asInt64() == 1184);
+
+            // THE one that matters: BOTH players report the same match, because both
+            // played it. The second report must move nothing.
+            const std::string echo = R"({"opponent_id":)" + std::to_string(idC) +
+                                     R"(,"result":"loss","match":"match_1"})";
+            Resp again = http("POST", match, {keyA, bearer(tokD)}, echo);
+            CHECK(again.status == 200);
+            CHECK(parse(again.body)["applied"].asBool() == false);
+            CHECK(parse(again.body)["value"].asInt64() == 1184);       // still 1184
+            // ...and NO delta. The stored one belongs to whoever reported first, and
+            // handing it to the second reporter told the loser of the first real
+            // match that they had gained sixteen points.
+            CHECK(parse(again.body)["delta"].asInt() == 0);
+            CHECK(parse(http("GET", ladder + "/me", {keyA, bearer(tokC)}).body)["value"]
+                      .asInt64() == 1216);                             // and still 1216
+
+            // A DIFFERENT match does move them — otherwise the check above would pass
+            // on a server that ignored every report after the first one ever.
+            const std::string second = R"({"opponent_id":)" + std::to_string(idD) +
+                                       R"(,"result":"win","match":"match_2"})";
+            Resp m2 = http("POST", match, {keyA, bearer(tokC)}, second);
+            CHECK(parse(m2.body)["applied"].asBool() == true);
+            CHECK(parse(m2.body)["value"].asInt64() > 1216);
+            // Zero-sum, across two matches and two players.
+            CHECK(parse(m2.body)["value"].asInt64() +
+                      parse(m2.body)["opponent_value"].asInt64() == 2400);
+
+            // A draw between two players who are now far apart moves them TOWARDS
+            // each other, which is the direction that says the rating means something.
+            const long before_c = parse(http("GET", ladder + "/me", {keyA, bearer(tokC)}).body)
+                                      ["value"].asInt64();
+            Resp dr = http("POST", match, {keyA, bearer(tokD)},
+                           R"({"opponent_id":)" + std::to_string(idC) +
+                               R"(,"result":"draw","match":"match_3"})");
+            CHECK(dr.status == 200);
+            CHECK(parse(dr.body)["delta"].asInt() > 0);                // the weaker one gains
+            CHECK(parse(http("GET", ladder + "/me", {keyA, bearer(tokC)}).body)["value"]
+                      .asInt64() < before_c);
+
+            // ---- what it refuses ----
+            CHECK(http("POST", match, {keyA}, body).status == 401);    // no JWT
+            CHECK(http("POST", match, {keyA, bearer(tokC)},
+                       R"({"opponent_id":)" + std::to_string(idC) +
+                           R"(,"result":"win","match":"self"})").status == 400);   // yourself
+            CHECK(http("POST", match, {keyA, bearer(tokC)},
+                       R"({"opponent_id":)" + std::to_string(idD) +
+                           R"(,"result":"win","match":""})").status == 400);       // blank match
+            CHECK(http("POST", match, {keyA, bearer(tokC)},
+                       R"({"opponent_id":)" + std::to_string(idD) +
+                           R"(,"result":"maybe","match":"m"})").status == 400);    // bad outcome
+            CHECK(http("POST", match, {keyA, bearer(tokC)},
+                       R"({"result":"win","match":"m"})").status == 400);          // no opponent
+            CHECK(http("POST", match, {keyA, bearer(tokC)},
+                       R"({"opponent_id":999999,"result":"win","match":"m"})").status == 404);
+            // ...and across tenants: B's user is not a player in A, whatever integer
+            // the reporter writes down.
+            CHECK(http("POST", match, {keyA, bearer(tokC)},
+                       R"({"opponent_id":)" + std::to_string(idB) +
+                           R"(,"result":"win","match":"cross"})").status == 404);
+            CHECK(http("POST", base + "/v1/leaderboards/nope/match", {keyA, bearer(tokC)},
+                       body).status == 404);
+            // A match this server never made. Without this the endpoint would rate
+            // any two players a client felt like naming, as often as it liked — the
+            // same hole as letting the client pick the value, one level up.
+            const long d_before = parse(http("GET", ladder + "/me", {keyA, bearer(tokD)}).body)
+                                      ["value"].asInt64();
+            CHECK(http("POST", match, {keyA, bearer(tokC)},
+                       R"({"opponent_id":)" + std::to_string(idD) +
+                           R"(,"result":"win","match":"never_happened"})").status == 403);
+            // ...and a REAL match, reported by somebody who was not in it.
+            CHECK(http("POST", match, {keyA, bearer(tokA1)},
+                       R"({"opponent_id":)" + std::to_string(idD) +
+                           R"(,"result":"win","match":"match_1"})").status == 403);
+            // Neither attempt moved anything — a 403 that still wrote would be the
+            // worst of both.
+            CHECK(parse(http("GET", ladder + "/me", {keyA, bearer(tokD)}).body)["value"]
+                      .asInt64() == d_before);
+        }
 
         // --- validation: absurd value → 400; unknown board → 404 ---
         CHECK(http("POST", board + "/scores", {keyA, bearer(tokA1)},

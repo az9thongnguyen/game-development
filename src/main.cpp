@@ -56,6 +56,7 @@
 #include <thread>
 
 #include "gbaas/client.h"
+#include "games/creatures/pvp.hpp"
 #include "games/runner/worker.hpp"
 
 namespace {
@@ -266,6 +267,7 @@ int usage(const std::string& unknown) {
         "    --release-status                --release-log [channel]\n"
         "    --hub <manifest>                --cmd [id] [args...]\n"
         "    --bench-ui [frames] [manifest]  --runner <base_url> <api_key>\n"
+        "    --pvp <base_url> <api_key>      (one rated creature match, headless)\n"
         "\n  retired (chapter 120)\n"
         "    --hub-ui   -> --shell, Hub section\n"
         "    --sandbox  -> --lab scene        --editor -> --lab editor\n"
@@ -724,6 +726,19 @@ int main(int argc, char** argv) {
     // Headless test-run worker: polls a BaaS coordinator, runs claimed sandbox
     // scenarios, and posts results. Links the engine + SDK (the BaaS may not) — a
     // plain poll loop, not a windowed scene, so it bypasses platform::init.
+    // Headless PvP: sign in as a guest, queue for a match, play one rated battle
+    // over the realtime socket and report it. Two of these against one backend is a
+    // real match between two processes — which is what `test_creature_pvp_live`
+    // does in one, through the SAME PvpClient (chapter 139).
+    if (mode == "--pvp") {
+        if (argc < 4) {
+            std::fprintf(stderr, "usage: demo --pvp <base_url> <api_key>\n"
+                                 "       (the seeded creature project is pk_demo_creatures)\n");
+            return 1;
+        }
+        return creature::run_pvp(argv[2], argv[3]);
+    }
+
     if (mode == "--runner") {
         if (argc < 4) {
             std::fprintf(stderr, "usage: demo --runner <base_url> <api_key>\n");
