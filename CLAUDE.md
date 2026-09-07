@@ -85,6 +85,14 @@ regression, not a shortcut:
   borrows. The list keeps itself.
 - **Web-portability is baked in from the start.** The same engine/game code compiles
   native and WASM; only the platform `run()` loop is `#ifdef`'d.
+- **A number two machines must agree about does not get to be a float** — and if the
+  two machines are the CLIENT and the SERVER, they share the header rather than each
+  keeping a copy. `engine/elo.hpp` (integer Elo: a per-mille table, interpolated in
+  integers, mirrored so `E(d)+E(-d)==1000` exactly, rounded away from zero so a match
+  is zero-sum) is on `baas_core`'s include path. That is the ONE deliberate exception
+  to "the backend links no engine code" (chapter 139): nothing is linked, one
+  header-only `constexpr` file is shared, and the reason is exactly why the table
+  exists — a rating computed from two copies of a curve is the bug it prevents.
 
 ## Build, run, test
 
@@ -213,6 +221,15 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --project-verify   <proj> development   # preview parity: exit 0 match / 2 drift / 1 err
 ./build/demo --hub <proj>                     # aggregate status + next recommended action
 ./build/demo --runner <baas_url> <api_key>    # headless BaaS test-run worker
+./build/demo --pvp    <baas_url> <api_key>   # ONE rated creature match, headless (ch.139):
+                                              # guest sign-in -> matchmaking -> a battle played
+                                              # by exchanging ACTIONS (34 bytes a turn, 16 of
+                                              # them the hash) -> the tape into the replay store
+                                              # -> the outcome to the `creature_elo` ladder.
+                                              # Two of these against one backend is a real match
+                                              # between two processes; that is how the 500-turn
+                                              # stalemate was found that every in-process test
+                                              # passed through. Seeded project: pk_demo_creatures
 ./build/demo --bench-ui [frames] [proj]       # Studio frame cost, ss=1 vs ss=2 (no window)
 ./build/demo --cmd [id] [args...]              # run any registered command; no id lists them
 ```
@@ -224,6 +241,16 @@ ctest --test-dir build --output-on-failure     # all
 ctest --test-dir build -R chess                # one suite by name (math, ecs, iso, fps, …)
 ./build/test_chess                             # or run the binary directly
 ```
+
+**A battle that reaches `kMaxTurns` (200) is a DRAW** — a rule in `battle.hpp`, not a
+valve on the outside, so the wild game, a stored replay and a rated match all get it.
+It exists because a battle CAN stall: with no PP left nothing takes damage, and two
+IDENTICAL teams then rotate their benches at each other forever. Every test built its
+parties from random species, so no test had ever put two identical teams in a battle;
+two real `--pvp` processes did it on the first try and ran 500 turns (chapter 139).
+`choose` was fixed in the same commit to stop switching to a bench that also cannot
+act — the two guards are tested apart, because with the AI fixed a mirror match now
+*decides* and never reaches the cap.
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
@@ -312,6 +339,15 @@ Understand these deliberate patterns before editing the build:
   package, publish and the Studio), `provenance_core` (where every `.hrt` came from,
   derived from the marks the three doors leave — the attribution rule, as a boolean), `resource_core`, `release_core`, `release_ops_core`,
   the game cores `creature_core` (a turn-based battle as INTEGER arithmetic —
+  plus `netbattle` — ONE battle on TWO machines: each side sends the ACTION it chose
+  (a kind and an index) and both compute the turn, then both send `hash(battle)` and
+  compare. Which SIDE you are, the SEED and who you are matched with all arrive in the
+  server's `matched` event — a seed mixed from two client halves lets whoever sends
+  second grind theirs — and the wire carries `species:level` so a peer can lie about
+  WHICH creatures it brings and not about what they are. A desync is caught by BOTH
+  sides at the same turn and reports NOTHING to the ladder. Pure: frames in, frames
+  out, no socket. `games/creatures/pvp.{hpp,cpp}` (a separate `creature_pvp` lib,
+  because it links the SDK) is the glue `--pvp` and `test_creature_pvp_live` SHARE —
   types/moves/species as text, `step` returning string-free events, `hash` over the
   whole state, and `play` over a start state plus a list of actions; no float in the
   resolution path, the RNG is a hashed FIELD, and turn order is priority → speed →
