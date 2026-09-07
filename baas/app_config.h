@@ -20,6 +20,11 @@ struct AppConfig {
     // rate_capacity <= 0 disables rate limiting entirely.
     double      rate_capacity      = 0;   // burst size (tokens)
     double      rate_refill_per_sec = 0;  // sustained refill rate
+
+    // The operator's admin page. It lives here rather than being captured in main.cc
+    // so that `register_routes()` is the WHOLE route table — which is what lets
+    // `test_baas_openapi` compare it to the spec with no exemptions (chapter 142).
+    std::string dashboard_path = "baas/web/dashboard.html";
 };
 
 void             set_config(AppConfig cfg);

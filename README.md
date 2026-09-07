@@ -166,7 +166,8 @@ colony game uses — native (libcurl) and web (emscripten_fetch). The backend li
 ```sh
 brew install drogon libsodium                          # one-time backend deps
 cmake --build build --target baas
-./build/baas --db sqlite://baas.db --seed              # create the demo project (prints keys)
+./build/baas --db sqlite://baas.db --seed-only         # create the demo project (prints keys), stop
+#   ...or --seed to create it and KEEP SERVING, which is what the container does
 BAAS_JWT_SECRET=change-me BAAS_ADMIN_SECRET=admin-me ./build/baas --db sqlite://baas.db --static build-web
 # native:     ./build/demo --colony         (with baas running on :8080)
 # web:        http://localhost:8080/demo.html?mode=colony

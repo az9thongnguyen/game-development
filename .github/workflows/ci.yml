@@ -324,3 +324,81 @@ jobs:
           # oversight, and it is now TWO tests wide rather than one, which is a cost
           # worth stating rather than a number worth quietly editing.
           [ "$n" -ge 27 ] || { echo "::error::only $n baas tests were registered"; exit 1; }
+
+  # ---------------------------------------------------------------------------
+  #  The backend IMAGE — built, started, and asked a question
+  # ---------------------------------------------------------------------------
+  #  `baas/ops/Dockerfile` has existed since chapter 107 and PROJECT-BRIEF has
+  #  carried "❌ never verified" beside it ever since: the base image is amd64 and
+  #  building it under emulation on a laptop was outside the time budget. A CI
+  #  runner is amd64, so the cost is a job, not an afternoon.
+  #
+  #  It found the thing that line was pointing at. The CMD ended in `--seed`, and
+  #  `--seed` printed the demo key and RETURNED 0 — so the container seeded and
+  #  exited, every time, and `restart: unless-stopped` in docker-compose turned that
+  #  into a loop that never listened. The image had never answered a request. Since
+  #  chapter 142 `--seed` seeds and then serves, and `--seed-only` is the one-shot.
+  #
+  #  So this job asserts the three things in order: the image builds, the container
+  #  is STILL RUNNING a moment later, and it answers.
+  baas-docker:
+    name: backend image answers /healthz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -f baas/ops/Dockerfile -t hand-baas .
+
+      - name: Start it
+        run: |
+          docker run -d --name baas -p 8080:8080 \
+            -e BAAS_JWT_SECRET=ci-not-a-real-secret \
+            -e BAAS_ADMIN_SECRET=ci-not-a-real-secret \
+            hand-baas
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          # The bug this job exists for does not look like a failed request, it looks
+          # like a container that is not there. Say which one happened.
+          running=$(docker inspect -f '{{.State.Running}}' baas)
+          echo "running: $running"
+          if [ "$running" != "true" ]; then
+            echo "::error::the container exited instead of serving"
+            docker logs baas
+            exit 1
+          fi
+
+      - name: ...and it answers
+        run: |
+          set -o pipefail
+          curl -fsS http://127.0.0.1:8080/healthz | tee /dev/stderr | grep -q '"status":"ok"'
+
+          # The API is really up, not just the process: sign in as a guest against the
+          # project the CMD's `--seed` created, and require a token back. That single
+          # request proves the seed ran, the database is writable inside the container,
+          # the api-key filter resolved a project, and JWT signing works.
+          tok=$(curl -fsS -X POST http://127.0.0.1:8080/v1/auth/guest \
+                  -H 'X-Api-Key: pk_demo_colony' -H 'Content-Type: application/json' \
+                  -d '{"display_name":"ci"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          test -n "$tok" && echo "guest signed in, token length ${#tok}"
+
+      - name: The document it serves is the document in the repo
+        run: |
+          # /openapi.json is generated from the same table `test_baas_openapi` compares
+          # to Drogon's route list. This closes the last gap between the two: the file
+          # committed here and the file a caller actually downloads.
+          curl -fsS http://127.0.0.1:8080/openapi.json > /tmp/served.json
+          python3 - <<'PY'
+          import json
+          a = json.load(open('/tmp/served.json'))
+          b = json.load(open('baas/openapi.json'))
+          assert a == b, "the served OpenAPI document differs from baas/openapi.json"
+          ops = sum(len(v) for v in a['paths'].values())
+          print(f"{len(a['paths'])} paths, {ops} operations, identical")
+          PY
+
+      - name: What it logged
+        if: always()
+        run: docker logs baas 2>&1 | tail -40

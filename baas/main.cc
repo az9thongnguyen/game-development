@@ -8,9 +8,14 @@
 //
 //  Config, gateway, auth, and leaderboard land in the following sub-milestones.
 //
-//  Usage:  baas [--host IP] [--port N] [--db URL] [--seed]
-//    --db    sqlite://PATH (default sqlite://baas.db) or postgres://... (needs libpq)
-//    --seed  create the demo project + colony_high leaderboard, print the key, exit
+//  Usage:  baas [--host IP] [--port N] [--db URL] [--seed | --seed-only]
+//    --db         sqlite://PATH (default sqlite://baas.db) or postgres://... (libpq)
+//    --seed       make sure the demo project exists, print its key, THEN SERVE. This is
+//                 what a container wants on a fresh volume, and until chapter 142 it
+//                 exited instead — so the shipped image seeded and stopped, every time,
+//                 and had never answered a request.
+//    --seed-only  ...and stop, which is what a person at a terminal wants.
+//    --openapi F  write the OpenAPI document to F and exit (re-bakes baas/openapi.json)
 // =============================================================================
 #include <cstdio>
 #include <cstdlib>
@@ -24,12 +29,15 @@
 #include "baas/app_config.h"
 #include "baas/app_setup.h"
 #include "baas/db/db.h"
+#include "baas/openapi/openapi.h"
 
 int main(int argc, char** argv) {
     std::string host   = "127.0.0.1";   // local only by default (not LAN-exposed)
     int         port   = 8080;
     std::string db_url = "sqlite://baas.db";
     bool        do_seed = false;
+    bool        seed_only = false;
+    std::string openapi_out;   // --openapi FILE: write the spec and exit
     std::string jwt_secret;   // else BAAS_JWT_SECRET env, else an insecure dev default
     std::string admin_secret; // else BAAS_ADMIN_SECRET env, else an insecure dev default
     std::string static_root;  // optional: serve the WASM bundle from here (same-origin → no CORS)
@@ -48,6 +56,8 @@ int main(int argc, char** argv) {
         else if (a == "--static")       static_root  = next("");
         else if (a == "--dashboard")    dashboard    = next("baas/web/dashboard.html");
         else if (a == "--seed")         do_seed      = true;
+        else if (a == "--seed-only")  { do_seed      = true; seed_only = true; }
+        else if (a == "--openapi")      openapi_out  = next("");
         else { std::fprintf(stderr, "unknown arg: %s\n", a.c_str()); return 2; }
     }
 
@@ -83,6 +93,7 @@ int main(int argc, char** argv) {
     cfg.rate_refill_per_sec = 60;    // sustained requests/sec per caller
     if (const char* c = std::getenv("BAAS_RATE_CAPACITY")) cfg.rate_capacity = std::atof(c);
     if (const char* r = std::getenv("BAAS_RATE_REFILL"))   cfg.rate_refill_per_sec = std::atof(r);
+    cfg.dashboard_path = dashboard;
     web::set_config(cfg);
 
     // ---- database: connect + migrate (+ optional seed) ----
@@ -94,11 +105,32 @@ int main(int argc, char** argv) {
             const std::string pk = web::db::seed(db);
             std::printf("seeded. project public_key = %s   secret_key = sk_demo_colony\n",
                         pk.c_str());
-            return 0;
+            // ...and then KEEP GOING, unless the caller asked for the one-shot. The
+            // Dockerfile's CMD has carried `--seed` since chapter 107 and this line used
+            // to be `return 0`, so the container seeded and exited — with
+            // `restart: unless-stopped` in front of it, forever. It had never served a
+            // request; `/healthz` was a route nothing outside a test had ever reached.
+            if (seed_only) return 0;
         }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "db init failed: %s\n", e.what());
         return 1;
+    }
+
+    // --openapi: the document, written and gone. No listener, no database needed —
+    // `openapi::document` is pure, which is what lets a test re-bake the committed
+    // bytes and compare them.
+    if (!openapi_out.empty()) {
+        const std::string doc =
+            web::openapi::document(web::openapi::spec(), web::openapi::kApiVersion);
+        FILE* f = std::fopen(openapi_out.c_str(), "wb");
+        if (!f) { std::fprintf(stderr, "cannot write %s\n", openapi_out.c_str()); return 1; }
+        std::fwrite(doc.data(), 1, doc.size(), f);
+        std::fputc('\n', f);
+        std::fclose(f);
+        std::printf("wrote %s (%zu bytes, %zu operations)\n", openapi_out.c_str(),
+                    doc.size() + 1, web::openapi::spec().size());
+        return 0;
     }
 
     web::register_routes();
@@ -116,15 +148,6 @@ int main(int argc, char** argv) {
         drogon::app().registerCustomExtensionMime("data", "application/octet-stream");
         LOG_INFO << "serving static files from " << static_root;
     }
-
-    // Dashboard (admin UI): one hand-written page served at /dashboard.
-    drogon::app().registerHandler(
-        "/dashboard",
-        [dashboard](const drogon::HttpRequestPtr&,
-                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-            cb(drogon::HttpResponse::newFileResponse(dashboard, "", drogon::CT_TEXT_HTML));
-        },
-        {drogon::Get});
 
     LOG_INFO << "baas listening on " << host << ":" << port;
     drogon::app().addListener(host, port).run();
