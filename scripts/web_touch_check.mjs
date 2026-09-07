@@ -42,6 +42,15 @@ const VW       = +arg('--width', 390);
 const VH       = +arg('--height', 844);
 const SHOT     = arg('--shot', '');            // write a PNG of the page and carry on
 const HEADLESS = !argv.includes('--head');
+// A THIRD toolchain. With --cmd, this file stops being a touch check and becomes the
+// smallest possible one: run a headless command in the WebAssembly build and read
+// what it printed. It exists for `creature.verify` — re-playing, in a browser, a
+// battle that a native compiler on a different instruction set recorded. Chapter 138
+// proved that claim across x86-64/gcc and arm64/clang, which are the two machines CI
+// happens to own; wasm is the one this project actually ships on.
+const CMD      = arg('--cmd', '');
+const CMDARGS  = arg('--args', '');
+const EXPECT   = arg('--expect', '');
 
 // WHICH GAME. Two now (chapter 137), and the difference between them is four
 // strings: the manifest, the prefix of the line the game prints, the save it writes,
@@ -185,7 +194,10 @@ let chrome, server;
 try {
     if (!existsSync(join(DIR, 'demo.html'))) fail(`no demo.html in ${DIR} — build the web target first`);
     ({ server, port: globalThis.__port } = await serve(DIR));
-    const url = `http://127.0.0.1:${globalThis.__port}/demo.html?project=${GAME.project}`;
+    const url = CMD
+        ? `http://127.0.0.1:${globalThis.__port}/demo.html?cmd=${encodeURIComponent(CMD)}` +
+          `&args=${encodeURIComponent(CMDARGS)}`
+        : `http://127.0.0.1:${globalThis.__port}/demo.html?project=${GAME.project}`;
 
     const debugPort = 9333 + (process.pid % 500);
     chrome = spawn(CHROME, [
@@ -220,6 +232,27 @@ try {
     }
     if (!running) fail('the page never reached "running" (WASM did not start)');
     ok('the WASM build started');
+
+    // ---- 1b. --cmd: a headless verb, and what it printed -------------------
+    // Deliberately BEFORE the page checks below: a command run has no canvas, no
+    // touch and no game, and asserting the shape of a stage it never built would
+    // fail for reasons that say nothing about the answer.
+    if (CMD) {
+        let out = '';
+        for (let i = 0; i < 200; ++i) {
+            out = await cdp.eval(`document.getElementById('log').textContent`);
+            if (out && out.trim()) break;
+            await sleep(100);
+        }
+        if (!out || !out.trim()) fail(`--cmd ${CMD} printed nothing`);
+        console.log(out.trim().split('\n').map((l) => '      ' + l).join('\n'));
+        if (EXPECT && out.indexOf(EXPECT) < 0)
+            fail(`--cmd ${CMD} did not print ${JSON.stringify(EXPECT)}`);
+        ok(`WebAssembly ran ${CMD} ${CMDARGS}`);
+        console.log(`PASS  a third toolchain agrees: ${CMD} ${CMDARGS}`);
+        process.exitCode = 0;
+        throw { done: true };
+    }
 
     // ---- 2. the page is a page, not a debug shell -------------------------
     const page = await cdp.eval(`(() => {
@@ -389,6 +422,10 @@ try {
     }
 
     console.log(`\nweb touch: PASS — ${GAME.walked}`);
+} catch (e) {
+    // `--cmd` finishes early and on purpose. Everything else that lands here is a
+    // real failure and must keep its stack and its exit code.
+    if (!e || !e.done) throw e;
 } finally {
     if (chrome) chrome.kill();
     if (server) server.close();

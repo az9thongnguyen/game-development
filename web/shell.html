@@ -158,7 +158,15 @@
     // modes used to sit here, one per flag, and they went stale the moment main.cpp
     // changed — the page should not be a second copy of the lab table.
     if (mode.indexOf('lab-') === 0) argsByMode[mode] = ['--lab', mode.slice(4)];
-    titleEl.textContent = project || shellOf || mode;
+    // ?cmd=<id>&args=<space separated> runs a HEADLESS command and exits — no window,
+    // no scene. It exists so the claim "this computes the same thing everywhere" can be
+    // checked ON THE TARGET THIS PROJECT ACTUALLY SHIPS ON. `creature.verify` re-plays a
+    // battle recorded by a native build and compares the hash after every turn; until
+    // this line the WebAssembly build had never re-computed anything a native build had
+    // computed, so "deterministic across machines" stopped at the two that run CI.
+    var cmdId = params.get('cmd');
+    if (cmdId) argsByMode[mode = '_cmd'] = ['--cmd', cmdId].concat((params.get('args') || '').split(' ').filter(Boolean));
+    titleEl.textContent = project || shellOf || cmdId || mode;
 
     // Clicking or touching the game must also return focus to it: touching the page
     // chrome moves focus away, and SDL2's Emscripten backend delivers keys to the

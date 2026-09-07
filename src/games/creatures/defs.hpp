@@ -29,6 +29,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -116,6 +117,33 @@ struct Dex {
 // same run, because the alternative is a two-pass parser whose error messages can no
 // longer say which line was wrong.
 bool parse_into(Dex& into, const std::string& text, std::string* why = nullptr);
+
+// The four files a Dex is made of, in the order they must be parsed (a `move` may
+// not name a type declared later). ONE list: three callers used to keep their own
+// copy of it, and a file added to one of them was a file the other two did not read.
+inline constexpr const char* kDexFiles[] = {
+    "creatures/types.def",
+    "creatures/moves.def",
+    "creatures/species.def",
+    "creatures/encounters.def",
+};
+
+// Parse all four through a caller-supplied reader. Pure: the reader does the I/O, so
+// this same function serves the game (assets::), a test (assets::) and a headless
+// command, and none of them can be reading a different set of files from the others.
+// The reader returns false when the file is not there.
+bool load_dex(Dex& d, const std::function<bool(const char*, std::string&)>& read,
+              std::string* why = nullptr);
+
+// A fingerprint of the rules a BATTLE is resolved under: the type chart, the moves
+// and the species. A replay carries it, because the same actions produce a different
+// battle after somebody re-tunes a move, and a verifier has to be able to say which
+// of the two things went wrong (see replay.hpp).
+//
+// The encounter tables are deliberately NOT in it: `step` never reads them, so moving
+// a creature to a different patch of grass must not invalidate every recording of a
+// fight against one.
+std::uint64_t rules_hash(const Dex& d);
 
 // Everything the tables must satisfy before a battle can be trusted. Separate from
 // parsing because a file can be well-formed and still describe an unplayable game:

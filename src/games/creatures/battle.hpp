@@ -77,13 +77,17 @@ struct Party {
 };
 
 struct Action {
-    enum class Kind : std::uint8_t { Move = 0, Switch, Run };
+    enum class Kind : std::uint8_t { Move = 0, Switch, Run, Ball };
     Kind kind  = Kind::Move;
-    int  index = 0;      // move slot 0..3, or party slot 0..5
+    int  index = 0;      // move slot 0..3, party slot 0..5, or a ball's bonus percent
 };
 
 // No strings, and no pointers into the Dex: an event has to survive being written to
 // a log, sent over a socket and read back by a build that loaded a different file.
+//
+// New kinds go on the END. Nothing writes an Event to a file today, but the reason
+// they are numbers rather than strings is so that one day something can, and a format
+// whose meanings shuffle when a kind is added is not a format.
 struct Event {
     enum class Kind : std::uint8_t {
         Used = 0,       // a=move index
@@ -97,7 +101,9 @@ struct Event {
         WokeUp,
         NoPP,           // a=move slot
         Fled,
-        Win             // side = winner
+        Win,            // side = winner
+        Ball            // a=1 it stuck, a=0 it broke free.  APPENDED, not inserted:
+                        // see the note above `Kind` about what these numbers are
     };
     Kind kind = Kind::Used;
     int  side = 0;      // whose creature the event is ABOUT
@@ -111,6 +117,7 @@ struct Battle {
     bool          over   = false;
     int           winner = -1;    // -1 while running or on a draw
     bool          fled   = false;
+    bool          caught = false;  // it ended because somebody's ball stuck
 };
 
 // ---- building a combatant ------------------------------------------------------
@@ -136,17 +143,11 @@ void step(const Dex& d, Battle& b, Action a0, Action a1, std::vector<Event>* out
 std::uint64_t hash(const Battle& b);
 
 // ---- replay --------------------------------------------------------------------
-
-struct Replay {
-    Battle                              start;   // includes the seed, as rng state
-    std::vector<std::pair<Action, Action>> turns;
-};
-
-// Replay a battle from its start. The postcondition the test asserts is not "it does
-// not crash" but `hash(play(r)) == hash(original)` — and, turn by turn, that the
-// hash after turn N matches too, so a divergence is reported at the turn it happened
-// rather than at the end where every state is different anyway.
-Battle play(const Dex& d, const Replay& r);
+//
+// In `replay.hpp`, since chapter 138. It lives next door rather than here because a
+// recording turned out to need two things this file has no opinion about: which
+// TABLES it was played under, and a serialised form. `hash` is the whole interface
+// between them.
 
 // ---- the opponent --------------------------------------------------------------
 
@@ -159,9 +160,15 @@ Action choose(const Dex& d, const Battle& b, int side);
 
 // ---- catching ------------------------------------------------------------------
 
-// The one place the wild half of the game touches the sim. Integer, and it advances
-// `b.rng` — a catch attempt costs a turn and must be part of the same stream, or a
-// replay of a battle where someone threw a ball would desync from that point on.
+// A ball is thrown by passing `Action{Kind::Ball, bonus}` to `step`, and that is how
+// the GAME must throw one: a verb resolved outside the turn cannot appear in the list
+// of actions a replay is made of, and until chapter 138 the one verb this genre is
+// named after was exactly that — resolved beside `step`, invisible to a recording.
+//
+// This is the same roll, bracketed on its own so the catch MATH can be measured
+// without a battle happening around it. `test_creature` pins the two against each
+// other from one seed, because two doors into one calculation is a promise, and a
+// promise nobody checks is already broken.
 bool try_catch(const Dex& d, Battle& b, int side, int ball_bonus = 100);
 
 } // namespace creature

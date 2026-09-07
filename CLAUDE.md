@@ -156,11 +156,28 @@ them working). Paths are relative to the asset root — see `assets::` below:
 ./build/demo --cmd collection.index projects collection.json  # bake the game LIST a page reads
                                               # (assets/collection.json is committed; a test
                                               #  re-bakes it and compares bytes, like a .recipe)
+./build/demo --cmd creature.verify creatures/reference.crep   # re-play a RECORDED battle and
+                                              # check the hash after every turn (ch.138). Exit 1 on
+                                              # DESYNC (two machines disagree about the integer
+                                              # arithmetic) or on RULES MOVED (somebody re-tuned a
+                                              # move) — reported apart, because they are different
+                                              # jobs. assets/creatures/reference.crep is COMMITTED
+                                              # and a test re-bakes it and compares BYTES, so CI on
+                                              # linux/x86_64/gcc checks a file macOS/arm64/clang
+                                              # wrote. That byte comparison is the only cross-ISA
+                                              # determinism proof in the repo; a thousand replays
+                                              # inside one process is a much weaker claim
+./build/demo --cmd creature.record creatures/reference.crep   # ...re-bake it
 ./build/demo --project-new projects/mine.gameproject fps "My Game"   # create
 ./build/demo --project projects/creator.gameproject                  # launch from manifest
 ./build/demo --project projects/creatures.gameproject                # ...the creature game (entry `creatures`):
                                               # walk a route, get ambushed in long grass, fight or
                                               # run or throw a ball, level up and evolve, F5 saves.
+                                              # A BALL IS AN ACTION (`Kind::Ball`, ch.138), not a
+                                              # verb resolved beside `step` — a turn resolved
+                                              # outside the resolver cannot appear in a recording,
+                                              # and every fight writes one to
+                                              # saves/creatures/last_battle.crep when it ends.
                                               # Whether a tile AMBUSHES you is `ground` id 3 in the
                                               # MAP and which table it rolls is a `far` MASK layer —
                                               # not arithmetic in world.cpp (the ch.134 rule, twice
@@ -298,7 +315,14 @@ Understand these deliberate patterns before editing the build:
   types/moves/species as text, `step` returning string-free events, `hash` over the
   whole state, and `play` over a start state plus a list of actions; no float in the
   resolution path, the RNG is a hashed FIELD, and turn order is priority → speed →
-  one draw from the battle's own stream, never "side 0 first"; plus `world` — the
+  one draw from the battle's own stream, never "side 0 first"; plus `replay` —
+  the battle AS A FILE (`crep1`): the start state (not a seed — parties arrive
+  damaged), a hash after EVERY turn (so a divergence is reported where it happened,
+  not where everything differs), and `rules_hash(dex)`, which is what lets `verify`
+  say RULES MOVED instead of DESYNC when somebody re-tunes a move. The fingerprint
+  covers what `step` reads and NOT the encounter tables or sprites — moving a
+  creature to another patch of grass must not invalidate a recording of a fight
+  against one; plus `world` — the
   loop AROUND the battle: walking a `tilemap::Map`, the encounter roll, experience,
   evolution that keeps the damage taken, the blackout, and a save that stores no
   stats because stats are a pure function of species and level; and `controls`),

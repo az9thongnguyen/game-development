@@ -68,3 +68,8 @@ assets/saves/
 farm_*.png
 farm_*.ppm
 *.autosave
+
+# Mutation-testing backups (scripts/… harness): a working-tree copy of a source
+# file while one token in it is flipped. It has been committed once by accident,
+# which is exactly what an ignore line is for.
+*.mutbak
