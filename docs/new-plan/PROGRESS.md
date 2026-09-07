@@ -1601,6 +1601,107 @@ con) · **tất định vẫn chỉ chứng minh trên một máy** — bản we
 **không so hash** · **không cloud save, không BaaS** (đó là S28) · camera không có
 chuyển cảnh vào trận · `--bench-ui` vẫn chỉ đo Studio.
 
+
+### S28a — một sự thật đưa được cho người khác ✅ 2026-09-07 · chương 138
+
+`battle.hpp` mở đầu bằng một câu mà cả header dùng để bảo vệ: *cùng trạng thái đầu và
+cùng danh sách hành động sinh ra cùng một trận đánh, trên mọi máy*. Chương 136 kiểm câu
+đó một nghìn lần — và **cả nghìn lần đều chạy hai lượt bên trong MỘT tiến trình**. Nó
+chứng minh `step` là hàm thuần. Nó không chứng minh gì về *mọi máy*: một hàm thuần vẫn
+phải được **tính**, và hai trình biên dịch nhắm hai tập lệnh là hai phép tính khác nhau.
+
+Chương này là chỗ lời khẳng định rời khỏi căn phòng nó được nói ra. Nó rời đi dưới dạng
+một **file**.
+
+**Cái động từ không ghi lại được.** Trước hết là một lỗi nằm giữa thanh thiên bạch nhật
+từ ch.136. Một replay là trạng thái đầu cộng danh sách hành động — `Move`, `Switch`,
+`Run`. Và **ném bóng**, động từ đặc trưng nhất của thể loại, không phải cái nào cả.
+`throw_ball` giải quyết cú bắt **bên cạnh** `step`, rồi khi trượt thì gọi `step` với một
+**cú đổi sang chính ô đang ra trận** — một hành động hợp lệ mà không làm gì, chọn vì
+*tác dụng phụ* của nó. Nó chạy. Nó cũng là một **lời nói dối với bộ giải quyết**, và hệ
+quả thì lặng lẽ và tuyệt đối: **không bản ghi nào của game này chứa được một quả bóng.**
+Không phải "bóng replay sai" — hành động đó *không có cách biểu diễn*.
+
+Nên bóng thành một hành động: `Action::Kind::Ball` mang phần trăm bonus, `Battle::caught`
+nói trận kết thúc thế nào, priority 6 đặt nó trước mọi nước đi. Hai thứ rơi ra:
+`settle` **phải kiểm `caught` TRƯỚC `winner`** (bóng dính đặt `winner = 0`, và nhánh dưới
+đọc đó là một cú hạ gục — thưởng kinh nghiệm cho một con chưa từng ngất), và **dòng
+ngẫu nhiên KHÔNG dịch**: cùng số, cùng thứ tự. Bằng chứng là mẫu cân bằng của
+`test_creature_world` — 237, 261, 224 thắng trên 300 — ra **giống hệt đến từng chữ số**.
+
+**Trong file có gì.** `crep1`, ba trường gánh sức nặng:
+
+- **Trạng thái đầu, không phải seed.** Seed chỉ tái tạo được nếu đã biết đội hình — mà
+  trong game này đội hình bước vào trận **đã bị thương**. Chỉ số vẫn **suy ra**, đúng luật
+  của save: một file lưu `atk` sẽ có thể bất đồng với bảng cân bằng nó được cân.
+- **Một hash sau MỖI lượt.** Hash cuối nói *hai bên bất đồng*. Hash từng lượt nói *ở
+  đâu* — và một sai lệch bắt ở lượt 4, nơi hai trạng thái khác nhau đúng một chỗ, là lỗi
+  đọc được. Cùng sai lệch đó bắt ở lượt 15 là hai trận đánh hoàn toàn khác nhau.
+- **Vân tay của LUẬT.** Đây là trường không hiển nhiên. Một replay là sự thật **tương
+  đối với bảng số nó được chơi dưới**. Chỉnh power một move và mọi replay đã lưu sẽ lệch
+  — đúng, trung thực, và **không phân biệt được** với một cái máy tính sai. Không có
+  `rules_hash`, verifier sẽ hô DESYNC ở mọi commit cân bằng, và một verifier kêu sói là
+  một verifier người ta tắt đi. Vân tay phủ đúng thứ `step` đọc, **cố ý không** phủ bảng
+  encounter hay đường sprite: chuyển một con sang vạt cỏ khác, hay hoạ sĩ vẽ lại nó,
+  không được làm hỏng bản ghi một trận đánh với nó.
+
+**`assets/creatures/reference.crep`** là một trận cố định, 26 dòng, **được commit**.
+`test_creature` dựng lại từ bảng số và so **BYTE** — đúng chuẩn một `.recipe` phải chịu
+từ ch.135 — còn CI chạy test đó trên Ubuntu/x86-64/gcc trong khi file trong repo do
+macOS/arm64/clang viết. **Byte vượt qua một tập lệnh.** Và bản wasm chạy cùng lệnh đó
+qua `?cmd=` trong job `web-build`, nên **cái đích project này thật sự ship** là thứ ba.
+
+CI cũng chĩa verifier vào một file **phải fail**: một chữ số hex bị lật trong một hash
+lượt. Một verifier trả OK cho mọi thứ cũng qua được dòng vui vẻ y như một cái đúng.
+
+**Game tự ghi mà không cần được nhắc.** Một bản ghi mà người chơi phải nhớ tạo là bản
+ghi không ai có lúc cần. Chỗ đặt lệnh ghi mới là phần đáng nói: một trận kết thúc theo
+**bốn** cách, ở bốn nhánh khác nhau của `update`. Đặt lệnh ghi ở ba trong bốn là một bản
+ghi thiếu đúng một kết cục — và cái thiếu là cái người viết code không nghĩ tới. Nên
+`update` thành hai dòng bọc quanh thân cũ: **một chỗ hỏi câu hỏi đó**.
+
+**Một danh sách, bốn người đọc.** Bốn file `.def` được viết ra ở `creatures_scene.cpp`,
+`test_creature.cpp` và `test_creature_world.cpp` — verifier sẽ là cái thứ tư. (Bản của
+`test_creature` **đã trôi**: nó nạp ba trên bốn.) `kDexFiles` + `load_dex` giờ ở
+`defs.hpp`, và `load_dex` nhận một **reader** nên core vẫn thuần.
+
+**Mutation: 21/32 lần đầu, 11 sống sót — và một trong số đó là code THỪA.** Guard
+`k0 > 3` trong reader không đổi gì khi xoá, vì `legal_action` đã chặn mọi kind lạ; nó
+đọc như thắt lưng cộng dây đeo mà chỉ là thắt lưng, nên nó bị xoá chứ không được test.
+Mười cái còn lại là lỗ thật, và ba cái đáng kể:
+
+- **"đọc creature nào cũng đầy máu"** sống sót vì **mọi** replay trong test đều bắt đầu
+  bằng hai đội hình mới toanh, mà đội mới thì đầy máu. Đúng cái ca game thật luôn ở:
+  đội hình bước vào cỏ mang theo thứ trận trước để lại.
+- **"bóng không có priority"** sống sót vì mọi test đều ghép một người ném NHANH với một
+  mục tiêu chậm — priority 0 sinh ra y hệt trận đánh. Chỉ một trận **đang thua** mới
+  phân biệt được: starter cấp 3 trước một con cấp 40, nơi nếu bóng không đi trước thì
+  `act` gặp người ném đã ngất và **cú ném không hề xảy ra**.
+- **"side khai báo hai lần"** sống sót vì ca test nối thêm một `side 0 3 0` trống, và nó
+  bị từ chối vì **thiếu ba con** — một ca kiểm nhầm guard, và đọc y hệt một ca kiểm đúng.
+
+**Và một cái sống sót KHÔNG phải vì thiếu test.** `p.count >= want[side]` chặn con thứ
+bảy được ghi vào một đội sáu. Xoá nó đi thì file **vẫn bị từ chối** — kiểm đếm ở cuối
+bắt được — nhưng chỉ *sau khi* `member[6]` đã đè lên `count`, `active` và tràn sang phe
+kia. Hành vi quan sát được y hệt; hỏng là **trong cùng một object**, nên không có
+redzone và **ASan cũng không thấy** (đã kiểm: bản đột biến chạy sạch dưới ASan+UBSan).
+Không assertion nào trong bộ này phân biệt được hai bản. Nó được giữ nguyên, kèm một
+fixture ghi lại ý định và một ghi chú nói rõ vì sao fixture đó không thể fail. Đây là
+**mutation đầu tiên của project là một lỗi thật mà không test nào bắt được** — và viết
+một assertion pass vì lý do thứ ba để giả vờ đã bắt được thì tệ hơn là nói thẳng.
+
+Chốt **42/43** cả hai vòng, baseline sau restore GREEN cả hai lần.
+
+**⚠️ Chưa xác minh:** **ba toolchain vẫn không phải "mọi máy"** —
+không Windows/MSVC, không 32-bit, không big-endian · **MỘT trận tham chiếu**, 15 lượt:
+có Move/Switch/Ball, **không có `Run`**, không có ngủ, không có stall trăm lượt (Run và
+một trận bắt đầu **đã bị thương** được phủ bằng test dựng tay, không phải bằng file
+commit) · **chưa gửi bản ghi đi đâu cả** — BaaS có replay store từ ch.100 và game không
+đụng vào (đó là S28b, và là lý do format có hash từng lượt) · **tape không nằm trong
+save**: `to_text` không lưu được trận đánh, nên không có trạng thái nào mà nửa bản ghi
+bị mắc kẹt — đó là một **giới hạn mặc áo đơn giản hoá**, và đáng nói rõ nó là cái nào.
+
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1619,7 +1720,8 @@ làm chín T6).
 | ~~S26~~ | ~~Mixer workspace (cửa **thứ tư** vào `.hrt`)~~ — **XONG**, chương 135; số cửa 3 → 4 đã đổi có chủ ý | L |
 | ~~S27a~~ | ~~`creature_core` + 18 loài dựng từ Mixer~~ — **XONG**, chương 136 | L |
 | ~~S27b~~ | ~~Creatures — game (overworld, battle, manifest, controls)~~ — **XONG**, chương 137 | L |
-| S28 | Replay + PvP realtime + ELO — consumer thật đầu tiên của realtime | L |
+| ~~S28a~~ | ~~Replay như một FILE + verifier + chứng minh xuyên toolchain~~ — **XONG**, chương 138 | M |
+| S28b | PvP realtime + ELO — consumer thật đầu tiên của realtime/matchmaking | L |
 | S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |
 | S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
 
