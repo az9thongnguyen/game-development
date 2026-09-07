@@ -386,18 +386,19 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
     const Creature& mine = world_.battle.side[0].now();
     const Creature& them = world_.battle.side[1].now();
 
-    // The wild one, up and to the right; yours, down and to the left. Sprites at 4x,
-    // which is the size 16 px reads at on a 640-wide framebuffer.
-    const int sz = kTile * 4;
-    if (const gfx::Image* img = creature_image(them.species))
-        g.blit_scaled(gfx::Sprite{img->pixels.data(), img->w, img->h},
-                      fb_w_ - sz - 48, 40, sz, sz);
-    else
-        g.fill_rect(fb_w_ - sz - 48, 40, sz, sz, type_colour(dex_.species_by_id(them.species)
-                                                             ? dex_.species_by_id(them.species)->type : 0));
-    if (const gfx::Image* img = creature_image(mine.species))
-        g.blit_scaled(gfx::Sprite{img->pixels.data(), img->w, img->h},
-                      48, l.panel.y - sz - 12, sz, sz);
+    // Both sprite rects come from the LAYOUT, like every other rectangle on this
+    // screen. A creature placed by its own arithmetic is what `Back` was drawn on top
+    // of, and it is what a test cannot check without re-deriving.
+    const auto creature = [&](const Box& b, const Creature& c) {
+        if (const gfx::Image* img = creature_image(c.species)) {
+            g.blit_scaled(gfx::Sprite{img->pixels.data(), img->w, img->h}, b.x, b.y, b.w, b.h);
+        } else {
+            const SpeciesDef* s = dex_.species_by_id(c.species);
+            g.fill_rect(b.x, b.y, b.w, b.h, type_colour(s ? s->type : 0));
+        }
+    };
+    creature(l.theirs, them);
+    creature(l.mine, mine);
     bar(24, 26, 150, them, "Wild");
     bar(fb_w_ / 2 + 24, l.panel.y - 54, 150, mine, "Your");
 

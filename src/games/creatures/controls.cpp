@@ -51,6 +51,12 @@ Layout layout(int w, int h, Mode mode) {
     const int right = w / 2;
     l.log = Box{kPad, l.panel.y + kPad, right - kPad * 2, kPanelH - kPad * 2};
 
+    // The two creatures: theirs up and to the right, yours down and to the left, at
+    // 4x — the size a 16 px sprite reads at on a 640-wide framebuffer.
+    const int sz = 64;
+    l.theirs = Box{w - sz - 48, 40, sz, sz};
+    l.mine   = Box{48, l.panel.y - sz - 12, sz, sz};
+
     if (mode == Mode::Ack) {
         l.ack = Box{w - kMargin - kBtn * 3, l.panel.y + (kPanelH - kBtn) / 2, kBtn * 3, kBtn};
         return l;

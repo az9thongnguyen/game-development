@@ -49,9 +49,16 @@ struct Layout {
     Box cell[6];                 // Menu / Moves / Party
     Box back;                    // Moves / Party
     Box ack;                     // Ack
-    Box panel;                   // the strip the cells sit in; the renderer's
+    Box panel;                   // the strip the cells sit in
     Box log;                     // where narration goes — not a control, but it must
                                  // not overlap one, so it is decided here too
+    // Where the two creatures are drawn. Not controls either, and here for exactly
+    // the reason `log` is: chapter 137's `Back` button was placed with its own
+    // arithmetic and landed on top of the player's creature. Two rectangles decided
+    // in two places eventually overlap, and the one that loses is whichever is drawn
+    // first. It also lets a test assert the sprite is ON SCREEN by reading the same
+    // numbers the renderer used, instead of re-deriving them and testing itself.
+    Box mine, theirs;
 
     [[nodiscard]] bool pad_visible() const { return !act.empty(); }
 };

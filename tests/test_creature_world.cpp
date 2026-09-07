@@ -18,6 +18,7 @@
 #endif
 
 #include "engine/assets.hpp"
+#include "games/creatures/controls.hpp"
 #include "games/creatures/world.hpp"
 
 static int g_failures = 0;
@@ -251,7 +252,28 @@ void test_growing(const Dex& d) {
     CHECK(up.evolved_to == 2);
     CHECK(p.species == 2);
     CHECK(p.max_hp - p.hp == 3);
-    CHECK(!up.learned.empty());        // it picked up moves on the way
+    // EXACTLY what it should have learned on the way from 5 to 16: bite, at 12.
+    // Tackle and ember were already known at 5 and flamewheel is not due until 22.
+    // "not empty" passed a mutation that re-learned the whole list every level.
+    CHECK(up.learned.size() == 1);
+    if (up.learned.size() == 1) CHECK(up.learned[0] == d.move_index("bite"));
+
+    // A LEVEL WITH NOTHING TO LEARN TEACHES NOTHING. A bramblet made at 40 already
+    // knows the last four of its five moves — tackle fell off the front. Level 41 has
+    // no learnset entry, so `learned` must be empty and the move set must not move.
+    // A `!=` quietly widened to `<=` would re-teach tackle here and evict something
+    // the player had, and no assertion about "it learned things" would notice.
+    {
+        World q = new_game(d, 1, 4, 6, 71);
+        q.party.member[0] = make(d, 8, 40);
+        MoveSlot before[kMoveSlots];
+        for (int i = 0; i < kMoveSlots; ++i) before[i] = q.party.member[0].moves[i];
+        const Growth quiet = award_exp(d, q, exp_to_next(40) + 1);
+        CHECK(quiet.levels_gained == 1);
+        CHECK(quiet.learned.empty());
+        for (int i = 0; i < kMoveSlots; ++i)
+            CHECK(q.party.member[0].moves[i].move == before[i].move);
+    }
 
     // TWO evolutions in one award. `evolved_from`/`evolved_to` are the FIRST and the
     // LAST across the whole call, because "blazehound became pyrewolf" is not the
@@ -315,9 +337,47 @@ void test_battle_flow(const Dex& d) {
     CHECK(z.phase == Phase::Battle);
 }
 
+void test_one_stream(const Dex& d) {
+    // A battle starts from the WORLD's stream, not a constant, or every encounter
+    // would play out identically for a given species and level.
+    World a = new_game(d, 1, 4, 6, 111);
+    World b = new_game(d, 1, 4, 6, 222);
+    begin_battle(d, a, 7, 5);
+    begin_battle(d, b, 7, 5);
+    CHECK(a.battle.rng == 111);
+    CHECK(a.battle.rng != b.battle.rng);
+
+    // ...and it flows BACK. The overworld's next encounter roll must be downstream of
+    // the fight that just happened, or a save that restored the battle but not the
+    // walk that led to it would diverge in the grass.
+    const std::uint64_t before = a.rng;
+    battle_turn(d, a, Action{Action::Kind::Move, 0});
+    CHECK(a.rng != before);
+    CHECK(a.rng == a.battle.rng);
+
+    // A failed throw COSTS THE TURN. A free look at whether a ball would land is the
+    // one thing that would make balls meaningless, and only the turn counter says so.
+    World c = new_game(d, 1, 4, 6, 909);
+    begin_battle(d, c, 3, 40);            // a stage-3 at level 40: it will not be caught
+    int failures = 0;
+    for (int i = 0; i < 5 && c.phase == Phase::Battle; ++i) {
+        const int turn = c.battle.turn;
+        if (throw_ball(d, c)) break;
+        ++failures;
+        CHECK(c.battle.turn == turn + 1);
+    }
+    CHECK(failures >= 1);
+}
+
 void test_blackout(const Dex& d) {
     World w = new_game(d, 1, 20, 18, 55);
     w.home_x = 4; w.home_y = 6;
+    // Spend PP first. The cragtitan is so much faster that it one-shots the starter
+    // before it ever swings, so the party came out of the fight at FULL PP and the
+    // restore below was checking nothing — a mutation that healed HP and left PP
+    // alone walked straight through it.
+    for (int m = 0; m < kMoveSlots; ++m)
+        if (w.party.member[0].moves[m].move >= 0) w.party.member[0].moves[m].pp = 1;
     begin_battle(d, w, 15, 60);                       // a cragtitan: unwinnable
     for (int i = 0; i < 80 && w.phase == Phase::Battle; ++i)
         battle_turn(d, w, Action{Action::Kind::Move, 0});
@@ -372,9 +432,16 @@ void test_save(const Dex& d) {
     // Refusals. Each of these is a save that would otherwise load as a broken game.
     World junk;
     CHECK(!from_text(d, "", junk));
-    CHECK(!from_text(d, "creaturesave9\npos 1 1 0\n", junk));       // from the future
+    // A future save that is otherwise COMPLETE. The old version of this line had no
+    // party in it, so it was refused for being empty and the version check was never
+    // reached — the refusal passed for the wrong reason, which is the same trap as
+    // chapter 135's shared-colour count.
+    CHECK(!from_text(d, "creaturesave9\nparty 1 0\nc 1 5 0 10 0 0 0 5 -1 0 -1 0 -1 0\n", junk));
     CHECK(!from_text(d, "creaturesave1\nteleport 3 3\n", junk));    // unknown record
     CHECK(!from_text(d, "creaturesave1\nparty 1 0\n", junk));       // says one, has none
+    // ...and says TWO, has one. The line above was refused because `active` was out
+    // of range for an empty party, not because the count disagreed.
+    CHECK(!from_text(d, "creaturesave1\nparty 2 0\nc 1 5 0 10 0 0 0 5 -1 0 -1 0 -1 0\n", junk));
     CHECK(!from_text(d, "creaturesave1\nparty 0 0\n", junk));       // an empty party
     CHECK(!from_text(d, "creaturesave1\nparty 1 0\nc 999 5 0 10 0 0 0 0 0 0 0 0 0 0\n", junk));
     CHECK(!from_text(d, "creaturesave1\nparty 1 0\nc 1 500 0 10 0 0 0 0 0 0 0 0 0 0\n", junk));
@@ -432,6 +499,80 @@ void test_the_first_fight_is_survivable(const Dex& d) {
     }
 }
 
+// ---- the controls, as pure geometry --------------------------------------------
+
+void test_controls() {
+    const Layout ow = layout(640, 360, Mode::Overworld);
+    CHECK(ow.pad_visible());
+    CHECK(!ow.up.empty() && !ow.down.empty() && !ow.left.empty() && !ow.right.empty());
+
+    // `save` must NOT share the row a thumb rests on, or a reach for the action
+    // button lands on it. The farm learned this one; the rule travelled, the
+    // rectangles did not.
+    CHECK(ow.save.y != ow.act.y);
+    CHECK(!ow.save.contains(ow.act.x + ow.act.w / 2, ow.act.y + ow.act.h / 2));
+
+    // A DIRECTION is a hold; everything else is an edge. Without that, one tap on a
+    // menu button fires every frame the finger stays down — and in a turn-based game
+    // that is a whole battle in half a second.
+    const auto at = [](Box b, bool pressed) {
+        Pointer p; p.x = b.x + b.w / 2; p.y = b.y + b.h / 2;
+        p.down = true; p.pressed = pressed;
+        return p;
+    };
+    CHECK(read(ow, Mode::Overworld, at(ow.right, false)).dx == 1);   // held: still east
+    CHECK(read(ow, Mode::Overworld, at(ow.act, false)).act == false);
+    CHECK(read(ow, Mode::Overworld, at(ow.act, true)).act == true);
+    CHECK(read(ow, Mode::Overworld, at(ow.save, false)).save == false);
+    CHECK(read(ow, Mode::Overworld, at(ow.save, true)).save == true);
+
+    const Layout menu = layout(640, 360, Mode::Menu);
+    CHECK(!menu.cell[0].empty() && !menu.cell[3].empty());
+    CHECK(menu.cell[4].empty() && menu.cell[5].empty());
+    CHECK(menu.back.empty());
+    CHECK(read(menu, Mode::Menu, at(menu.cell[2], false)).cell == -1);   // held: nothing
+    CHECK(read(menu, Mode::Menu, at(menu.cell[2], true)).cell == 2);
+
+    const Layout moves = layout(640, 360, Mode::Moves);
+    CHECK(!moves.back.empty());
+    CHECK(read(moves, Mode::Moves, at(moves.back, false)).back == false);
+    CHECK(read(moves, Mode::Moves, at(moves.back, true)).back == true);
+
+    const Layout party = layout(640, 360, Mode::Party);
+    CHECK(!party.cell[5].empty());
+
+    const Layout ack = layout(640, 360, Mode::Ack);
+    CHECK(!ack.ack.empty());
+    for (int i = 0; i < 6; ++i) CHECK(ack.cell[i].empty());
+    CHECK(read(ack, Mode::Ack, at(ack.ack, true)).ack == true);
+
+    // NOTHING OVERLAPS. Every pair of rectangles on the same screen, checked as a
+    // pair — the Back button was placed with its own arithmetic and landed on top of
+    // the player's creature, which no single-rectangle assertion could ever notice.
+    const auto overlaps = [](Box a, Box b) {
+        if (a.empty() || b.empty()) return false;
+        return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    };
+    for (const Mode m : {Mode::Menu, Mode::Moves, Mode::Party, Mode::Ack}) {
+        const Layout l = layout(640, 360, m);
+        std::vector<Box> boxes = {l.back, l.ack, l.log, l.mine, l.theirs};
+        for (int i = 0; i < 6; ++i) boxes.push_back(l.cell[i]);
+        for (std::size_t i = 0; i < boxes.size(); ++i)
+            for (std::size_t j = i + 1; j < boxes.size(); ++j)
+                if (overlaps(boxes[i], boxes[j])) {
+                    std::printf("      mode %d: box %zu overlaps %zu\n",
+                                static_cast<int>(m), i, j);
+                    CHECK(false);
+                }
+    }
+
+    // A screen too small for controls hands back nothing rather than something
+    // unhittable, and an empty box is safe for a caller that forgets to check.
+    const Layout tiny = layout(480, 270, Mode::Overworld);
+    CHECK(!tiny.pad_visible());
+    CHECK(read(tiny, Mode::Overworld, at(Box{100, 100, 10, 10}, true)).dx == 0);
+}
+
 } // namespace
 
 int main() {
@@ -444,6 +585,8 @@ int main() {
     test_ambush_only_in_grass(d, m);
     test_the_far_band_is_harder(d, m);
     test_growing(d);
+    test_one_stream(d);
+    test_controls();
     test_battle_flow(d);
     test_blackout(d);
     test_the_first_fight_is_survivable(d);

@@ -116,6 +116,21 @@ int contrast(const std::vector<std::uint32_t>& b, creature::Box r) {
     return gap;
 }
 
+// How many DISTINCT colours a box holds, counting only those with a real footprint.
+// `ink() > 0` is not enough to say "a sprite is here": the battle screen's horizon
+// runs through the player's creature box, so two flat bands already answer yes — and
+// a mutation that stopped drawing the sprite passed a 200-pixel ink threshold on the
+// seam alone. A 16 px creature has an outline, a body, an accent and two eyes.
+int palette_count(const std::vector<std::uint32_t>& b, creature::Box r) {
+    std::map<std::uint32_t, int> hist;
+    for (int py = r.y * SS; py < (r.y + r.h) * SS && py < PH; ++py)
+        for (int px = r.x * SS; px < (r.x + r.w) * SS && px < PW; ++px)
+            ++hist[b[static_cast<std::size_t>(py) * PW + px]];
+    int n = 0;
+    for (const auto& [c, count] : hist) if (count >= 8) ++n;
+    return n;
+}
+
 void clear_file(const char* rel) {
     std::error_code ec;
     std::filesystem::remove(std::filesystem::path(ASSET_ROOT "/assets") / rel, ec);
@@ -263,6 +278,27 @@ int main() {
         // was, until a rendered frame showed it sitting on the player's creature.
         CHECK(mv.back.y >= mv.panel.y);
 
+        // BOTH creatures are actually on the screen. The rects come from the layout,
+        // so this reads the same numbers the renderer used instead of re-deriving
+        // them and agreeing with itself.
+        CHECK(!mv.mine.empty() && !mv.theirs.empty());
+        if (palette_count(buf, mv.mine) < 4)
+            std::printf("      your creature box holds %d colours\n", palette_count(buf, mv.mine));
+        CHECK(palette_count(buf, mv.mine) >= 4);
+        CHECK(palette_count(buf, mv.theirs) >= 4);
+
+        // An EMPTY move slot does not spend the turn. emberpup at level 5 knows two
+        // moves, so slots 2 and 3 are empty; tapping one must leave the move list up
+        // and the battle where it was.
+        {
+            const int turn_before = scene.world().battle.turn;
+            const auto [ex, ey] = centre(mv.cell[3]);
+            tap(ex, ey);
+            CHECK(scene.mode() == creature::Mode::Moves);
+            CHECK(scene.world().battle.turn == turn_before);
+            CHECK(scene.message() == "No move there");
+        }
+
         // Back really goes back — the guard in the other direction.
         const auto [bx, by] = centre(mv.back);
         tap(bx, by);
@@ -344,6 +380,31 @@ int main() {
         CHECK(scene.world().px != sx || scene.world().py != sy);
         CHECK(scene.load_game());
         CHECK(scene.world().px == sx && scene.world().py == sy);
+    }
+
+    // ---- 7b. the grid has a cooldown --------------------------------------------
+    // One tile per press-and-hold interval, not one per frame. Without it a finger
+    // resting on the pad crosses the map in a third of a second and every patch of
+    // grass is one step wide.
+    {
+        const int before = scene.world().px + scene.world().py * 1000;
+        constexpr int kFrames = 24;
+        constexpr double kDt = 1.0 / 60.0;
+        int moves = 0, last = scene.world().px;
+        const creature::Layout l = scene.controls();
+        const auto [rx, ry] = centre(l.right);
+        for (int i = 0; i < kFrames; ++i) {
+            platform::InputState in{};
+            in.mouse_x = rx; in.mouse_y = ry;
+            in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+            scene.update(kDt, in);
+            if (scene.world().px != last) { ++moves; last = scene.world().px; }
+        }
+        (void)before;
+        CHECK(moves >= 1);
+        // 24 frames at 1/60 s is 0.4 s; the step interval is 0.11 s, so at most four.
+        CHECK(moves <= 5);
+        std::printf("  %d tiles in %d frames\n", moves, kFrames);
     }
 
     // ---- 8. the keyboard still works ---------------------------------------------
