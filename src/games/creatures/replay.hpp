@@ -39,6 +39,13 @@ namespace creature {
 
 inline constexpr int kReplayVersion = 1;
 
+// 16 lowercase hex digits, and back. Public because the FILE format and the WIRE
+// format (netbattle.hpp) both carry a battle hash, and two spellings of the same
+// sixteen characters is exactly the kind of difference that shows up as a desync
+// between a saved replay and a live match.
+std::string hex16(std::uint64_t v);
+bool        parse_hex16(const std::string& s, std::uint64_t& out);
+
 // A file claiming more turns than this is refused before any allocation. Real
 // battles end inside 30 turns; `test_creature`'s worst of a thousand was 28.
 inline constexpr int kMaxReplayTurns = 4096;
