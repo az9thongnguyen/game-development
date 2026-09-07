@@ -39,7 +39,10 @@ int main() {
     assets::set_base_path("test_ops_tmp");
     const std::vector<std::string> known = {"fps"};
 
-    // A shippable project with no assets (package hash = the empty/FNV-basis hash).
+    // A shippable project with no assets. This line used to end "(package hash = the
+    // empty/FNV-basis hash)", and the assertion below was that literal — the test had
+    // encoded the bug as its expected value. An asset-less project is not identified by
+    // the emptiness of its content; chapter 145 put the manifest's identity into the id.
     write("p.gameproject", "gameproject1\nname Ops Demo\nschema 1\nentry fps\n");
 
     // publish → development
@@ -47,7 +50,25 @@ int main() {
     CHECK(pub.ok);
     CHECK(pub.message.rfind("published", 0) == 0);
     auto dev = current_release("development");
-    CHECK(dev.has_value() && *dev == "cbf29ce484222325");   // empty package → FNV offset basis
+    CHECK(dev.has_value());
+    CHECK(dev.has_value() && *dev != "cbf29ce484222325");   // NOT the empty-input hash
+    CHECK(dev.has_value() && dev->size() == 16);
+
+    // A DIFFERENT asset-less project is a different release. Publishing this one used
+    // to be refused outright — "already stored with different bytes" — because two
+    // games that ship nothing hashed to the same id, which is how the whole thing was
+    // found: `colony` could not be published after `iso`.
+    {
+        write("q.gameproject", "gameproject1\nname Other Demo\nschema 1\nentry fps\n");
+        const OpResult other = publish("q.gameproject", "development", "v1", known);
+        CHECK(other.ok);
+        CHECK(other.message.rfind("published", 0) == 0);
+        auto now = current_release("development");
+        CHECK(now.has_value() && *now != *dev);
+        // ...and put the channel back where the rest of this test expects it.
+        CHECK(publish("p.gameproject", "development", "v1", known).ok);
+        CHECK(current_release("development") == dev);
+    }
 
     // re-publish identical → verified no-op
     OpResult pub2 = publish("p.gameproject", "development", "again", known);
