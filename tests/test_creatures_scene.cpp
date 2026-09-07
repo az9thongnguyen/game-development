@@ -26,6 +26,7 @@
 #include "engine/renderer2d.hpp"
 #include "engine/text/font.hpp"
 #include "games/creatures/creatures_scene.hpp"
+#include "gbaas/gbaas.h"
 #include "games/creatures/replay.hpp"
 
 #ifndef ASSET_ROOT
@@ -468,6 +469,118 @@ int main() {
             scene.update(1.0 / 30.0, in);
         }
         CHECK(scene.world().px == before);
+    }
+
+    // ---- 10. the rated match, with no server anywhere (chapter 146) ---------------
+    // Everything the network can be asked is asked by `test_creature_pvp_live` against
+    // a real one. What only THIS file can answer is whether a hand can reach any of it:
+    // is the button drawn where a finger lands, does tapping it change the screen, and
+    // does the way out work. Pointed at a closed port on purpose — a session that
+    // cannot connect is the state a player on a train is in, and it has to say so.
+    {
+        // Walk back to a calm overworld first: a wild battle must refuse to start one.
+        while (scene.mode() != creature::Mode::Overworld) {
+            const creature::Layout l = scene.controls();
+            const auto [ax, ay] = centre(l.ack.empty() ? l.cell[3] : l.ack);
+            tap(ax, ay);
+            render(idle);
+        }
+        CHECK(scene.online() == nullptr);
+
+        const creature::Layout over = scene.controls();
+        // Drawn, and clear of the two buttons beside it — the whole reason it is a row
+        // above `save` is that starting a rated match by mis-reaching is the worst
+        // stray tap in the game.
+        CHECK(!over.online.empty());
+        CHECK(over.online.w >= 44 && over.online.h >= 44);
+        CHECK(!over.online.overlaps(over.act));
+        CHECK(!over.online.overlaps(over.save));
+        CHECK(!over.online.overlaps(over.up));
+
+        gbaas::Config nowhere;
+        nowhere.base_url = "http://127.0.0.1:9";   // discard: refused immediately
+        nowhere.api_key  = "pk_demo_creatures";
+        CHECK(scene.start_online(nowhere));
+        CHECK(scene.online() != nullptr);
+        CHECK(scene.mode() == creature::Mode::Online);
+
+        // The d-pad is GONE while a session is up. Walking off while a server holds you
+        // in its queue is how a player gets matched with somebody who is not looking.
+        const creature::Layout on = scene.controls();
+        CHECK(on.up.empty() && on.down.empty() && on.left.empty() && on.right.empty());
+        CHECK(on.online.empty());
+        CHECK(!on.back.empty());                       // ...and Cancel is there
+        CHECK(!on.back.overlaps(on.log));
+
+        // A second session is refused while one is running — both directions, because a
+        // guard that never lets go is the failure this project keeps finding.
+        CHECK(!scene.start_online(nowhere));
+
+        // The world does not move while the match screen is up, even with the d-pad's
+        // old coordinates pressed. This is the reverse test that matters most here:
+        // an empty Box is hit by nothing, and that is the only thing stopping it.
+        {
+            const int before = scene.world().px;
+            for (int i = 0; i < 30; ++i) {
+                platform::InputState in{};
+                in.mouse_x = over.right.x + over.right.w / 2;
+                in.mouse_y = over.right.y + over.right.h / 2;
+                in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+                scene.update(1.0 / 30.0, in);
+            }
+            CHECK(scene.world().px == before);
+        }
+
+        // Pump until the connection is refused. The failure must reach the SCREEN — a
+        // session that fails silently leaves a player staring at "Looking for an
+        // opponent..." forever.
+        for (int i = 0; i < 400 && scene.mode() == creature::Mode::Online; ++i) {
+            scene.update(1.0 / 60.0, idle);
+            render(idle);
+        }
+        CHECK(scene.mode() == creature::Mode::Ack);
+        CHECK(scene.online() != nullptr);
+        CHECK(scene.online()->state() == creature::PvpClient::State::Failed);
+        CHECK(!scene.online()->problem().empty());
+
+        // ...and Continue puts the game back, without healing the party as a blackout
+        // would: a rated match never touched `world_.phase`.
+        const int hp_before = scene.world().party.member[0].hp;
+        const creature::Layout ack = scene.controls();
+        const auto [kx, ky] = centre(ack.ack);
+        tap(kx, ky);
+        render(idle);
+        CHECK(scene.online() == nullptr);
+        CHECK(scene.mode() == creature::Mode::Overworld);
+        CHECK(scene.world().party.member[0].hp == hp_before);
+
+        // ---- Cancel, by TAPPING it -------------------------------------------
+        // Not by calling cancel_online() behind the screen: four chapters of this
+        // project shipped a control drawn perfectly and wired to nothing.
+        CHECK(scene.start_online(nowhere));
+        CHECK(scene.mode() == creature::Mode::Online);
+        {
+            const creature::Layout q = scene.controls();
+            const auto [cx, cy] = centre(q.back);
+            tap(cx, cy);
+        }
+        CHECK(scene.online() == nullptr);
+        CHECK(scene.mode() == creature::Mode::Overworld);
+
+        // ---- ...and the BUTTON starts one, a second time ----------------------
+        // What is asserted is that the button created a session — that is the button's
+        // job. Where the session then gets to belongs to the config it was given, and
+        // this one is the real default: a test that also asserted the outcome would be
+        // asserting whatever happens to be listening on this machine's port 8080.
+        {
+            const creature::Layout again = scene.controls();
+            CHECK(!again.online.empty());
+            const auto [ox, oy] = centre(again.online);
+            tap(ox, oy);
+            CHECK(scene.online() != nullptr);
+            scene.cancel_online();
+            CHECK(scene.online() == nullptr);
+        }
     }
 
     clear_file("saves/creatures/slot1.sav");

@@ -42,6 +42,15 @@ struct Box {
         return px >= x && py >= y && px < x + w && py < y + h;
     }
     [[nodiscard]] bool empty() const { return w <= 0 || h <= 0; }
+    // Do these two overlap? An empty box overlaps nothing, which is the same rule
+    // `contains` follows and the reason neither game carries a `bool has_x` beside a
+    // box. Here rather than in a test, because "these two controls do not sit on top of
+    // each other" is a claim about a HAND — the same kind of fact as the 44 px minimum —
+    // and both games' layouts have to be able to assert it.
+    [[nodiscard]] bool overlaps(const Box& o) const {
+        if (empty() || o.empty()) return false;
+        return x < o.x + o.w && o.x < x + w && y < o.y + o.h && o.y < y + h;
+    }
 };
 
 // What the pointer is doing, in FRAMEBUFFER coordinates — the same space the controls

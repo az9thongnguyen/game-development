@@ -39,6 +39,12 @@ Layout layout(int w, int h, Mode mode) {
         // `save` sits a row ABOVE, off the row a thumb rests on: it is not a game
         // verb, and a reach for `act` must not land on it. The farm learned that one.
         l.save = Box{w - kMargin - kBtn, pad.y, kBtn, kBtn};
+        // ...and `online` a row above THAT, for the same reason twice over: starting a
+        // rated match by mis-reaching for `act` would be the most annoying stray tap in
+        // the game. Only drawn when the screen is tall enough to hold it clear of the
+        // pad — an empty Box is hit by nothing, so there is no `bool has_online`.
+        const int oy = pad.y - kBtn - kGap;
+        if (oy >= kMargin) l.online = Box{w - kMargin - kBtn, oy, kBtn, kBtn};
         return l;
     }
 
@@ -56,6 +62,17 @@ Layout layout(int w, int h, Mode mode) {
     const int sz = 64;
     l.theirs = Box{w - sz - 48, 40, sz, sz};
     l.mine   = Box{48, l.panel.y - sz - 12, sz, sz};
+
+    if (mode == Mode::Online) {
+        // One control, and it is Cancel — in the same place `back` sits in the other
+        // menus, because it is the same verb: get me out of here.
+        l.back = Box{kPad, l.panel.y + kPanelH - kBtn - kPad, kBtn * 2, kBtn};
+        l.log  = Box{kPad, l.panel.y + kPad, w - kPad * 2, l.back.y - l.panel.y - kPad * 2};
+        // No sprites: there is nothing to draw yet. Empty boxes rather than a flag, so
+        // a renderer that forgets to check draws nothing instead of drawing at 0,0.
+        l.mine = l.theirs = Box{};
+        return l;
+    }
 
     if (mode == Mode::Ack) {
         l.ack = Box{w - kMargin - kBtn * 3, l.panel.y + (kPanelH - kBtn) / 2, kBtn * 3, kBtn};
@@ -99,6 +116,7 @@ Press read(const Layout& l, Mode mode, const Pointer& p) {
         // the finger stayed down.
         if (l.act.contains(p.x, p.y))  { a.act  = p.pressed; a.consumed = true; }
         if (l.save.contains(p.x, p.y)) { a.save = p.pressed; a.consumed = true; }
+        if (l.online.contains(p.x, p.y)) { a.online = p.pressed; a.consumed = true; }
         if (!a.consumed) a.dx = a.dy = 0;
         return a;
     }

@@ -680,7 +680,10 @@ add_executable(test_creatures_scene tests/test_creatures_scene.cpp
 )
 target_include_directories(test_creatures_scene PRIVATE src)
 target_compile_definitions(test_creatures_scene PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}")
-target_link_libraries(test_creatures_scene PRIVATE creature_core ui_core text_core engine_flags)
+# `creature_pvp` (and so the SDK) since chapter 146: the scene can start a rated match,
+# which is the same arrangement `test_farm_scene` has had since the farm grew cloud save.
+target_link_libraries(test_creatures_scene PRIVATE
+  creature_core creature_pvp gbaas_sdk ui_core text_core engine_flags)
 add_test(NAME creatures_scene COMMAND test_creatures_scene)
 
 # ---- Colony (engine-core integration game): USES ecs + jobs + iso A*/tilemap -------
