@@ -99,3 +99,8 @@ index like this rots.
 | 102 | Every verb has an on-screen control, not only a key | [124](../book/124-playable-by-hand.md) | Accepted |
 | 103 | A crop's `season` is a label stored with the definition | [113](../book/113-farm-vertical-slice.md) | Superseded by 104 |
 | 104 | `season` is a RULE, enforced at planting and at the season boundary through one `grows_in`, and readable on the HUD | [143](../book/143-a-field-nobody-read.md) | Accepted |
+| 105 | The Studio's canvas/inspector split is FIXED — a draggable one costs a cursor shape, a hit zone and a persisted position | [112](../book/112-map-workspace-and-palette.md) | Superseded by 106 |
+| 106 | The split is draggable and per workspace; the STORED width is never clamped and the DRAWN width always is, so a window you shrank cannot take a layout away | [144](../book/144-the-comment-that-named-its-own-slice.md) | Accepted |
+| 107 | A workspace's status strip is a SENTENCE it builds itself | [116](../book/116-two-workspaces.md) | Superseded by 108 |
+| 108 | The status strip is a list of cells, each with its own tone; the separator is drawn, not typed | [144](../book/144-the-comment-that-named-its-own-slice.md) | Accepted |
+| 109 | A Scene REPORTS a `ui::CursorHint` and `App` applies it — a scene cannot call `platform::set_cursor`, because most of them compile into tests that link no backend | [144](../book/144-the-comment-that-named-its-own-slice.md) | Accepted |

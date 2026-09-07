@@ -139,6 +139,18 @@ int main() {
         // The right-hand hint fits in 320px and is drawn in its own quiet colour.
         CHECK(count(dirty, th::text_muted) > 0);
 
+        // An EMPTY cell is not a cell: no text, and no separator either. Asserted as
+        // an exact pixel identity rather than by counting dots, because the separator
+        // is drawn in the same colour as the hint beside it — the two strips below
+        // must be the SAME image, which is a claim no count can weaken.
+        {
+            const auto three = strip({{"AAA"}, {""}, {"BBB"}});
+            const auto two   = strip({{"AAA"}, {"BBB"}});
+            CHECK(three == two);
+            // ...and the strip they are both compared against is not blank.
+            CHECK(three != strip({{"AAA"}, {"CCC"}}));
+        }
+
         // ...and a picture of it, because "the warning is the one cell that warns" is a
         // claim about what a person sees, and a count of pixels is only its shadow.
         if (FILE* f = std::fopen("ui_status.ppm", "wb")) {

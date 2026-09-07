@@ -2108,6 +2108,87 @@ không phải sót · `/v1/ws` không so được với bảng route theo phươ
 mô tả Drogon tự ghi · chưa có UI đọc spec (Swagger/Redoc cần CDN, mà trang này không có).
 
 
+### S30b — cái comment tự đặt tên cho slice của chính nó ✅ 2026-09-07 · chương 144
+
+Chương 112 viết Edit section rồi để lại một ghi chú trên đúng hai dòng tính bề rộng
+inspector:
+
+> *"The split is fixed — a draggable one needs a cursor shape, a hit zone and a
+> persisted position, and no second author has asked for it yet."*
+
+Đó là một comment **tốt**: không viết TODO, nó nói tính năng đó **giá bao nhiêu** và vì
+sao chưa đáng trả. Ba mươi hai chương sau đã có tác giả thứ hai, và hoá ra ghi chú đó
+**tự đặt tên cho slice của chính nó** — con trỏ, vùng bắt, vị trí được lưu. Cả ba, và
+cái thứ ba là cái duy nhất **có một quyết định bên trong**.
+
+**Vị trí được lưu là một quyết định, không phải một con số.** Bản dễ chỉ một dòng: nhớ
+bề rộng, mở lại thì khôi phục. Rồi ai đó mở Studio trên màn hình laptop, 900px không vừa,
+và Studio phải làm *một cái gì đó*. Luật chốt lại:
+
+> **Số được LƯU không bao giờ bị kẹp. Số được VẼ thì luôn luôn.**
+
+`fit_inspector` là hàm của **cửa sổ**, nên không có gì của một khung hẹp sống sót qua nó:
+thu nhỏ thì panel hẹp lại, phóng to lại thì bề rộng bạn đã kéo **quay về nguyên vẹn**.
+Kẹp ở chiều **vào** — ghi con số đã hẹp xuống đĩa — sẽ trông y hệt suốt thời gian cửa sổ
+còn nhỏ, và **âm thầm phá huỷ** layout ngay lần resize đầu tiên. Đúng cái memory gọi là
+*guard có chiều ngược*: bug không bao giờ là va chạm mà guard ngăn, nó là **guard không
+bao giờ nhả**.
+
+**`platform::set_cursor` chưa từng có một call site nào.** Có trong seam từ ngày seam
+được viết, bảy hình con trỏ, và một trăm bốn mươi chương con trỏ trong project này luôn
+là mũi tên. Mà cũng **không gọi được** từ chỗ cần: hầu hết Scene compile vào test
+headless không link backend nào, nên lời gọi trực tiếp là undefined symbol ở một nửa số
+target. Nên Scene **báo cáo** `ui::CursorHint` và `App::frame` — chỗ duy nhất đã có cửa
+sổ — **áp dụng**. Cùng một trao đổi mà `ui::Input` đã làm với bàn phím (intent, không
+phải key), chỉ theo chiều ngược lại.
+
+**Status bar: một DANH SÁCH, không phải một câu.** Bốn workspace tự nối chuỗi, bốn kiểu
+chấm câu khác nhau. Nhưng lý do đổi không phải gọn gàng, mà là dòng này:
+
+```cpp
+g.draw_text(area.x, sy, left.c_str(), ws.dirty() ? th::warn : th::text_muted);
+```
+
+Một chuỗi, một màu. Nên trong Pixels editor với file chưa lưu, **mã hex dưới con trỏ
+được vẽ bằng màu của một cảnh báo**. Strip có thể nói *tài liệu chưa lưu*, hoặc nói *pixel
+này là #3aa0ff*, và nói gì thì cũng nói bằng cùng một giọng. Giờ mỗi ô mang tone riêng và
+dấu phân cách được **VẼ**, không phải gõ.
+
+**Đếm màu, lần thứ ba.** Claim ở đây là về **màu**, và màu vô hình với mọi thước đo repo
+này đã có: cùng số glyph, cùng vị trí, cùng checksum, cùng frame diff. Nên
+`test_ui_golden` render strip vào buffer riêng và đếm một màu cụ thể, **cả hai chiều** —
+strip bẩn có pixel `warn`, strip sạch **không có pixel nào**. Dòng thứ hai mới là dòng
+quan trọng: thiếu nó, test pass trên một strip tô `warn` toàn bộ, tức đúng cái bug đang
+sửa.
+
+**Grid + snap.** Số học ở `sandbox_core` (`snap_to`, làm tròn ra xa 0 ở **cả hai** phía
+gốc — luật halfway của `std::round` lệch một bên, và một scene bố trí quanh 0 sẽ snap nửa
+trái khác nửa phải), trigger ở workspace. Đặt và kéo là **hai call site của cùng một câu
+hỏi**, và cái kéo là cái suýt sai: snap **sau** khi trừ grab offset, để **actor** rơi vào
+lưới chứ không phải cái pixel bạn tình cờ bấm trúng.
+
+Và một sửa trong test, không phải trang trí: nút Play trước đây được với tới bằng
+`vp.y - 30` — số học trên rect của người khác. Control **đầu tiên** từng được thêm vào
+giữa header và body (chính là nút Grid, chương này) làm toạ độ đó trỏ sang thứ khác, và
+test **vẫn pass**. Nó đang test nhầm control.
+
+**Xanh một lần không phải là xanh.** `ctest` xanh; chạy lại ngay lập tức, `shell_golden`
+FAIL. Block mới kéo divider rồi khẳng định file layout ghi lại — tức là nó **ghi**
+`saves/studio.layout`. Lần chạy thứ hai Studio mở ra ở trạng thái đã kéo, và "kéo thêm
+90px" đâm thẳng vào clamp, không nhúc nhích. Test đúng về sản phẩm và sai về chính nó.
+
+**Cổng:** 93/93 ctest **ba lần liên tiếp** · **25/25 mutation** (hai lượt: 21/25 + 2
+SKIPPED vì chuỗi không duy nhất, 2 SURVIVED thật — "ô rỗng vẫn được dấu phân cách" và
+"nút Grid vẫn sống khi scene đang chạy" — cả hai đã đóng rồi giết lại) · golden path
+xanh, 0 rò `.tmp` · web build xanh · **đã nhìn hai khung hình thật**.
+
+**Chưa xác minh:** chưa có bàn tay nào kéo divider này trong cửa sổ thật — đổi con trỏ
+được khẳng định như một giá trị `CursorHint` trong test headless, còn `set_cursor` của
+SDL chạy lần đầu tiên trong đời và **chưa ai nhìn** · lab full-screen dùng cùng splitter
+và cùng file nhưng chỉ tab của Studio có test · chưa thử `studio.layout` trên web/IDBFS ·
+grid **cố ý không** được lưu, và đó là một phỏng đoán chưa ai dùng đủ một giờ để kiểm.
+
+
 ### S30a — một field không ai đọc ✅ 2026-09-07 · chương 143
 
 `assets/farm/crops.def` viết `season=spring` từ chương 113. `defs.cpp` **parse** nó vào
@@ -2208,7 +2289,7 @@ làm chín T6).
 | ~~S29b~~ | ~~**Làm Postgres CHẠY**~~ — **XONG**, chương 141: 30/30 trên Postgres thật, CI chạy cả bộ test **hai lần**, một lần mỗi backend | L |
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
-| S30b | Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap | M |
+| ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
 | S30c | `--bench-ui` chạy được cả farm/creatures; manifest cho `iso` và `colony` | S |
 
 Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,

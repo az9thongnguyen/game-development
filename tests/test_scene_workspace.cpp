@@ -456,9 +456,28 @@ static void test_grid_is_refused_while_playing() {
     CHECK(cmd::run("scene.grid", {}).ok);
     CHECK(ws.grid() == 8);
 
+    // How many pixels of the grid button are the DISABLED colour. A refusal that only
+    // lives in update() leaves a button that looks perfectly pressable and silently
+    // does nothing — which is the same lie as a control drawn where it cannot be hit,
+    // told the other way round. Ink counts and frame hashes cannot see it: a disabled
+    // button is the same rectangle in a different colour.
+    const auto greyed = [&] {
+        const ui::Rect r = ws.control_rect("grid");
+        int n = 0;
+        for (int yy = r.y; yy < r.y + r.h; ++yy)
+            for (int xx = r.x; xx < r.x + r.w; ++xx)
+                if (d.buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)] ==
+                    ui::theme::ctrl_disabled)
+                    ++n;
+        return n;
+    };
+    d.panel(ws, ui::Input{});
+    CHECK(greyed() == 0);          // stopped: an ordinary, pressable button
+
     cmd::run("scene.play", {});
     d.panel(ws, ui::Input{});
     CHECK(ws.playing());
+    CHECK(greyed() > 0);           // ...and playing: drawn as what it is
     // Refused, and it SAYS so: a running scene is moving its own actors, and snapping
     // one under the simulation is an edit nobody asked for.
     const engine::OpResult r = cmd::run("scene.grid", {});
@@ -471,6 +490,7 @@ static void test_grid_is_refused_while_playing() {
     cmd::run("scene.play", {});
     d.panel(ws, ui::Input{});
     CHECK(!ws.playing());
+    CHECK(greyed() == 0);          // ...and the grey LIFTS with the refusal
     CHECK(cmd::run("scene.grid", {}).ok);      // ...and the refusal LIFTS
     CHECK(ws.grid() == 16);
 }

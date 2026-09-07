@@ -120,7 +120,10 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 
 ./build/demo --lab      # list the labs; --lab <id> runs one
 #   scene    the Studio's Scene workspace, full-screen (the SAME object as its Scene tab):
-#            place/drag actors, and the EFFECTS section on the selected one — an
+#            place/drag actors, a Grid button (off/8/16/32 — `sandbox::snap_to`, the
+#            arithmetic in the core; the drag snaps AFTER the grab offset so the ACTOR
+#            lands on the grid, not the pixel you grabbed), and the EFFECTS section on
+#            the selected one — an
 #            Emitter (particles), a Light that rides the actor, a Sound heard when it
 #            is destroyed, and a Flipbook for an animated sheet. Chapter 133 folded the
 #            four effect labs into these; the cores they demoed all stayed.
@@ -141,7 +144,11 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 #   colony   engine-core integration game (also the BaaS/SDK client)
 
 ./build/demo --shell [proj]     # the Studio (1280x720, resizable)
-                                # Edit section: TABS of workspaces (Map | Scene | Pixels | Mixer), Cmd+Z undo,
+                                # Edit section: TABS of workspaces (Map | Scene | Pixels | Mixer),
+                                # a DRAGGABLE divider between canvas and inspector (ch.144 —
+                                # the width is stored PER WORKSPACE in saves/studio.layout and
+                                # never clamped; only what is DRAWN is, so a window you shrank
+                                # once cannot take your layout away), Cmd+Z undo,
                                 # Cmd+S save, Cmd+K palette, Cmd+1..7 sections. Autosaves;
                                 # offers recovery on open.
                                 # Project section = asset browser + validation verdict (the
@@ -316,8 +323,8 @@ builds the image, asserts the container is still RUNNING, then probes it.
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**28 of the 83 tests**: `ctest` here reports 83, a build configured without Drogon
-reports 55. Since chapter 129 CI has a `baas-test` job in the
+**34 of the 93 tests**: `ctest` here reports 93, a build configured without Drogon
+reports 59. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that
