@@ -252,19 +252,30 @@ two real `--pvp` processes did it on the first try and ran 500 turns (chapter 13
 act — the two guards are tested apart, because with the AI fixed a mirror match now
 *decides* and never reaches the cap.
 
-**Every read-then-write in the backend is a TRANSACTION with a locking read**
-(chapter 140). `db::lock_clause()` is `" FOR UPDATE"` on Postgres and `""` on SQLite,
-and it is the ONLY syntactic difference between the two backends. The old comment —
-*"atomic because the SQLite pool is size 1"* — was true of `purchase`, which opens a
-transaction, and false of `grant` and `consume`, which did not: a pool of one hands
-out the connection for a STATEMENT, not for a sequence. Two concurrent grants of a
-player's first item did not lose an update, they **crashed the process** with an
-uncaught `UniqueViolation`. `test_baas_concurrency` is eight threads on one purse and
-**has no teeth on SQLite by construction** — it says so in its own header, and
-`baas/ops/pg-test.sh` is the Docker harness that would give it teeth.
-**⚠️ POSTGRES DOES NOT WORK** — not "untested": Drogon does not translate `?` to `$1`
-and all 107 queries use `?`, `id INTEGER PRIMARY KEY` is not an auto-increment there,
-and `insertId()` needs `RETURNING`. `pg-test.sh` reproduces it in one command.
+**Every read-then-write in the backend is a TRANSACTION, a MATERIALISED row and a
+locking read** (chapters 140 and 141), and **every statement goes through one seam**.
+
+- **`db::exec` is the only door**, `db::insert_id` the only place a new row's id comes
+  from, and `db::portable` the only translation: `?`→`$n`, `AUTOID`, `CURRENT_TIMESTAMP`
+  and `BYTELEN(x)`, each a disagreement no call site can fix. `test_baas_sql_seam` checks
+  its VALUES with no database near it and then reads `baas/` and `tests/` to prove nothing
+  goes around it — a **line** may opt out with `// raw-sql: <why>`, a **file** may not, and
+  the nine that do are counted.
+- **`db::ensure_row` before every locking read.** `FOR UPDATE` locks a row, and the FIRST
+  write to a key has none — chapter 140 closed the second write and left the first racing.
+- **`db::Transaction` waits for its COMMIT** (bounded, 10 s). Drogon *enqueues* the commit;
+  with a pool of one the next statement queues behind it, with a real pool it does not, and
+  every value came back one write stale. `rollback()` does not wait.
+- **Postgres numbers are TEXT parameters.** Drogon binds an integer in binary at `sizeof(T)`
+  with no type OID, so a C++ `long` into an INTEGER column is a runtime error on Postgres
+  only. A text parameter has no width.
+
+**✅ POSTGRES WORKS** since chapter 141 — 30/30, and **CI runs the whole baas suite twice,
+once per backend** (`BAAS_TEST_DB`). `sh baas/ops/pg-test.sh` is the local harness. The
+four failures it took to get there were all invisible on SQLite and all in tested code:
+a single-connection backend is not a small version of a pooled one, it is a different set
+of guarantees. ⚠️ still unproven: no `baas` process has ever **booted** against Postgres.
+
 **A transaction holds the only SQLite connection**, so anything reaching for
 `db::client()` while one is alive self-deadlocks — the suite STOPPED for 25 minutes
 before ctest's default timeout noticed, which is why every baas test now carries

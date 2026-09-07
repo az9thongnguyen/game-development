@@ -242,6 +242,27 @@ jobs:
     name: baas tests (drogon)
     runs-on: ubuntu-latest
     container: drogonframework/drogon:latest
+    # A REAL Postgres, since chapter 141. The suite's default backend is SQLite, whose
+    # pool is one connection — which makes every read-then-write in the codebase look
+    # atomic whether or not it is, and made "Postgres is a documented deploy-time build"
+    # survive as a sentence for eleven slices. It is a sentence no longer: the same
+    # tests run twice below, once against each backend, and the second run is the only
+    # one where the row locks of chapter 140 mean anything.
+    #
+    # The job runs IN a container, so this service is reachable by its label on the
+    # same network — no port mapping, no localhost.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: baas
+          POSTGRES_PASSWORD: baas
+          POSTGRES_DB: baas
+        options: >-
+          --health-cmd "pg_isready -U baas -d baas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
 
@@ -269,6 +290,23 @@ jobs:
 
       - name: Run them
         # --test-dir <build>/baas selects exactly the tests that directory registers.
+        run: ctest --test-dir build-baas/baas --output-on-failure
+
+      # -----------------------------------------------------------------------
+      #  ...and now the SAME tests, against the other backend.
+      #
+      #  Not a different suite and not a subset: BAAS_TEST_DB points every test at
+      #  Postgres and each one wipes the schema on the way in. Two runs of one suite is
+      #  the only shape that can catch what this slice is about — a query that parses in
+      #  SQLite and not in Postgres passes the run above and fails this one, in the test
+      #  that already covers the feature. Nobody has to remember to write it twice.
+      #
+      #  It is also where `test_baas_concurrency` finally has teeth: eight threads on one
+      #  purse says nothing on a pool of one, and its own header says so.
+      # -----------------------------------------------------------------------
+      - name: ...and again, against a real Postgres
+        env:
+          BAAS_TEST_DB: postgres://baas:baas@postgres:5432/baas
         run: ctest --test-dir build-baas/baas --output-on-failure
 
       - name: ...and there really were 27 of the 29

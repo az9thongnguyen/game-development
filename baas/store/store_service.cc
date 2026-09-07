@@ -29,7 +29,7 @@ Offer row_to_offer(const drogon::orm::Row& r) {
 }  // namespace
 
 std::optional<Offer> get(long project_id, const std::string& sku) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT sku, currency, cost, item, amount FROM catalog WHERE project_id=? AND sku=?",
         project_id, sku);
     if (rows.empty()) return std::nullopt;
@@ -37,7 +37,7 @@ std::optional<Offer> get(long project_id, const std::string& sku) {
 }
 
 std::vector<Offer> list(long project_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT sku, currency, cost, item, amount FROM catalog WHERE project_id=? ORDER BY sku ASC",
         project_id);
     std::vector<Offer> out;
@@ -50,18 +50,14 @@ bool upsert(long project_id, const std::string& sku, const std::string& currency
     if (!valid_sku(sku) || !inv::valid_item(currency) || !inv::valid_item(item)) return false;
     if (cost <= 0 || amount <= 0) return false;   // an offer must charge and grant something
 
-    auto       db = db::client();
-    const auto ex = db->execSqlSync("SELECT id FROM catalog WHERE project_id=? AND sku=?",
-                                    project_id, sku);
-    if (ex.empty())
-        db->execSqlSync(
-            "INSERT INTO catalog(project_id, sku, currency, cost, item, amount) VALUES(?,?,?,?,?,?)",
-            project_id, sku, currency, cost, item, amount);
-    else
-        db->execSqlSync(
-            "UPDATE catalog SET currency=?, cost=?, item=?, amount=?, updated_at=CURRENT_TIMESTAMP "
-            "WHERE project_id=? AND sku=?",
-            currency, cost, item, amount, project_id, sku);
+    // ONE statement — the function is named `upsert` and now is one. See cfg::set for
+    // why the read-then-branch it replaced was a crash waiting for a second writer.
+    db::exec(db::client(),
+        "INSERT INTO catalog(project_id, sku, currency, cost, item, amount) VALUES(?,?,?,?,?,?) "
+        "ON CONFLICT(project_id, sku) DO UPDATE SET "
+        "currency=excluded.currency, cost=excluded.cost, item=excluded.item, "
+        "amount=excluded.amount, updated_at=CURRENT_TIMESTAMP",
+        project_id, sku, currency, cost, item, amount);
 
     audit::record(project_id, actor, "catalog.upsert",
                   "sku=" + sku + " cost=" + std::to_string(cost) + " " + currency +

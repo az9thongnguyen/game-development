@@ -31,13 +31,11 @@ namespace web::idem {
 // The result recorded for `key`, or nullopt if this is the first time.
 std::optional<long long> lookup(long project_id, const std::string& key);
 
-// Record it. First writer wins; a racing duplicate is a harmless no-op.
-void record(long project_id, const std::string& key, long long result);
-
-// The same INSERT against a caller-supplied client — which may be a Transaction, so
-// the key commits atomically with the effect it describes. A retry cannot then land
-// between the two.
-void record_with(const std::shared_ptr<drogon::orm::DbClient>& db, long project_id,
+// Record it, inside the caller's Transaction, so the key commits atomically with the
+// effect it describes. A retry cannot then land between the two. Typed on Transaction
+// rather than DbClient since chapter 141: `db::Transaction` converts to one implicitly,
+// and a chain of two user-defined conversions does not exist in C++.
+void record_with(const std::shared_ptr<drogon::orm::Transaction>& db, long project_id,
                  const std::string& key, long long result);
 
 }  // namespace web::idem

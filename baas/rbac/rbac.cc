@@ -58,7 +58,7 @@ std::optional<std::string> create_operator(long project_id, const std::string& n
     if (!valid_name(name)) return std::nullopt;
     const std::string key = mint_key();
     try {
-        db::client()->execSqlSync(
+        db::exec(db::client(),
             "INSERT INTO operators(project_id, name, key_hash, role) VALUES(?,?,?,?)",
             project_id, name, pw::hash(key), role_name(role));
     } catch (const std::exception&) {
@@ -70,7 +70,7 @@ std::optional<std::string> create_operator(long project_id, const std::string& n
 
 std::optional<Operator> authenticate(long project_id, const std::string& name,
                                      const std::string& key) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT key_hash, role FROM operators WHERE project_id=? AND name=?", project_id, name);
     if (rows.empty()) return std::nullopt;                                   // unknown operator
     if (!pw::verify(key, rows[0]["key_hash"].as<std::string>())) return std::nullopt;  // bad key
@@ -80,7 +80,7 @@ std::optional<Operator> authenticate(long project_id, const std::string& name,
 }
 
 std::vector<Operator> list_operators(long project_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT name, role FROM operators WHERE project_id=? ORDER BY name ASC", project_id);
     std::vector<Operator> out;
     for (const auto& r : rows) {

@@ -55,7 +55,7 @@ void WsController::handleNewConnection(const drogon::HttpRequestPtr& req,
     try {
         // Same project lookup as ApiKeyFilter.
         const auto rows =
-            db::client()->execSqlSync("SELECT id FROM projects WHERE public_key=?", api_key);
+            db::exec(db::client(), "SELECT id FROM projects WHERE public_key=?", api_key);
         if (rows.empty()) {
             send_error(conn, "invalid api_key");
             conn->shutdown();
@@ -73,7 +73,7 @@ void WsController::handleNewConnection(const drogon::HttpRequestPtr& req,
 
         // Resolve the display name (scoped to the tenant) for peer lists.
         std::string display_name;
-        const auto urows = db::client()->execSqlSync(
+        const auto urows = db::exec(db::client(),
             "SELECT display_name FROM users WHERE id=? AND project_id=?",
             static_cast<long>(claims->sub), project_id);
         if (!urows.empty() && !urows[0]["display_name"].isNull())

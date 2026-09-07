@@ -37,11 +37,11 @@ int main() {
     web::db::set_client(db);
     web::db::run_migrations(db);
     const std::string pkA = web::db::seed(db);
-    const auto insB = db->execSqlSync(
+    const auto insB = web::db::exec(db,
         "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
         std::string("B"), std::string("pk_b"), std::string("unset"));
     // An EXPIRED event for A must NOT appear as active.
-    db->execSqlSync(
+    web::db::exec(db,
         "INSERT INTO live_events(project_id, key, name, starts_at, ends_at, payload) VALUES(?,?,?,?,?,?)",
         1L, std::string("old"), std::string("Old Event"),
         std::string("2000-01-01 00:00:00"), std::string("2000-02-01 00:00:00"), std::string("{}"));

@@ -43,7 +43,7 @@ int main() {
     web::db::run_migrations(db);
     const std::string pkA = web::db::seed(db);
 
-    const auto insB = db->execSqlSync(
+    const auto insB = web::db::exec(db,
         "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
         std::string("Proj B"), std::string("pk_b"), std::string("unset"));
     (void)insB;
@@ -100,6 +100,15 @@ int main() {
         // optimistic concurrency: wrong If-Match → 409, correct → 200
         CHECK(http("PUT", saves + "/colony", {keyA, a1, "If-Match: 99"}, R"({"data":"z"})").status == 409);
         CHECK(http("PUT", saves + "/colony", {keyA, a1, "If-Match: 2"}, R"({"data":"z"})").status == 200);
+
+        // ...and an If-Match against a slot that does NOT exist must not create one.
+        // Since chapter 141 the row is materialised BEFORE the version is checked, so a
+        // refusal that forgot to roll back would leave an empty save behind — a slot
+        // that never existed, readable as "" and counted in the list.
+        CHECK(http("PUT", saves + "/ghost", {keyA, a1, "If-Match: 1"},
+                   R"({"data":"z"})").status == 409);
+        CHECK(http("GET", saves + "/ghost", {keyA, a1}).status == 404);
+        CHECK(parse(http("GET", saves, {keyA, a1}).body)["saves"].size() == 2);
 
         // per-user isolation: a2 cannot see a1's save, and has none of their own
         CHECK(http("GET", saves + "/colony", {keyA, a2}).status == 404);

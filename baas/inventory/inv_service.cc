@@ -33,7 +33,7 @@ namespace {
 // connection in the pool — and " FOR UPDATE" on Postgres, where it does not.
 long long qty_locked(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_id,
                      long user_id, const std::string& item) {
-    const auto rows = tx->execSqlSync(
+    const auto rows = db::exec(tx,
         std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
             db::lock_clause(),
         project_id, user_id, item);
@@ -43,22 +43,27 @@ long long qty_locked(const std::shared_ptr<drogon::orm::Transaction>& tx, long p
 // ...and the same read, WITHOUT a lock, for a caller that is only answering a
 // question. Named apart so a read-then-write cannot reach for it by accident.
 long long qty_of(long project_id, long user_id, const std::string& item) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?",
         project_id, user_id, item);
     return rows.empty() ? 0 : rows[0]["qty"].as<long>();
 }
 
-// Write a quantity that has already been decided, inside `tx`.
+// Make sure the row is THERE, so the locking read below has something to lock. See
+// `db::ensure_row` for why this is a separate step and not a branch.
+void ensure_item(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_id,
+                 long user_id, const std::string& item) {
+    db::ensure_row(tx, "INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,0)",
+                   project_id, user_id, item);
+}
+
+// Write a quantity that has already been decided, inside `tx`. No INSERT branch: every
+// caller has materialised the row first, so there is exactly one way to write it.
 void put_qty(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_id,
-             long user_id, const std::string& item, long long qty, bool exists) {
-    if (exists)
-        tx->execSqlSync("UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
-                        "WHERE project_id=? AND user_id=? AND item=?",
-                        qty, project_id, user_id, item);
-    else
-        tx->execSqlSync("INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,?)",
-                        project_id, user_id, item, qty);
+             long user_id, const std::string& item, long long qty) {
+    db::exec(tx, "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
+                 "WHERE project_id=? AND user_id=? AND item=?",
+                 qty, project_id, user_id, item);
 }
 
 }  // namespace
@@ -76,7 +81,7 @@ Item get(long project_id, long user_id, const std::string& item) {
 }
 
 std::vector<Item> list(long project_id, long user_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT item, qty FROM inventory WHERE project_id=? AND user_id=? ORDER BY item ASC",
         project_id, user_id);
     std::vector<Item> out;
@@ -107,23 +112,23 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
     // A TRANSACTION, since chapter 140. Before it this was a bare read followed by a
     // bare write, and the comment in `purchase` below — "atomic because the SQLite
     // pool is size 1" — was true only of code that opens a transaction. Two threads
-    // calling `execSqlSync` twice each interleave on a pool of one just as happily as
-    // on a pool of ten: the connection is held for one STATEMENT, not for a sequence.
-    // So two concurrent grants of 5 to an empty slot could both read 0 and both write
-    // 5, and the player was owed 10.
-    auto tx = db::client()->newTransaction();
+    // calling execSqlSync twice each interleave on a pool of one just as happily as on
+    // a pool of ten: the connection is held for one STATEMENT, not for a sequence.
+    //
+    // ...and the transaction alone was not enough, which only a real Postgres could
+    // say. A locking read locks a ROW, and the first grant of an item has none: both
+    // threads read nothing, both inserted, and one of them lost the item to a unique
+    // constraint. Hence `ensure_item` — chapter 141.
+    db::Transaction tx(db::client());
     try {
-        const auto ex  = tx->execSqlSync(
-            std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
-                db::lock_clause(),
-            project_id, user_id, item);
-        const long long qty = (ex.empty() ? 0 : ex[0]["qty"].as<long>()) + amount;
-        put_qty(tx, project_id, user_id, item, qty, !ex.empty());
+        ensure_item(tx, project_id, user_id, item);
+        const long long qty = qty_locked(tx, project_id, user_id, item) + amount;
+        put_qty(tx, project_id, user_id, item, qty);
         // Inside the transaction, so the key commits with the effect it describes.
         if (!scoped_key.empty()) idem::record_with(tx, project_id, scoped_key, qty);
         return {Item{item, qty}, std::nullopt};
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "grant failed"}};
     }
 }
@@ -153,38 +158,36 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
     // anybody points this at Postgres — which is the whole plan. `qty_locked` asks for
     // the row lock, and asks for it in the only place that knows whether the backend
     // has one.
-    auto tx = db::client()->newTransaction();
+    db::Transaction tx(db::client());
     try {
         const long long have = qty_locked(tx, project_id, user_id, currency);
         if (have < cost) {
-            tx->rollback();
+            tx.rollback();
             return {std::nullopt, Error{409, "insufficient", "not enough " + currency}};
         }
 
         // Spend the currency.
-        tx->execSqlSync(
+        db::exec(tx,
             "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
             "WHERE project_id=? AND user_id=? AND item=?",
             have - cost, project_id, user_id, currency);
 
-        // Grant the item (upsert), computing its resulting quantity. Locked for the
-        // same reason: the currency and the item are two different rows.
-        const auto ex = tx->execSqlSync(
-            std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
-                db::lock_clause(),
-            project_id, user_id, item);
-        const long long qty = (ex.empty() ? 0 : ex[0]["qty"].as<long>()) + amount;
-        put_qty(tx, project_id, user_id, item, qty, !ex.empty());
+        // Grant the item, computing its resulting quantity. Materialised and then
+        // locked for the same reason: the currency and the item are two different rows,
+        // and this one may not exist yet.
+        ensure_item(tx, project_id, user_id, item);
+        const long long qty = qty_locked(tx, project_id, user_id, item) + amount;
+        put_qty(tx, project_id, user_id, item, qty);
 
         // Record idempotency INSIDE the transaction so the key commits atomically with the
         // spend+grant — a retry cannot land between the effect and the record.
         if (!scoped_key.empty())
-            idem::record_with(tx, 
+            idem::record_with(tx,
                 project_id, scoped_key, qty);
 
         return {Item{item, qty}, std::nullopt};   // tx commits on scope exit
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "purchase failed"}};
     }
 }
@@ -195,18 +198,18 @@ Result consume(long project_id, long user_id, const std::string& item, long long
 
     // Same shape as grant, and the same fix — except this one could go NEGATIVE, which
     // is the version of a lost update a player notices.
-    auto tx = db::client()->newTransaction();
+    db::Transaction tx(db::client());
     try {
         const long long cur = qty_locked(tx, project_id, user_id, item);
         if (cur < amount) {
-            tx->rollback();
+            tx.rollback();
             return {std::nullopt, Error{409, "insufficient", "not enough " + item}};
         }
         const long long qty = cur - amount;
-        put_qty(tx, project_id, user_id, item, qty, /*exists=*/true);
+        put_qty(tx, project_id, user_id, item, qty);
         return {Item{item, qty}, std::nullopt};
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "consume failed"}};
     }
 }

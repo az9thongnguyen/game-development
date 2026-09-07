@@ -37,7 +37,7 @@ int main() {
     web::db::set_client(db);
     web::db::run_migrations(db);
     const std::string pkA = web::db::seed(db);
-    db->execSqlSync("INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
+    web::db::exec(db, "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
                     std::string("B"), std::string("pk_b"), std::string("unset"));
 
     const int         port = baastest::find_free_port();

@@ -43,7 +43,7 @@ int main() {
     web::db::run_migrations(db);
     const std::string pkA = web::db::seed(db);
 
-    db->execSqlSync("INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
+    web::db::exec(db, "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
                     std::string("Proj B"), std::string("pk_b"), std::string("unset"));
     const std::string pkB = "pk_b";
 
@@ -95,6 +95,13 @@ int main() {
         // optimistic concurrency: wrong If-Match -> 409, correct -> 200
         CHECK(http("PUT", assets + "/level_00.map", {keyA, "If-Match: 99"}, R"({"data":"z"})").status == 409);
         CHECK(http("PUT", assets + "/level_00.map", {keyA, "If-Match: 2"}, R"({"data":"z"})").status == 200);
+
+        // ...and the same refusal must not create the asset it was asked about. The row
+        // is materialised before the version check (chapter 141); a 409 that did not
+        // roll back would publish an empty asset under a name nobody wrote.
+        CHECK(http("PUT", assets + "/ghost.map", {keyA, "If-Match: 1"},
+                   R"({"data":"z"})").status == 409);
+        CHECK(http("GET", assets + "/ghost.map", {keyA}).status == 404);
 
         // cross-tenant isolation: project B sees nothing of A's
         CHECK(parse(http("GET", assets, {keyB}).body)["assets"].size() == 0);

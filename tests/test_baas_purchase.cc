@@ -29,7 +29,8 @@ int main() {
     web::db::set_client(db);
     web::db::run_migrations(db);
 
-    const long pid = 1, uid = 1;
+    const auto fx  = baastest::make_fixture(db);
+    const long pid = fx.project_id, uid = fx.user_id;
 
     // Give the player 100 gold to spend.
     web::inv::grant(pid, uid, "gold", 100);

@@ -46,21 +46,21 @@ int main() {
     const std::string pkA = web::db::seed(db);   // project A + colony_high
 
     // A second tenant (project B) with its own colony_high board.
-    const auto insB = db->execSqlSync(
+    const long pidB = static_cast<long>(web::db::insert_id(db,
         "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
-        std::string("Proj B"), std::string("pk_b"), std::string("unset"));
-    db->execSqlSync("INSERT INTO leaderboards(project_id, key, name, sort) VALUES(?,?,?,?)",
-                    static_cast<long>(insB.insertId()), std::string("colony_high"),
-                    std::string("B board"), std::string("desc"));
+        std::string("Proj B"), std::string("pk_b"), std::string("unset")));
+    web::db::exec(db, "INSERT INTO leaderboards(project_id, key, name, sort) VALUES(?,?,?,?)",
+                  pidB, std::string("colony_high"), std::string("B board"),
+                  std::string("desc"));
     const std::string pkB = "pk_b";
 
     // A RATING board on project A. Same project, same sort, different `mode`: a
     // rating has to be able to go DOWN, and every board before chapter 139 kept the
     // better of the two values — which turns a ladder into a record of everybody's
     // best day.
-    db->execSqlSync(
+    web::db::exec(db,
         "INSERT INTO leaderboards(project_id, key, name, sort, mode) VALUES(?,?,?,?,?)",
-        static_cast<long>(db->execSqlSync("SELECT id FROM projects WHERE public_key=?", pkA)[0]
+        static_cast<long>(web::db::exec(db, "SELECT id FROM projects WHERE public_key=?", pkA)[0]
                               ["id"].as<long>()),
         std::string("rating"), std::string("A ladder"), std::string("desc"),
         std::string("last"));
@@ -196,7 +196,7 @@ int main() {
             // reports have to exist. Registering them directly (rather than opening
             // four WebSockets) keeps this an HTTP test; `creature_pvp_live` is where
             // the real matchmaking path is driven.
-            const long pidA = db->execSqlSync(
+            const long pidA = web::db::exec(db,
                 "SELECT id FROM projects WHERE public_key=?", pkA)[0]["id"].as<long>();
             for (const char* room : {"match_1", "match_2", "match_3", "self", "m", "cross",
                                      "match_nope"})

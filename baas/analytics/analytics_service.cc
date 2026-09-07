@@ -21,12 +21,12 @@ void record(long project_id, long user_id, const std::string& name, const std::s
             const std::string& release) {
     auto db = db::client();
     if (user_id > 0) {
-        db->execSqlSync(
+        db::exec(db,
             "INSERT INTO analytics_events(project_id, user_id, name, props, release) "
             "VALUES(?,?,?,?,?)",
             project_id, user_id, name, props, release);
     } else {
-        db->execSqlSync(
+        db::exec(db,
             "INSERT INTO analytics_events(project_id, user_id, name, props, release) "
             "VALUES(?,NULL,?,?,?)",
             project_id, name, props, release);
@@ -34,7 +34,7 @@ void record(long project_id, long user_id, const std::string& name, const std::s
 }
 
 std::vector<Count> summary(long project_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT name, count(*) AS c FROM analytics_events WHERE project_id=? "
         "GROUP BY name ORDER BY c DESC, name ASC",
         project_id);
@@ -44,7 +44,7 @@ std::vector<Count> summary(long project_id) {
 }
 
 std::vector<ReleaseCount> summary_by_release(long project_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT release, name, count(*) AS c FROM analytics_events WHERE project_id=? "
         "GROUP BY release, name ORDER BY release ASC, c DESC, name ASC",
         project_id);

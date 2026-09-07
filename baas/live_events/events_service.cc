@@ -8,7 +8,7 @@
 namespace web::live {
 
 std::vector<Event> active(long project_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT key, name, payload FROM live_events WHERE project_id=? "
         "AND starts_at <= CURRENT_TIMESTAMP AND ends_at >= CURRENT_TIMESTAMP "
         "ORDER BY starts_at ASC",
@@ -23,15 +23,15 @@ std::vector<Event> active(long project_id) {
 void create(long project_id, const std::string& key, const std::string& name,
             const std::string& starts_at, const std::string& ends_at, const std::string& payload) {
     auto       db = db::client();
-    const auto ex = db->execSqlSync(
+    const auto ex = db::exec(db,
         "SELECT id FROM live_events WHERE project_id=? AND key=?", project_id, key);
     if (ex.empty())
-        db->execSqlSync(
+        db::exec(db,
             "INSERT INTO live_events(project_id, key, name, starts_at, ends_at, payload) "
             "VALUES(?,?,?,?,?,?)",
             project_id, key, name, starts_at, ends_at, payload);
     else
-        db->execSqlSync(
+        db::exec(db,
             "UPDATE live_events SET name=?, starts_at=?, ends_at=?, payload=? "
             "WHERE project_id=? AND key=?",
             name, starts_at, ends_at, payload, project_id, key);

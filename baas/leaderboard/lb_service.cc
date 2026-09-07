@@ -18,17 +18,28 @@ namespace {
 const char* better_than(bool desc) { return desc ? ">" : "<"; }
 
 int rank_for_value(const Board& b, long value) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         std::string("SELECT count(*) AS c FROM scores WHERE leaderboard_id=? AND value ") +
             better_than(b.desc) + " ?",
         b.id, value);
     return static_cast<int>(rows[0]["c"].as<long>()) + 1;
 }
 
+// One player's row on one board, read under the backend's row lock. Both callers reach
+// it only after the row has been materialised, so it always finds one.
+long read_locked(const std::shared_ptr<drogon::orm::Transaction>& tx, long board_id,
+                 long user_id) {
+    const auto rows = db::exec(tx,
+        std::string("SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?") +
+            db::lock_clause(),
+        board_id, user_id);
+    return rows.empty() ? 0 : rows[0]["value"].as<long>();
+}
+
 }  // namespace
 
 std::optional<Board> find_board(long project_id, const std::string& key) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT id, sort, mode FROM leaderboards WHERE project_id=? AND key=?", project_id, key);
     if (rows.empty()) return std::nullopt;
     return Board{rows[0]["id"].as<long>(),
@@ -51,35 +62,37 @@ SubmitResult submit(const Board& board, long user_id, long value) {
     // self-deadlock, and the first version of this code had one: `rank_for_value`
     // below ran with `tx` still in scope and the whole suite hung.
     {
-        auto tx = db::client()->newTransaction();
+        db::Transaction tx(db::client());
         try {
-            const auto existing = tx->execSqlSync(
-            std::string("SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?") +
-                db::lock_clause(),
-            board.id, user_id);
-
-        if (existing.empty()) {
-            tx->execSqlSync("INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
-                            board.id, user_id, value);
-            updated = true;
-        } else {
-            const long old    = existing[0]["value"].as<long>();
-            const bool better = board.desc ? (value > old) : (value < old);
-            // `keep_best` is the only thing that reads the sort here. A 'last' board
-            // stores what it was handed — including a lower number, which is the
-            // entire reason the column exists.
-            if (better || !board.keep_best) {
-                tx->execSqlSync(
-                    "UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
-                    "WHERE leaderboard_id=? AND user_id=?",
-                    value, board.id, user_id);
+            // The first submission on a board has no row to lock, and two of them
+            // arriving together both used to INSERT — one of which is a unique
+            // constraint violation on any backend that runs them at once. So the row
+            // is CREATED first (chapter 141), and `inserted` says whether this call is
+            // the one that made it, which is the same answer `existing.empty()` used
+            // to give and is now atomic.
+            const bool inserted = db::ensure_row(tx,
+                "INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
+                board.id, user_id, value);
+            if (inserted) {
                 updated = true;
             } else {
-                final_value = old;   // keep the better existing value
+                const long old = read_locked(tx, board.id, user_id);
+                const bool better = board.desc ? (value > old) : (value < old);
+                // `keep_best` is the only thing that reads the sort here. A 'last'
+                // board stores what it was handed — including a lower number, which is
+                // the entire reason the column exists.
+                if (better || !board.keep_best) {
+                    db::exec(tx,
+                        "UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
+                        "WHERE leaderboard_id=? AND user_id=?",
+                        value, board.id, user_id);
+                    updated = true;
+                } else {
+                    final_value = old;   // keep the better existing value
+                }
             }
-        }
         } catch (const std::exception&) {
-            tx->rollback();
+            tx.rollback();
             throw;
         }
     }
@@ -95,33 +108,27 @@ namespace {
 // through the arithmetic identical.
 using TxPtr = std::shared_ptr<drogon::orm::Transaction>;
 
-// The stored rating, or where a player starts. A ladder whose first game was against
-// "no rating" would have to invent one anyway; inventing it here keeps every path
-// through the arithmetic identical. `found` says which of the two it was, so the
-// writer below knows whether to INSERT or UPDATE without reading the row twice.
-long rating_locked(const TxPtr& tx, const Board& board, long user_id, bool& found) {
-    const auto rows = tx->execSqlSync(
-        std::string("SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?") +
-            db::lock_clause(),
-        board.id, user_id);
-    found = !rows.empty();
-    return found ? rows[0]["value"].as<long>() : engine::kEloStart;
+// The stored rating, LOCKED. The row is materialised at `kEloStart` first if it is not
+// there: a locking read cannot lock a row that does not exist, and a player's very
+// first match is exactly when it does not (chapter 141). Inventing the starting rating
+// as a real row rather than as a C++ default also removes the INSERT/UPDATE branch from
+// the writer below — there is now one way to store a rating.
+long rating_locked(const TxPtr& tx, const Board& board, long user_id) {
+    db::ensure_row(tx, "INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
+                   board.id, user_id, static_cast<long>(engine::kEloStart));
+    return read_locked(tx, board.id, user_id);
 }
 
 long rating_of(const Board& board, long user_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?", board.id, user_id);
     return rows.empty() ? engine::kEloStart : rows[0]["value"].as<long>();
 }
 
-void store_rating(const TxPtr& tx, const Board& board, long user_id, long value, bool exists) {
-    if (exists)
-        tx->execSqlSync("UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
-                        "WHERE leaderboard_id=? AND user_id=?",
-                        value, board.id, user_id);
-    else
-        tx->execSqlSync("INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
-                        board.id, user_id, value);
+void store_rating(const TxPtr& tx, const Board& board, long user_id, long value) {
+    db::exec(tx, "UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
+                 "WHERE leaderboard_id=? AND user_id=?",
+                 value, board.id, user_id);
 }
 }  // namespace
 
@@ -130,9 +137,8 @@ std::pair<long, long> lock_order(long a, long b) {
 }
 
 bool user_in_project(long project_id, long user_id) {
-    return !db::client()
-                ->execSqlSync("SELECT 1 AS x FROM users WHERE id=? AND project_id=?",
-                              user_id, project_id)
+    return !db::exec(db::client(), "SELECT 1 AS x FROM users WHERE id=? AND project_id=?",
+                     user_id, project_id)
                 .empty();
 }
 
@@ -160,12 +166,11 @@ MatchResult apply_match(long project_id, const Board& board, long user_id, long 
     // is a deadlock, and a ladder is exactly where that pair occurs.
     long mine_after = 0, their_after = 0, mine_before = 0;
     {   // scoped: see `submit` — the rank below needs a connection this holds
-        auto tx = db::client()->newTransaction();
+        db::Transaction tx(db::client());
         try {
             const auto [lo, hi] = lock_order(user_id, opponent_id);
-            bool lo_found = false, hi_found = false;
-            const long lo_before = rating_locked(tx, board, lo, lo_found);
-            const long hi_before = rating_locked(tx, board, hi, hi_found);
+            const long lo_before = rating_locked(tx, board, lo);
+            const long hi_before = rating_locked(tx, board, hi);
 
             mine_before             = user_id == lo ? lo_before : hi_before;
             const long their_before = user_id == lo ? hi_before : lo_before;
@@ -181,13 +186,12 @@ MatchResult apply_match(long project_id, const Board& board, long user_id, long 
                                              static_cast<int>(mine_before),
                                              engine::kEloWin - score);
 
-            store_rating(tx, board, user_id, mine_after, user_id == lo ? lo_found : hi_found);
-            store_rating(tx, board, opponent_id, their_after,
-                         opponent_id == lo ? lo_found : hi_found);
+            store_rating(tx, board, user_id, mine_after);
+            store_rating(tx, board, opponent_id, their_after);
             idem::record_with(tx, project_id, key,
                               static_cast<long long>(mine_after - mine_before));
         } catch (const std::exception&) {
-            tx->rollback();
+            tx.rollback();
             throw;
         }
     }
@@ -198,7 +202,7 @@ MatchResult apply_match(long project_id, const Board& board, long user_id, long 
 
 std::vector<Entry> top(const Board& board, int limit) {
     const std::string order = board.desc ? "DESC" : "ASC";
-    const auto        rows  = db::client()->execSqlSync(
+    const auto        rows  = db::exec(db::client(),
         "SELECT s.user_id, u.display_name, s.value FROM scores s "
         "JOIN users u ON u.id = s.user_id WHERE s.leaderboard_id=? "
         "ORDER BY s.value " + order + ", s.updated_at ASC LIMIT ?",
@@ -213,7 +217,7 @@ std::vector<Entry> top(const Board& board, int limit) {
 }
 
 std::optional<Entry> rank_of(const Board& board, long user_id) {
-    const auto mine = db::client()->execSqlSync(
+    const auto mine = db::exec(db::client(),
         "SELECT s.value, u.display_name FROM scores s JOIN users u ON u.id = s.user_id "
         "WHERE s.leaderboard_id=? AND s.user_id=?",
         board.id, user_id);

@@ -30,7 +30,8 @@ int main() {
     web::db::set_client(db);
     web::db::run_migrations(db);
 
-    const long pid = 1, uid = 1;
+    const auto fx  = baastest::make_fixture(db);
+    const long pid = fx.project_id, uid = fx.user_id;
 
     // An admin defines a priced offer: "sword_pack" costs 30 gold, grants 1 sword.
     CHECK(web::store::upsert(pid, "sword_pack", "gold", 30, "sword", 1, "admin"));
