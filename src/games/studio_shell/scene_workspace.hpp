@@ -68,6 +68,9 @@ public:
     // ---- exposed for the host scene and for tests ---------------------------
     [[nodiscard]] const sandbox::World& world() const { return world_; }
     [[nodiscard]] bool playing() const { return playing_; }
+    // The snap grid in world units, 0 = off. Exposed because "where a click lands" is
+    // the only thing this setting does, and a test has to be able to ask.
+    [[nodiscard]] int  grid() const { return grid_; }
     [[nodiscard]] int  selected() const { return sel_; }   // index, -1 = nothing
     [[nodiscard]] std::size_t actor_count() const { return world_.alive(); }
     void toggle_play();

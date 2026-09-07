@@ -75,6 +75,10 @@ public:
     [[nodiscard]] const PixelWorkspace& pixel_workspace() const { return pixels_; }
     [[nodiscard]] PixelWorkspace&       pixel_workspace() { return pixels_; }
     [[nodiscard]] int open_workspace() const { return ws_; }
+    // Where the divider was drawn last frame. A test must reach a control by name and
+    // not by arithmetic on somebody else's rect — the arithmetic is a guess about what
+    // else lives beside it, and it was wrong the first time something else did.
+    [[nodiscard]] ui::Rect split_handle() const { return split_rect_; }
     // How many tabs the Edit section has. Exposed because a test that hard-codes it
     // is a test that breaks the day a workspace is added — which has now happened
     // twice, and the second time the comment beside the literal had already predicted
@@ -141,6 +145,7 @@ private:
     // written back when a drag ends — not every frame it moves, which would be one
     // file write per mouse sample.
     Layout                         layout_{};
+    ui::Rect                       split_rect_{};   // last frame's divider, for tests
     bool                           layout_dirty_ = false;
 
     int                            ws_ = 0;          // the open tab

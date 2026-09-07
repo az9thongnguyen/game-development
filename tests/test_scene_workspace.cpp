@@ -168,6 +168,33 @@ platform::InputState canvas_press(int x, int y, bool pressed) {
     return in;
 }
 
+// A pointer state the canvas reads: `down` and `pressed` are separate, because a DRAG
+// is one press followed by frames that are only held, and a helper that set both every
+// frame would restart the drag sixty times a second.
+platform::InputState canvas_at(int x, int y, bool down, bool pressed) {
+    platform::InputState in{};
+    in.mouse_x = x;
+    in.mouse_y = y;
+    in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = down;
+    in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = pressed;
+    return in;
+}
+
+void drag(Driver& d, studioshell::SceneWorkspace& ws, int fx, int fy, int tx, int ty) {
+    d.panel(ws, ui::Input{}, canvas_at(fx, fy, true, true));
+    d.panel(ws, ui::Input{}, canvas_at(tx, ty, true, false));
+    d.panel(ws, ui::Input{}, canvas_at(tx, ty, false, false));
+    d.panel(ws, ui::Input{});
+}
+
+void actor0(const studioshell::SceneWorkspace& ws, float& x, float& y) {
+    sandbox::World& w = const_cast<sandbox::World&>(ws.world());
+    int i = 0;
+    w.reg.view<sandbox::Transform2D>([&](ecs::Entity, sandbox::Transform2D& t) {
+        if (i++ == 0) { x = t.x; y = t.y; }
+    });
+}
+
 // Select the first actor by clicking it on the canvas — the same way a hand does.
 void select_first(Driver& d, studioshell::SceneWorkspace& ws) {
     d.panel(ws, ui::Input{});                       // a draw, so actor_rect() is known
@@ -393,6 +420,97 @@ static void test_screenshot() {
     dump_ppm(d.buf, PW, PH, "scene_effects.ppm");
 }
 
+// ---- 8. the grid moves where a click lands (chapter 144) --------------------
+static void test_grid_cycles_and_is_reachable() {
+    Driver d;
+    studioshell::SceneWorkspace ws(kPath);
+    d.panel(ws, ui::Input{});
+    CHECK(ws.grid() == 0);
+
+    // In the HEADER, above the scrolling body: a setting that decides where every
+    // click lands must not be a control you have to scroll a panel to find. Asked for
+    // by rect, so this fails if it is ever drawn somewhere unclickable.
+    ui::Rect gr = ws.control_rect("grid");
+    CHECK(gr.w > 0 && gr.h > 0);
+
+    click(d, ws, gr);  CHECK(ws.grid() == 8);
+    click(d, ws, ws.control_rect("grid"));  CHECK(ws.grid() == 16);
+    click(d, ws, ws.control_rect("grid"));  CHECK(ws.grid() == 32);
+    // ...and back to off. A cycle you cannot leave is a setting you cannot turn off.
+    click(d, ws, ws.control_rect("grid"));  CHECK(ws.grid() == 0);
+
+    // The status strip says so while it is on, and stops saying so when it is not —
+    // both directions, because "I dropped it here and it moved" is otherwise a bug
+    // report rather than a mode.
+    CHECK(ui::joined(ws.status()).find("grid") == std::string::npos);
+    click(d, ws, ws.control_rect("grid"));
+    d.panel(ws, ui::Input{});
+    CHECK(ui::joined(ws.status()).find("grid 8") != std::string::npos);
+}
+
+static void test_grid_is_refused_while_playing() {
+    Driver d;
+    studioshell::SceneWorkspace ws(kPath);
+    d.panel(ws, ui::Input{});
+    ws.register_commands();
+    CHECK(cmd::run("scene.grid", {}).ok);
+    CHECK(ws.grid() == 8);
+
+    cmd::run("scene.play", {});
+    d.panel(ws, ui::Input{});
+    CHECK(ws.playing());
+    // Refused, and it SAYS so: a running scene is moving its own actors, and snapping
+    // one under the simulation is an edit nobody asked for.
+    const engine::OpResult r = cmd::run("scene.grid", {});
+    CHECK(!r.ok);
+    CHECK(ws.grid() == 8);
+    // The button is disabled the same way, not merely ignored.
+    click(d, ws, ws.control_rect("grid"));
+    CHECK(ws.grid() == 8);
+
+    cmd::run("scene.play", {});
+    d.panel(ws, ui::Input{});
+    CHECK(!ws.playing());
+    CHECK(cmd::run("scene.grid", {}).ok);      // ...and the refusal LIFTS
+    CHECK(ws.grid() == 16);
+}
+
+static void test_a_drag_lands_on_the_grid() {
+    Driver d;
+    studioshell::SceneWorkspace ws(kPath);
+    d.panel(ws, ui::Input{});
+    const ui::Rect r = ws.actor_rect(0);
+    CHECK(r.w > 0);
+    // Grabbed deliberately OFF centre: what must land on the grid is the actor, not
+    // the pixel of it that happened to be under the cursor.
+    const int fx = r.x + r.w - 2, fy = r.y + 2;
+    const int tx = fx + 77, ty = fy + 43;
+
+    // First with the grid OFF, to learn where this exact drag ends up.
+    float x0 = 0, y0 = 0;
+    drag(d, ws, fx, fy, tx, ty);
+    actor0(ws, x0, y0);
+
+    cmd_undo(ws);
+    d.panel(ws, ui::Input{});
+
+    // ...then the identical drag with the grid on. The claim is exact and says nothing
+    // about the view's scale: the snapped drop is the unsnapped drop, rounded.
+    ws.register_commands();
+    cmd::run("scene.grid", {});                 // 8
+    cmd::run("scene.grid", {});                 // 16
+    CHECK(ws.grid() == 16);
+    float x1 = 0, y1 = 0;
+    drag(d, ws, fx, fy, tx, ty);
+    actor0(ws, x1, y1);
+
+    CHECK(x1 == sandbox::snap_to(x0, 16));
+    CHECK(y1 == sandbox::snap_to(y0, 16));
+    // ...and this drag genuinely had somewhere to move to, so the equality above is
+    // not two identical numbers agreeing about nothing.
+    CHECK(x1 != x0 || y1 != y0);
+}
+
 int main() {
     std::error_code ec;
     std::filesystem::remove_all(kBase, ec);
@@ -407,6 +525,10 @@ int main() {
     test_flipbook_controls();
     test_sound_bank_only_streams_when_something_plays();
     test_screenshot();
+
+    test_grid_cycles_and_is_reachable();
+    test_grid_is_refused_while_playing();
+    test_a_drag_lands_on_the_grid();
 
     assets::set_base_path(".");
     std::filesystem::remove_all(kBase, ec);

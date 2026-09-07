@@ -366,7 +366,8 @@ void StudioShellScene::draw_edit_section(gfx::Renderer2D& g, ui::Rect area) {
     // Only a window RESIZE can make the stored number differ from the shown one.
     const int most  = body.w / 2;
     const int least = std::min(kMinInspector, most);
-    if (ui_.splitter("wssplit", ui::Rect{hx, body.y, handle, body.h}, pos,
+    split_rect_ = ui::Rect{hx, body.y, handle, body.h};
+    if (ui_.splitter("wssplit", split_rect_, pos,
                      body.x + body.w - most - handle,
                      body.x + body.w - least - handle)) {
         layout_.set(ws.name(), body.x + body.w - pos - handle);

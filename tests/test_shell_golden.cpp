@@ -1268,6 +1268,84 @@ int main() {
         }
     }
 
+    // ---- the divider is real: dragging it changes the frame AND the file ---------
+    // Everything about the splitter is unit-tested elsewhere; what only this frame can
+    // answer is whether the Studio WIRED it — whether the handle is where the shell
+    // thinks it is, whether the width it computes reaches the panels, and whether the
+    // drag survives being let go of. A widget that works in isolation and is drawn
+    // somewhere unclickable passes every test but this one.
+    {
+        studioshell::StudioShellScene sc(kProject, kKnownEntries);
+        std::vector<std::uint32_t> b(static_cast<std::size_t>(PW) * PH, 0);
+        platform::Framebuffer f{b.data(), PW, PH, PW};
+        gfx::Renderer2D r(f, SS);
+
+        const auto frame = [&](const platform::InputState& in) {
+            sc.update(1.0 / 60.0, in);
+            const engine::Context c{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
+            sc.render(c);
+        };
+        platform::InputState idle{};
+        frame(idle);
+
+        const ui::Rect h = sc.split_handle();
+        CHECK(h.w > 0 && h.h > 0);
+        const int cx = h.x + h.w / 2, cy = h.y + h.h / 2;
+
+        // A fingerprint of the row the panels share. If the divider moves, this row
+        // must change: it crosses the canvas, the handle and the inspector.
+        const auto row_print = [&] {
+            std::uint64_t p = 1469598103934665603ull;
+            for (int lx = 0; lx < PW / SS; ++lx) {
+                p ^= b[static_cast<std::size_t>(cy * SS) * PW + static_cast<std::size_t>(lx * SS)];
+                p *= 1099511628211ull;
+            }
+            return p;
+        };
+        const std::uint64_t before = row_print();
+
+        // Grab it and pull LEFT, which widens the inspector.
+        platform::InputState down{};
+        down.mouse_x = cx;
+        down.mouse_y = cy;
+        down.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = true;
+        down.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+        frame(down);
+        platform::InputState move{};
+        move.mouse_x = cx - 90;
+        move.mouse_y = cy;
+        move.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+        frame(move);
+        // A second held frame, because the divider's rect is decided BEFORE the widget
+        // that moves it runs — immediate mode has no layout until it draws, so the new
+        // width reaches the panels on the next frame, which is also when a hand sees it.
+        frame(move);
+        CHECK(row_print() != before);        // the panels actually resized
+        const ui::Rect moved = sc.split_handle();
+        CHECK(moved.x < h.x);
+
+        // Let go. The file is written on RELEASE, not per mouse sample.
+        platform::InputState up{};
+        up.mouse_x = cx - 90;
+        up.mouse_y = cy;
+        frame(up);
+
+        const studioshell::Layout saved = studioshell::read_layout();
+        // The Map tab is the one open, and its width is now what was dragged to —
+        // NOT the 260 it asks for by default.
+        CHECK(saved.width_for("Map", 260) > 260);
+        CHECK(saved.width_for("Map", 0) == studioshell::fit_inspector(
+                                               saved.width_for("Map", 0), PW / SS));
+
+        // A second shell, built from scratch, opens at the width the first one left.
+        studioshell::StudioShellScene sc2(kProject, kKnownEntries);
+        const engine::Context c2{r, idle, 1.0 / 60.0, 0.0, 0.0, font.get()};
+        sc2.update(1.0 / 60.0, idle);
+        sc2.render(c2);
+        CHECK(sc2.split_handle().x == moved.x);
+        dump_ppm(b, PW, PH, "shell_split.ppm");
+    }
+
     if (g_failures == 0) std::printf("shell_golden: all tests passed\n");
     else                 std::printf("shell_golden: %d FAILURE(S)\n", g_failures);
     return g_failures;

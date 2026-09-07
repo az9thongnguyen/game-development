@@ -321,6 +321,36 @@ static void test_flipbook_clock() {
     CHECK(looping == 1);
 }
 
+// ---- the snap grid (chapter 144) -------------------------------------------
+static void test_snap_to_grid() {
+    using sandbox::snap_to;
+    // Off is off — and it is off for EVERY value, not just the ones that happen to be
+    // on a grid line. A step of 0 that quietly rounded would move every actor in a
+    // scene the first time the button was pressed and released.
+    CHECK(snap_to(7.5f, 0) == 7.5f);
+    CHECK(snap_to(-7.5f, 0) == -7.5f);
+    CHECK(snap_to(7.5f, -16) == 7.5f);
+
+    CHECK(snap_to(0.0f, 16) == 0.0f);
+    CHECK(snap_to(7.0f, 16) == 0.0f);
+    CHECK(snap_to(8.0f, 16) == 16.0f);      // the halfway point goes UP
+    CHECK(snap_to(9.0f, 16) == 16.0f);
+    CHECK(snap_to(23.0f, 16) == 16.0f);
+    CHECK(snap_to(24.0f, 16) == 32.0f);
+
+    // Symmetric about the origin. std::round's halfway rule biases one side, which in
+    // a scene laid out around 0 means the left half of it snaps differently.
+    for (float v = -40.0f; v <= 40.0f; v += 0.5f)
+        CHECK(snap_to(-v, 16) == -snap_to(v, 16));
+
+    // The result is always ON the grid, whatever went in.
+    for (float v = -100.0f; v <= 100.0f; v += 0.25f) {
+        const float g = snap_to(v, 8);
+        CHECK(std::fabs(g / 8.0f - static_cast<float>(static_cast<int>(g / 8.0f))) < 1e-4f);
+        CHECK(std::fabs(g - v) <= 4.0f + 1e-4f);   // never further than half a cell
+    }
+}
+
 int main() {
     test_spawn_attaches();
     test_mover_integrates_and_deterministic();
@@ -337,6 +367,7 @@ int main() {
     test_scene_roundtrip_texture();
     test_animated_sprite_roundtrip();
     test_snapshot_restore();
+    test_snap_to_grid();
     test_emitter_roundtrip();
     test_emitter_emits_at_the_actor();
     test_light_roundtrip_and_follows();

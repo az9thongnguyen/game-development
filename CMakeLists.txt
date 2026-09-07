@@ -532,6 +532,15 @@ target_link_libraries(test_mix_workspace PRIVATE
   mix_core commands_core document_core ui_core text_core engine_flags)
 add_test(NAME mix_workspace COMMAND test_mix_workspace)
 
+# The Studio's saved layout: text in, text out, plus the ONE clamp that decides what
+# today's window can give a divider somebody dragged in a different one.
+add_executable(test_studio_layout tests/test_studio_layout.cpp src/engine/assets.cpp)
+target_include_directories(test_studio_layout PRIVATE src)
+target_compile_definitions(test_studio_layout PRIVATE
+  SCRATCH_ROOT="${CMAKE_CURRENT_BINARY_DIR}/layout_scratch")
+target_link_libraries(test_studio_layout PRIVATE engine_flags)
+add_test(NAME studio_layout COMMAND test_studio_layout)
+
 add_executable(test_map_workspace tests/test_map_workspace.cpp
   src/games/studio_shell/map_workspace.cpp
   src/engine/renderer2d.cpp
