@@ -15,16 +15,22 @@ namespace bench {
 
 double percentile(const std::vector<double>& sorted_ms, double p) {
     if (sorted_ms.empty()) return 0.0;
-    if (p <= 0.0) return sorted_ms.front();
-    if (p >= 1.0) return sorted_ms.back();
-    const double n    = static_cast<double>(sorted_ms.size());
-    // Nearest rank: ceil(p * n), 1-based. The old code was `size * 95 / 100`, integer
-    // arithmetic on the INDEX — which for ten samples asks for index 9, the worst frame
-    // of the run reported as its 95th percentile.
-    auto rank = static_cast<std::size_t>(std::ceil(p * n));
+    const auto n = static_cast<long long>(sorted_ms.size());
+    // Nearest rank: ceil(p * n), 1-based. The old code in main.cpp was
+    // `size * 95 / 100` — integer arithmetic on the INDEX, which for ten samples asks
+    // for index 9: the worst frame of the run, reported as its 95th percentile.
+    //
+    // Computed SIGNED and then clamped. This function was first written with early-outs
+    // for `p <= 0` and `p >= 1` as well, and four mutations survived because of them:
+    // the early-outs and the clamps each cover the other exactly, so removing either
+    // one never changes an answer. Four survivors were not four missing tests, they
+    // were four redundant lines. The clamps stay (they are the ones an out-of-range `p`
+    // needs), and signed arithmetic is what makes them load-bearing — casting a
+    // negative rank to size_t would wrap it into a very large index instead.
+    long long rank = static_cast<long long>(std::ceil(p * static_cast<double>(n)));
     if (rank < 1) rank = 1;
-    if (rank > sorted_ms.size()) rank = sorted_ms.size();
-    return sorted_ms[rank - 1];
+    if (rank > n) rank = n;
+    return sorted_ms[static_cast<std::size_t>(rank - 1)];
 }
 
 Summary summarize(std::vector<double> ms) {

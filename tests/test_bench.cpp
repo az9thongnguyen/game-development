@@ -62,6 +62,15 @@ static void test_the_percentile_is_nearest_rank() {
     CHECK(bench::percentile(twenty, 0.95) == 19.0);
     CHECK(bench::percentile(twenty, 1.0) == 20.0);
     CHECK(bench::percentile(twenty, 0.0) == 1.0);
+
+    // Out of range in both directions, which is what the two clamps are FOR. They were
+    // dead when the function also had early-outs for p<=0 and p>=1 — the pair covered
+    // each other, and four mutations survived saying so. These two lines are what makes
+    // the survivors killable, and they are also the only reason the clamps exist.
+    CHECK(bench::percentile(twenty, -1.0) == 1.0);
+    CHECK(bench::percentile(twenty, 2.0) == 20.0);
+    CHECK(bench::percentile({7.0, 8.0}, -0.001) == 7.0);
+    CHECK(bench::percentile({7.0, 8.0}, 1.001) == 8.0);
 }
 
 static void test_summarize_sorts_and_does_not_disturb_the_caller() {
