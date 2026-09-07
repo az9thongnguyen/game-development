@@ -108,3 +108,6 @@ index like this rots.
 | 111 | The release id fingerprints the whole package FILE, identity included: two projects that ship nothing, or share their art and differ only in `entry`, are two releases | [145](../book/145-two-games-that-hashed-the-same.md) | Accepted |
 | 112 | A lab is a demo of a subsystem or a scene with no manifest; `iso` and `colony` were games sitting in that table and now have manifests | [145](../book/145-two-games-that-hashed-the-same.md) | Accepted |
 | 113 | A benchmark lives in a core like every other operation, so its arithmetic can be asked a question without allocating a framebuffer | [145](../book/145-two-games-that-hashed-the-same.md) | Accepted |
+| 114 | The rated-match client picks its own actions with `choose` | [139](../book/139-four-bytes-a-turn.md) | Superseded by 115 |
+| 115 | Who picks the action is a SWITCH on the client (`set_auto_play`), so the headless worker and the game screen are one implementation | [146](../book/146-a-match-nobody-could-play.md) | Accepted |
+| 116 | ONE `shown_battle()`/`my_side()` decides which battle is on screen and which half is yours — the server hands out sides, and a screen hard-coded to 0 shows you your opponent's party | [146](../book/146-a-match-nobody-could-play.md) | Accepted |

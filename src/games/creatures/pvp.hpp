@@ -63,10 +63,11 @@ public:
     void start(const Party& mine);
     void update();
 
-    // Give up: leave matchmaking and stop. Safe at any point — a player who taps
-    // Cancel while the socket is still opening must not be left queued on a server
-    // that will later match them with somebody who then waits for a peer that is not
-    // coming. Returns to Idle; a match already in progress is NOT abandoned this way.
+    // Give up LOOKING: leave matchmaking and stop. Safe to call at any point, and a
+    // no-op unless a search is actually running — a player who taps Cancel while the
+    // socket is still opening must not be left queued on a server that will later match
+    // them with somebody who then waits for a peer that is not coming. A match in
+    // progress, and a finished one whose result is still on screen, are both untouched.
     void cancel();
 
     // ---- who picks the action (chapter 146) --------------------------------------

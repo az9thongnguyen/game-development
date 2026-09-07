@@ -115,20 +115,18 @@ int main() {
 
         idle();   // one render, so the layout the taps use is the one that was drawn
 
-        // ---- the player taps the Online button ------------------------------
+        // ---- the player changes their mind first ------------------------------
+        // Queue, then Cancel. What this really asks is whether Cancel reached the
+        // SERVER: a client that merely stops updating leaves a ghost in the queue, and
+        // the next player to look for a match is paired with somebody who is not there.
+        // The match below is what proves it — with a ghost still queued, the real
+        // opponent would be matched with it and this test would time out, not play.
         const Layout over = scene.controls();
         CHECK(!over.online.empty());
         // Started from the SCREEN, with the test's server as the config. The button on
         // a shipped build uses `default_online_config()`; what is under test here is
         // everything after that, so the URL is the one part supplied from outside.
         CHECK(scene.start_online({base, pk}));
-        CHECK(scene.mode() == Mode::Online);
-
-        // ---- the opponent is the headless client `--pvp` runs ----------------
-        const Dex& dex = scene.dex();
-        PvpClient ai(dex, {base, pk});
-
-        // Let the SCENE reach the queue first, so the server's FIFO pairs these two.
         for (int i = 0; i < 400; ++i) {
             idle();
             if (scene.online() && scene.online()->state() == PvpClient::State::Queued) break;
@@ -136,18 +134,63 @@ int main() {
         }
         CHECK(scene.online() != nullptr);
         CHECK(scene.online()->state() == PvpClient::State::Queued);
+        CHECK(tap(scene.controls().back));            // Cancel, by tapping it
+        CHECK(scene.online() == nullptr);
+        CHECK(scene.mode() == Mode::Overworld);
+
+        // ---- the opponent is the headless client `--pvp` runs ----------------
+        const Dex& dex = scene.dex();
+        PvpClient ai(dex, {base, pk});
         // A team the player's fresh party can trade blows with. The first version of
         // this brought levels 19-21 against a level-5 starter and the match was over in
         // ONE exchange — which passed every assertion about the protocol and proved
         // nothing about a player taking turns.
         ai.start(make_party(dex, {{4, 5}, {8, 5}, {12, 5}}));
 
+        // The OPPONENT queues first, so the server gives the PLAYER side 1. Deliberate:
+        // with the player on side 0, every assertion about `my_side()` passes against a
+        // screen hard-coded to 0 — which is what the screen was before this chapter, and
+        // a mutation that hard-codes it again survived until this order changed.
+        for (int i = 0; i < 400 && ai.state() != PvpClient::State::Queued; ++i) {
+            ai.update();
+            idle();
+            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+        }
+        CHECK(ai.state() == PvpClient::State::Queued);
+
+        // An auto-playing client is NEVER waiting for a screen, and refuses an action
+        // pushed into it. These are the two halves of `waiting_for_action`, asked of the
+        // client with the other setting — without them, `--pvp` and the screen share a
+        // function whose flag only one of them ever exercises.
+        CHECK(ai.auto_play());
+        CHECK(!ai.waiting_for_action());
+        CHECK(!ai.act(Action{Action::Kind::Move, 0}));
+
+        // ...and now the peer is driven BY HAND too. Not to test the AI — to make the
+        // "I have acted and the opponent has not" state exist at all. With auto-play on,
+        // a client acts inside the very `update()` that builds the battle, so the peer
+        // is always ahead and that state lasts less than one tap. It is also a second
+        // caller of `act()`, from a client that is not a screen.
+        ai.set_auto_play(false);
+
+        CHECK(scene.start_online({base, pk}));
+        CHECK(scene.mode() == Mode::Online);
+
         // ---- play it, by tapping ---------------------------------------------
-        int taps = 0, turns = 0;
-        bool saw_menu = false, saw_moves = false;
+        int taps = 0, turns = 0, refused = 0;
+        bool saw_menu = false, saw_moves = false, saw_between = false;
+        bool peer_owes = false;   // the peer has a turn to answer and has not answered it
         for (int i = 0; i < 1200 && scene.mode() != Mode::Ack; ++i) {
             ai.update();
             const PvpClient* me = scene.online();
+            // `waiting_for_action` is exactly "the protocol owes an action and I am not
+            // going to invent one" — not "a match is running". Asked of both clients.
+            if (me && me->state() == PvpClient::State::Playing)
+                CHECK(me->waiting_for_action() == (me->net().phase() == NetPhase::MyTurn));
+            CHECK(ai.waiting_for_action() ==
+                  (ai.state() == PvpClient::State::Playing &&
+                   ai.net().phase() == NetPhase::MyTurn));
+
             if (me && me->waiting_for_action()) {
                 const Layout l = scene.controls();
                 if (scene.mode() == Mode::Menu) {
@@ -159,11 +202,31 @@ int main() {
                     CHECK(tap(l.cell[0]));            // the first move
                     ++taps;
                     ++turns;
+                    peer_owes = true;   // the player has acted; the peer has not
                 } else {
                     idle();
                 }
+            } else if (peer_owes && !saw_between && me &&
+                       me->state() == PvpClient::State::Playing &&
+                       scene.mode() == Mode::Menu) {
+                // A tap BETWEEN turns must do nothing but SAY so. Deterministic because
+                // the peer is held: nothing can arrive to resolve the turn under it.
+                saw_between = true;
+                CHECK(!me->waiting_for_action());
+                CHECK(tap(scene.controls().cell[0]));
+                ++taps;
+                ++refused;
+                CHECK(scene.message().find("Waiting") != std::string::npos);
+                CHECK(scene.mode() == Mode::Menu);      // the move list did NOT open
+                CHECK(me->net().phase() == NetPhase::Waiting);
             } else {
                 idle();
+            }
+
+            // ...and now the peer answers, by the same door the screen uses.
+            if (peer_owes && ai.waiting_for_action() && (saw_between || turns > 1)) {
+                CHECK(ai.act(choose(dex, ai.net().battle(), ai.net().side())));
+                peer_owes = false;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(6));
         }
@@ -178,8 +241,10 @@ int main() {
         // ---- what a hand actually did -----------------------------------------
         CHECK(saw_menu);
         CHECK(saw_moves);
+        CHECK(saw_between);         // ...and the refusal above was actually exercised
+        CHECK(refused == 1);
         CHECK(turns >= 2);          // a match, not a single exchange
-        CHECK(taps == turns * 2);   // every turn cost exactly Fight + a move
+        CHECK(taps >= turns * 2);   // at least a Fight and a move for every turn
         std::printf("  the player took %d turns with %d taps\n", turns, taps);
 
         const PvpClient* me = scene.online();
@@ -203,6 +268,13 @@ int main() {
         // just as happily against a screen hard-coded to side 0, which is exactly what
         // it was before this chapter — and the server hands out sides, not the client.
         CHECK(scene.my_side() == me->net().side());
+        CHECK(scene.my_side() == 1);   // and it is NOT 0, which is the whole point
+
+        // Every turn in the RECORDING was one the player tapped a move for. This is the
+        // claim `taps == turns * 2` was reaching for and could not make race-free: the
+        // tape is what the protocol resolved, and it has exactly as many turns as the
+        // screen sent actions for.
+        CHECK(static_cast<int>(me->net().tape().turns.size()) == turns);
         CHECK(&scene.shown_battle() == &me->net().battle());
         {
             const Creature& shown = scene.shown_battle().side[scene.my_side()].now();
@@ -210,6 +282,14 @@ int main() {
             for (int i = 0; i < kPartySize; ++i)
                 if (scene.world().party.member[i].species == shown.species) mine = true;
             CHECK(mine);   // the creature on the player's side came from the player's party
+        }
+
+        // Cancelling a match already in progress is a no-op: `cancel` is for the QUEUE,
+        // and a client that disconnected itself mid-battle would desync its peer.
+        {
+            const PvpClient::State was = ai.state();
+            ai.cancel();
+            CHECK(ai.state() == was);
         }
 
         // The rating is on the screen that ends the match, which is the whole point of

@@ -21,7 +21,11 @@ PvpClient::PvpClient(const Dex& d, gbaas::Config cfg, std::string board,
       board_(std::move(board)) {}
 
 void PvpClient::cancel() {
-    if (state_ == State::Idle || state_ == State::Playing || state_ == State::Reporting)
+    // Only while LOOKING. Written the other way round first — a list of states to skip —
+    // and `Done` was not on it, so cancelling a finished session reset it to Idle and
+    // threw away the result the screen was still showing. A whitelist of the states an
+    // operation applies to cannot forget a state; a blacklist can, and did.
+    if (state_ != State::SigningIn && state_ != State::Connecting && state_ != State::Queued)
         return;
     // `cancel()` on a socket that never opened is harmless — the SDK buffers ops — and
     // sending it is the point: a client that just stops updating stays in the server's

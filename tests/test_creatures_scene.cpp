@@ -498,6 +498,64 @@ int main() {
         CHECK(!over.online.overlaps(over.save));
         CHECK(!over.online.overlaps(over.up));
 
+        // ---- the layout, asked directly (no session, no server) ----------------
+        // Three claims that are cheap here and expensive anywhere else, each of which
+        // survived a mutation until it was written down.
+        {
+            using creature::Box;
+            // An empty box overlaps nothing — the rule `contains` already follows, and
+            // what every "these two controls do not sit on each other" check rests on.
+            const Box ten{0, 0, 10, 10};
+            CHECK(!Box{}.overlaps(ten));
+            CHECK(!ten.overlaps(Box{}));
+            const Box corner{9, 9, 10, 10}, beside{10, 0, 10, 10};
+            CHECK(ten.overlaps(corner));
+            CHECK(!ten.overlaps(beside));   // touching edges is not overlap
+
+            // On a screen too short for another row, the online button is ABSENT rather
+            // than placed off the top edge. An empty box is hit by nothing, which is why
+            // there is no `bool has_online` beside it.
+            const creature::Layout tiny = creature::layout(320, 170, creature::Mode::Overworld);
+            CHECK(tiny.online.empty() || tiny.online.y >= 0);
+            for (int h = 120; h <= 400; h += 7) {
+                const creature::Layout t = creature::layout(480, h, creature::Mode::Overworld);
+                CHECK(t.online.empty() || (t.online.y >= 0 && t.online.y + t.online.h <= h));
+            }
+
+            // The search screen has no creature rects: there is nothing to draw yet, and
+            // a renderer that forgets to check must draw nothing rather than draw at 0,0.
+            const creature::Layout on = creature::layout(640, 360, creature::Mode::Online);
+            CHECK(on.mine.empty());
+            CHECK(on.theirs.empty());
+            CHECK(on.cell[0].empty());
+            CHECK(!on.back.empty());
+        }
+
+        // A rated match cannot be started from inside a wild one — one fight at a time.
+        // Checked by walking into a fight rather than by faking a phase.
+        {
+            gbaas::Config unused;
+            unused.base_url = "http://127.0.0.1:9";
+            unused.api_key  = "pk_demo_creatures";
+            for (int i = 0; i < 400 && scene.mode() == creature::Mode::Overworld; ++i) {
+                platform::InputState in{};
+                in.mouse_x = scene.controls().right.x + 4;
+                in.mouse_y = scene.controls().right.y + 4;
+                in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+                scene.update(1.0 / 60.0, in);
+                render(in);
+            }
+            CHECK(scene.mode() != creature::Mode::Overworld);   // in a battle
+            CHECK(!scene.start_online(unused));
+            CHECK(scene.online() == nullptr);
+            while (scene.mode() != creature::Mode::Overworld) {
+                const creature::Layout l = scene.controls();
+                const auto [ax, ay] = centre(l.ack.empty() ? l.cell[3] : l.ack);
+                tap(ax, ay);
+                render(idle);
+            }
+        }
+
         gbaas::Config nowhere;
         nowhere.base_url = "http://127.0.0.1:9";   // discard: refused immediately
         nowhere.api_key  = "pk_demo_creatures";
@@ -563,14 +621,33 @@ int main() {
             // ...and the panel says something. Ink where the message goes, counted the
             // same way, because a blank strip and a strip with a sentence on it are the
             // same rectangle otherwise.
+            // From +20 down: `message_` is drawn at the TOP of the log rect, so an ink
+            // count over the whole box is satisfied by a leftover toast and says nothing
+            // about the result line. It survived a mutation that deleted the result line
+            // entirely until this offset was here.
             int ink = 0;
-            for (int yy = a.log.y * SS; yy < (a.log.y + a.log.h) * SS; ++yy)
+            for (int yy = (a.log.y + 20) * SS; yy < (a.log.y + a.log.h) * SS; ++yy)
                 for (int xx = a.log.x * SS; xx < (a.log.x + a.log.w) * SS; ++xx) {
                     const std::uint32_t px =
                         buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)];
                     if (px != 0 && px != gfx::rgba(0x10, 0x14, 0x1a, 235)) ++ink;
                 }
             CHECK(ink > 0);
+
+            // ...and NOTHING is drawn where the two creatures would go. A session that
+            // failed before the parties were exchanged has no creatures, and the screen
+            // drew two blank placeholder squares over two empty health bars until it
+            // was asked this. Both rects come from the battle layout, which the Ack
+            // screen shares.
+            const creature::Layout bl = creature::layout(LW, LH, creature::Mode::Menu);
+            int sprite_ink = 0;
+            for (int yy = bl.theirs.y * SS; yy < (bl.theirs.y + bl.theirs.h) * SS; ++yy)
+                for (int xx = bl.theirs.x * SS; xx < (bl.theirs.x + bl.theirs.w) * SS; ++xx) {
+                    const std::uint32_t px =
+                        buf[static_cast<std::size_t>(yy) * PW + static_cast<std::size_t>(xx)];
+                    if (px != gfx::rgb(0x2e, 0x3d, 0x4e)) ++sprite_ink;   // the sky
+                }
+            CHECK(sprite_ink == 0);
         }
 
         // ...and Continue puts the game back, without healing the party as a blackout
