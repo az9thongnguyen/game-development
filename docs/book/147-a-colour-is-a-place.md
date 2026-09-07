@@ -109,6 +109,49 @@ one that does nothing, so the test presses it in both states.
 
 ---
 
+## Nineteen mutations, and a guard written four times
+
+Nineteen single-token changes across three rounds. All nineteen killed — but six of them
+survived the first pass, and four of those were the same shape.
+
+**`active_` is cleared in four places.** `end()` does it once a frame ("safety: nothing
+can be active with the button up"), `drag_in` did it again, and the `&& in_.down` in
+`drag_in`'s return does it a third time. Deleting the middle one changed nothing anywhere,
+which is what a mutation surviving means. It is gone.
+
+The other two are *not* redundant, and separating them took reading what each is actually
+for:
+
+- **`end()`'s clear is the one that matters across frames.** Without it, the last control
+  dragged follows the next press anywhere on the screen — you press somewhere empty and a
+  slider you touched a minute ago jumps. That now has a test.
+- **`&& in_.down` matters for exactly one frame.** `end()` runs *after* the widgets, so on
+  the frame the button comes up `active_` is still set, and only this stops the control
+  acting on it. What it decides is that **a release is not a drag**: letting go somewhere
+  else in the same frame — which a fast mouse does — leaves the value where the last held
+  frame put it, rather than nudging it on the way up. Pinned, with the reason written
+  down, because it was invisible until a mutation asked.
+
+**`Keep` had two gates.** The button's `enabled` flag and an update-side `find` are the
+same question asked twice, two lines apart, with one setter between them. The `find` is
+gone: the button is the gate, `update()` is the operation. That is the D-rule read the
+right way round — the trigger decides *whether*, the core does *what*.
+
+**And two survivors were claims about paint.** "Keep stays live for a colour already in
+the palette" and "the gradient's saturation runs down instead of across" are both
+invisible to every coordinate assertion: a live button and a dead one are the same
+rectangle, and a gradient with its axes swapped is the same pixels in the same places.
+Both are settled by reading the frame the renderer produced — `ctrl_disabled` counted
+inside the button's own rect, and the four corners of the gradient (bright and grey
+top-left, bright and *saturated* top-right, dark along the whole bottom).
+
+**One more thing went wrong, and it was the operator.** A survivor appeared early in the
+first run and I fixed the code while the harness was still going. The next restore put the
+`.mutbak` back — taken before the fix — so the fix vanished, a live mutation was left in
+the working tree, and a suite I had just watched go green had been compiled against a file
+that no longer existed. The harness owns the working tree while it runs. That is now the
+fourth rule in the memory file that already had three.
+
 ## What is verified, and what is not
 
 Verified:
@@ -123,8 +166,10 @@ Verified:
   at the square's vertical axis instead of a slider.
 - **Keep**: adds the colour, refuses a duplicate, comes back when the colour moves off
   the palette, and does not sit on the hex field it shares a row with.
-- **A rendered frame looked at**, twice — which is the only reason the square is a
+- **19 mutations, 19 killed**, across three rounds.
+- **A rendered frame looked at**, three times — which is the only reason the square is a
   rectangle.
+- Golden path, 0 `.tmp` leaks; Emscripten build.
 
 Not verified:
 

@@ -133,7 +133,11 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 #            its CONNECTIONS (there is no tileset renderer here), which is the only
 #            thing on this canvas that says a road is a road
 #   pixel    the Studio's Pixels workspace, full-screen (pencil/rect/fill/pick on .hrt,
-#            palette sampled from the image + an HSV/hex mixer for a colour it lacks)
+#            palette sampled from the image + a mixer for a colour it lacks: a hue bar,
+#            an S/V area (`ui::xy_pad` — the third caller of `drag_in`, the one
+#            press-hold-release loop `slider` and `splitter` share since ch.147), a hex
+#            field, and Keep, which puts a mixed colour in the SAME palette the image
+#            built — so it survives a reload exactly when you actually used it)
 #   mixer    the Studio's Mixer workspace, full-screen (the SAME object as its Mixer
 #            tab): a sprite ASSEMBLED from parts of a sheet, plus palette swaps.
 #            Save writes the .mix (the source); Bake writes the .hrt
