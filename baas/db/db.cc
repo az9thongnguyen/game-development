@@ -4,6 +4,7 @@
 #include "baas/db/db.h"
 
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
 
 #include "baas/auth/password.h"
@@ -20,14 +21,14 @@ DbClientPtr g_client;
 // runs on SQLite now and stays conservative for the documented Postgres build.
 constexpr const char* kMigration1 = R"SQL(
 CREATE TABLE IF NOT EXISTS projects (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   name TEXT NOT NULL,
   public_key TEXT NOT NULL UNIQUE,
   secret_key_hash TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   email TEXT,
   password_hash TEXT,
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email
   ON users(project_id, email) WHERE email IS NOT NULL;
 CREATE TABLE IF NOT EXISTS leaderboards (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   key TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -47,7 +48,7 @@ CREATE TABLE IF NOT EXISTS leaderboards (
   UNIQUE(project_id, key)
 );
 CREATE TABLE IF NOT EXISTS scores (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   leaderboard_id INTEGER NOT NULL REFERENCES leaderboards(id),
   user_id INTEGER NOT NULL REFERENCES users(id),
   value BIGINT NOT NULL,
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS scores (
   UNIQUE(leaderboard_id, user_id)
 );
 CREATE TABLE IF NOT EXISTS saves (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   user_id INTEGER NOT NULL REFERENCES users(id),
   slot TEXT NOT NULL,
@@ -65,7 +66,7 @@ CREATE TABLE IF NOT EXISTS saves (
   UNIQUE(project_id, user_id, slot)
 );
 CREATE TABLE IF NOT EXISTS inventory (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   user_id INTEGER NOT NULL REFERENCES users(id),
   item TEXT NOT NULL,
@@ -74,7 +75,7 @@ CREATE TABLE IF NOT EXISTS inventory (
   UNIQUE(project_id, user_id, item)
 );
 CREATE TABLE IF NOT EXISTS config (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   key TEXT NOT NULL,
   value TEXT NOT NULL,
@@ -82,7 +83,7 @@ CREATE TABLE IF NOT EXISTS config (
   UNIQUE(project_id, key)
 );
 CREATE TABLE IF NOT EXISTS analytics_events (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   user_id INTEGER,
   name TEXT NOT NULL,
@@ -90,7 +91,7 @@ CREATE TABLE IF NOT EXISTS analytics_events (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS live_events (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   key TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -100,7 +101,7 @@ CREATE TABLE IF NOT EXISTS live_events (
   UNIQUE(project_id, key)
 );
 CREATE TABLE IF NOT EXISTS replays (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   user_id INTEGER NOT NULL REFERENCES users(id),
   name TEXT NOT NULL,
@@ -108,7 +109,7 @@ CREATE TABLE IF NOT EXISTS replays (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS assets (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   name TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT '',
@@ -118,7 +119,7 @@ CREATE TABLE IF NOT EXISTS assets (
   UNIQUE(project_id, name)
 );
 CREATE TABLE IF NOT EXISTS testruns (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   scenario TEXT NOT NULL,
   params TEXT NOT NULL DEFAULT '',
@@ -134,7 +135,7 @@ CREATE TABLE IF NOT EXISTS testruns (
 // the fact. project_id is nullable for platform-level actions with no single subject.
 constexpr const char* kMigration2Audit = R"SQL(
 CREATE TABLE IF NOT EXISTS audit_log (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER,
   actor TEXT NOT NULL,
   action TEXT NOT NULL,
@@ -159,7 +160,7 @@ ALTER TABLE analytics_events ADD COLUMN release TEXT NOT NULL DEFAULT '';
 // project; `result` holds the grant's resulting quantity to replay.
 constexpr const char* kMigration4Idempotency = R"SQL(
 CREATE TABLE IF NOT EXISTS idempotency_keys (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL,
   idem_key TEXT NOT NULL,
   result BIGINT NOT NULL,
@@ -181,7 +182,7 @@ struct Migration {
 // currencies" model — the server owns prices, the client buys a SKU, not an arbitrary cost.
 constexpr const char* kMigration5Catalog = R"SQL(
 CREATE TABLE IF NOT EXISTS catalog (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   sku TEXT NOT NULL,
   currency TEXT NOT NULL,
@@ -200,7 +201,7 @@ CREATE TABLE IF NOT EXISTS catalog (
 // but not rotate secrets."
 constexpr const char* kMigration6Operators = R"SQL(
 CREATE TABLE IF NOT EXISTS operators (
-  id INTEGER PRIMARY KEY,
+  id AUTOID,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   name TEXT NOT NULL,
   key_hash TEXT NOT NULL,
@@ -264,13 +265,13 @@ void exec_each_statement(const DbClientPtr& db, const std::string& sql) {
     std::string stmt;
     for (char c : sql) {
         if (c == ';') {
-            if (!is_blank(stmt)) db->execSqlSync(stmt);
+            if (!is_blank(stmt)) exec(db, stmt);
             stmt.clear();
         } else {
             stmt += c;
         }
     }
-    if (!is_blank(stmt)) db->execSqlSync(stmt);
+    if (!is_blank(stmt)) exec(db, stmt);
 }
 
 }  // namespace
@@ -280,6 +281,81 @@ Dialect g_dialect = Dialect::Sqlite;
 }  // namespace
 
 Dialect dialect() { return g_dialect; }
+
+namespace {
+
+// The two spellings of "a surrogate key that fills itself in", and the one spelling of
+// "now, as text, in the format SQLite would have written". `to_char` rather than
+// `now()::text`: Postgres's own text form carries microseconds and a zone offset, and
+// live_events compares these strings to each other with <= — a wider format sorts wrong
+// the moment one row was written by each backend.
+constexpr const char* kAutoIdSqlite = "INTEGER PRIMARY KEY";
+constexpr const char* kAutoIdPg     = "INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY";
+constexpr const char* kNowPg = "to_char(now() at time zone 'utc','YYYY-MM-DD HH24:MI:SS')";
+
+bool ident_char(char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; }
+
+// `w` occurs at `i` as a whole word, so a column named `current_timestamp_at` is not
+// half-rewritten into something that does not parse.
+bool word_at(const std::string& s, std::size_t i, const char* w) {
+    const std::size_t n = std::strlen(w);
+    if (s.compare(i, n, w) != 0) return false;
+    if (i > 0 && ident_char(s[i - 1])) return false;
+    if (i + n < s.size() && ident_char(s[i + n])) return false;
+    return true;
+}
+
+}  // namespace
+
+std::string portable(const std::string& sql, Dialect d) {
+    const bool  pg = d == Dialect::Postgres;
+    std::string out;
+    out.reserve(sql.size() + 64);
+    int param = 0;
+
+    for (std::size_t i = 0; i < sql.size();) {
+        const char c = sql[i];
+
+        // A quoted literal or identifier is copied through untouched, doubled quote and
+        // all. Everything below is a rewrite of SQL; none of it is a rewrite of data.
+        if (c == '\'' || c == '"') {
+            const char q = c;
+            out += c;
+            ++i;
+            while (i < sql.size()) {
+                out += sql[i];
+                if (sql[i] == q) {
+                    ++i;
+                    if (i < sql.size() && sql[i] == q) { out += sql[i]; ++i; continue; }
+                    break;
+                }
+                ++i;
+            }
+            continue;
+        }
+
+        if (c == '?') {
+            if (pg) { out += '$'; out += std::to_string(++param); }
+            else      out += '?';
+            ++i;
+            continue;
+        }
+        if (word_at(sql, i, "AUTOID")) {
+            out += pg ? kAutoIdPg : kAutoIdSqlite;
+            i += 6;
+            continue;
+        }
+        if (pg && word_at(sql, i, "CURRENT_TIMESTAMP")) {
+            out += kNowPg;
+            i += 17;
+            continue;
+        }
+
+        out += c;
+        ++i;
+    }
+    return out;
+}
 
 const char* lock_clause() {
     // Not a table of two strings behind a flag for its own sake: this is the only
@@ -313,7 +389,7 @@ DbClientPtr make_db_client(const std::string& url, int pool) {
 void run_migrations(const DbClientPtr& db) {
     // The ledger of applied migrations. Created first so a fresh DB and an old
     // pre-versioning DB both start from "version 0 applied".
-    db->execSqlSync(
+    exec(db,
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
         "  version INTEGER PRIMARY KEY,"
         "  name TEXT NOT NULL,"
@@ -321,7 +397,7 @@ void run_migrations(const DbClientPtr& db) {
 
     int current = 0;
     const auto max_row =
-        db->execSqlSync("SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations");
+        exec(db, "SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations");
     if (!max_row.empty()) current = max_row[0]["v"].as<int>();
 
     // ponytail: a migration's statements + its ledger insert are NOT wrapped in one
@@ -334,14 +410,14 @@ void run_migrations(const DbClientPtr& db) {
     for (const auto& m : kMigrations) {
         if (m.version <= current) continue;   // already applied — skip
         exec_each_statement(db, m.sql);
-        db->execSqlSync("INSERT INTO schema_migrations(version, name) VALUES(?,?)",
+        exec(db, "INSERT INTO schema_migrations(version, name) VALUES(?,?)",
                         m.version, std::string(m.name));
     }
 }
 
 std::vector<MigrationRecord> applied_migrations(const DbClientPtr& db) {
     std::vector<MigrationRecord> out;
-    const auto rows = db->execSqlSync(
+    const auto rows = exec(db,
         "SELECT version, name, applied_at FROM schema_migrations ORDER BY version ASC");
     for (const auto& r : rows)
         out.push_back({r["version"].as<int>(), r["name"].as<std::string>(),
@@ -352,25 +428,24 @@ std::vector<MigrationRecord> applied_migrations(const DbClientPtr& db) {
 std::string seed(const DbClientPtr& db) {
     const std::string public_key = "pk_demo_colony";
     const auto existing =
-        db->execSqlSync("SELECT id FROM projects WHERE public_key=?", public_key);
+        exec(db, "SELECT id FROM projects WHERE public_key=?", public_key);
     if (existing.empty()) {
         // secret_key is for future server-to-server / admin use (unused in Slice #1);
         // stored as a placeholder here and hashed for real when the admin API lands.
         // Demo project's secret key is "sk_demo_colony" (stored hashed). main prints it.
-        const auto ins = db->execSqlSync(
+        const auto pid = insert_id(db,
             "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
             std::string("Colony Demo"), public_key, pw::hash("sk_demo_colony"));
-        const auto pid = ins.insertId();
-        db->execSqlSync(
+        exec(db,
             "INSERT INTO leaderboards(project_id, key, name, sort) VALUES(?,?,?,?)",
             static_cast<long>(pid), std::string("colony_high"),
             std::string("Colony High Scores"), std::string("desc"));
         // Default remote config + a demo live event (always active) for the colony demo.
-        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+        exec(db, "INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
                         static_cast<long>(pid), std::string("motd"), std::string("Welcome to Colony!"));
-        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+        exec(db, "INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
                         static_cast<long>(pid), std::string("max_agents"), std::string("50"));
-        db->execSqlSync(
+        exec(db,
             "INSERT INTO live_events(project_id, key, name, starts_at, ends_at, payload) VALUES(?,?,?,?,?,?)",
             static_cast<long>(pid), std::string("double_wood"), std::string("Double Wood Weekend"),
             std::string("2000-01-01 00:00:00"), std::string("2999-01-01 00:00:00"),
@@ -385,19 +460,18 @@ std::string seed(const DbClientPtr& db) {
     // is the point: an operator changes a price by typing the line they would have
     // typed in the file, and nothing here needs to know what a crop is.
     const std::string farm_key = "pk_demo_farm";
-    if (db->execSqlSync("SELECT id FROM projects WHERE public_key=?", farm_key).empty()) {
-        const auto ins = db->execSqlSync(
+    if (exec(db, "SELECT id FROM projects WHERE public_key=?", farm_key).empty()) {
+        const auto pid = insert_id(db,
             "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
             std::string("Farm Demo"), farm_key, pw::hash("sk_demo_farm"));
-        const auto pid = ins.insertId();
         // No leaderboard: the farm does not submit a score, and a seeded row nothing
         // reads is a row someone later mistakes for a feature.
-        db->execSqlSync("INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
+        exec(db, "INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
                         static_cast<long>(pid), std::string("farm_defs"),
                         std::string("crop parsnip sell=40\n"));
         // Seeded NOT active (it started and ended in the past), so the festival is a
         // switch an operator flips in the dashboard rather than a permanent buff.
-        db->execSqlSync(
+        exec(db,
             "INSERT INTO live_events(project_id, key, name, starts_at, ends_at, payload) VALUES(?,?,?,?,?,?)",
             static_cast<long>(pid), std::string("harvest_festival"),
             std::string("Harvest Festival"),
@@ -410,12 +484,11 @@ std::string seed(const DbClientPtr& db) {
     // 'last' because an Elo is not a personal best: it has to be able to go down, and
     // a board that keeps the better value would freeze every player at their peak.
     const std::string creatures_key = "pk_demo_creatures";
-    if (db->execSqlSync("SELECT id FROM projects WHERE public_key=?", creatures_key).empty()) {
-        const auto ins = db->execSqlSync(
+    if (exec(db, "SELECT id FROM projects WHERE public_key=?", creatures_key).empty()) {
+        const auto pid = insert_id(db,
             "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
             std::string("Creatures Demo"), creatures_key, pw::hash("sk_demo_creatures"));
-        const auto pid = ins.insertId();
-        db->execSqlSync(
+        exec(db,
             "INSERT INTO leaderboards(project_id, key, name, sort, mode) VALUES(?,?,?,?,?)",
             static_cast<long>(pid), std::string("creature_elo"),
             std::string("Creature Ladder"), std::string("desc"), std::string("last"));

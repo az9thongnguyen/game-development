@@ -33,7 +33,7 @@ namespace {
 // connection in the pool — and " FOR UPDATE" on Postgres, where it does not.
 long long qty_locked(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_id,
                      long user_id, const std::string& item) {
-    const auto rows = tx->execSqlSync(
+    const auto rows = db::exec(tx,
         std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
             db::lock_clause(),
         project_id, user_id, item);
@@ -43,7 +43,7 @@ long long qty_locked(const std::shared_ptr<drogon::orm::Transaction>& tx, long p
 // ...and the same read, WITHOUT a lock, for a caller that is only answering a
 // question. Named apart so a read-then-write cannot reach for it by accident.
 long long qty_of(long project_id, long user_id, const std::string& item) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?",
         project_id, user_id, item);
     return rows.empty() ? 0 : rows[0]["qty"].as<long>();
@@ -53,11 +53,11 @@ long long qty_of(long project_id, long user_id, const std::string& item) {
 void put_qty(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_id,
              long user_id, const std::string& item, long long qty, bool exists) {
     if (exists)
-        tx->execSqlSync("UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
+        db::exec(tx, "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
                         "WHERE project_id=? AND user_id=? AND item=?",
                         qty, project_id, user_id, item);
     else
-        tx->execSqlSync("INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,?)",
+        db::exec(tx, "INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,?)",
                         project_id, user_id, item, qty);
 }
 
@@ -76,7 +76,7 @@ Item get(long project_id, long user_id, const std::string& item) {
 }
 
 std::vector<Item> list(long project_id, long user_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT item, qty FROM inventory WHERE project_id=? AND user_id=? ORDER BY item ASC",
         project_id, user_id);
     std::vector<Item> out;
@@ -113,7 +113,7 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
     // 5, and the player was owed 10.
     auto tx = db::client()->newTransaction();
     try {
-        const auto ex  = tx->execSqlSync(
+        const auto ex  = db::exec(tx,
             std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
                 db::lock_clause(),
             project_id, user_id, item);
@@ -162,14 +162,14 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
         }
 
         // Spend the currency.
-        tx->execSqlSync(
+        db::exec(tx,
             "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
             "WHERE project_id=? AND user_id=? AND item=?",
             have - cost, project_id, user_id, currency);
 
         // Grant the item (upsert), computing its resulting quantity. Locked for the
         // same reason: the currency and the item are two different rows.
-        const auto ex = tx->execSqlSync(
+        const auto ex = db::exec(tx,
             std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
                 db::lock_clause(),
             project_id, user_id, item);
@@ -179,7 +179,7 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
         // Record idempotency INSIDE the transaction so the key commits atomically with the
         // spend+grant — a retry cannot land between the effect and the record.
         if (!scoped_key.empty())
-            idem::record_with(tx, 
+            idem::record_with(tx,
                 project_id, scoped_key, qty);
 
         return {Item{item, qty}, std::nullopt};   // tx commits on scope exit

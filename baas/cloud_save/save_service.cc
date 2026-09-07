@@ -20,7 +20,7 @@ bool valid_slot(const std::string& slot) {
 PutResult put(long project_id, long user_id, const std::string& slot,
               const std::string& data, long long if_match) {
     auto       db       = db::client();
-    const auto existing = db->execSqlSync(
+    const auto existing = db::exec(db,
         "SELECT version FROM saves WHERE project_id=? AND user_id=? AND slot=?",
         project_id, user_id, slot);
 
@@ -31,12 +31,12 @@ PutResult put(long project_id, long user_id, const std::string& slot,
 
     long long new_version = 1;
     if (existing.empty()) {
-        db->execSqlSync(
+        db::exec(db,
             "INSERT INTO saves(project_id, user_id, slot, data, version) VALUES(?,?,?,?,1)",
             project_id, user_id, slot, data);
     } else {
         new_version = existing[0]["version"].as<long>() + 1;
-        db->execSqlSync(
+        db::exec(db,
             "UPDATE saves SET data=?, version=?, updated_at=CURRENT_TIMESTAMP "
             "WHERE project_id=? AND user_id=? AND slot=?",
             data, new_version, project_id, user_id, slot);
@@ -45,7 +45,7 @@ PutResult put(long project_id, long user_id, const std::string& slot,
 }
 
 std::optional<Record> get(long project_id, long user_id, const std::string& slot) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT data, version, updated_at FROM saves "
         "WHERE project_id=? AND user_id=? AND slot=?",
         project_id, user_id, slot);
@@ -55,7 +55,7 @@ std::optional<Record> get(long project_id, long user_id, const std::string& slot
 }
 
 std::vector<Meta> list(long project_id, long user_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT slot, version, length(CAST(data AS BLOB)) AS sz, updated_at FROM saves "
         "WHERE project_id=? AND user_id=? ORDER BY slot ASC",
         project_id, user_id);
@@ -67,7 +67,7 @@ std::vector<Meta> list(long project_id, long user_id) {
 }
 
 bool remove(long project_id, long user_id, const std::string& slot) {
-    const auto r = db::client()->execSqlSync(
+    const auto r = db::exec(db::client(),
         "DELETE FROM saves WHERE project_id=? AND user_id=? AND slot=?",
         project_id, user_id, slot);
     return r.affectedRows() > 0;

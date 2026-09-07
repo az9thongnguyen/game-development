@@ -41,7 +41,7 @@ void SecretKeyFilter::doFilter(const drogon::HttpRequestPtr& req,
     }
     try {
         const auto rows =
-            db::client()->execSqlSync("SELECT secret_key_hash FROM projects WHERE id=?", pid);
+            db::exec(db::client(), "SELECT secret_key_hash FROM projects WHERE id=?", pid);
         if (rows.empty() || !pw::verify(secret, rows[0]["secret_key_hash"].as<std::string>())) {
             fcb(make_error(401, "unauthorized", "invalid secret key"));
             return;

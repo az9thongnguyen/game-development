@@ -18,18 +18,18 @@ Result register_user(long project_id, const std::string& email,
                 Error{400, "weak_password", "password must be at least 6 characters"}};
 
     auto db = db::client();
-    const auto dup = db->execSqlSync(
+    const auto dup = db::exec(db,
         "SELECT id FROM users WHERE project_id=? AND email=?", project_id, email);
     if (!dup.empty())
         return {std::nullopt, Error{409, "email_taken", "email already registered"}};
 
     const std::string ph = pw::hash(password);
-    const auto        ins = db->execSqlSync(
+    const long        id = static_cast<long>(db::insert_id(db,
         "INSERT INTO users(project_id, email, password_hash, display_name, is_guest) "
         "VALUES(?,?,?,?,0)",
-        project_id, email, ph, display_name);
+        project_id, email, ph, display_name));
 
-    return {User{static_cast<long>(ins.insertId()), display_name, false}, std::nullopt};
+    return {User{id, display_name, false}, std::nullopt};
 }
 
 Result login(long project_id, const std::string& email, const std::string& password) {
@@ -37,7 +37,7 @@ Result login(long project_id, const std::string& email, const std::string& passw
     const Error bad{401, "invalid_credentials", "invalid email or password"};
 
     auto db = db::client();
-    const auto rows = db->execSqlSync(
+    const auto rows = db::exec(db,
         "SELECT id, password_hash, display_name FROM users "
         "WHERE project_id=? AND email=?",
         project_id, email);
@@ -59,7 +59,7 @@ Result guest(long project_id, const std::string& display_name, const std::string
     // rather than the requested one matters: the account is the player's, and a later
     // launch should not silently rename them.
     if (!device_id.empty()) {
-        const auto rows = db->execSqlSync(
+        const auto rows = db::exec(db,
             "SELECT id, display_name FROM users WHERE project_id=? AND device_id=?",
             project_id, device_id);
         if (!rows.empty())
@@ -67,13 +67,16 @@ Result guest(long project_id, const std::string& display_name, const std::string
                     std::nullopt};
     }
 
-    const auto ins = device_id.empty()
-        ? db->execSqlSync("INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
-                          project_id, name)
-        : db->execSqlSync(
-              "INSERT INTO users(project_id, display_name, is_guest, device_id) VALUES(?,?,1,?)",
-              project_id, name, device_id);
-    return {User{static_cast<long>(ins.insertId()), name, true}, std::nullopt};
+    const long id = static_cast<long>(
+        device_id.empty()
+            ? db::insert_id(db,
+                  "INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
+                  project_id, name)
+            : db::insert_id(db,
+                  "INSERT INTO users(project_id, display_name, is_guest, device_id) "
+                  "VALUES(?,?,1,?)",
+                  project_id, name, device_id));
+    return {User{id, name, true}, std::nullopt};
 }
 
 }  // namespace web::auth

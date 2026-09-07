@@ -18,7 +18,7 @@ namespace {
 const char* better_than(bool desc) { return desc ? ">" : "<"; }
 
 int rank_for_value(const Board& b, long value) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         std::string("SELECT count(*) AS c FROM scores WHERE leaderboard_id=? AND value ") +
             better_than(b.desc) + " ?",
         b.id, value);
@@ -28,7 +28,7 @@ int rank_for_value(const Board& b, long value) {
 }  // namespace
 
 std::optional<Board> find_board(long project_id, const std::string& key) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT id, sort, mode FROM leaderboards WHERE project_id=? AND key=?", project_id, key);
     if (rows.empty()) return std::nullopt;
     return Board{rows[0]["id"].as<long>(),
@@ -53,13 +53,13 @@ SubmitResult submit(const Board& board, long user_id, long value) {
     {
         auto tx = db::client()->newTransaction();
         try {
-            const auto existing = tx->execSqlSync(
+            const auto existing = db::exec(tx,
             std::string("SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?") +
                 db::lock_clause(),
             board.id, user_id);
 
         if (existing.empty()) {
-            tx->execSqlSync("INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
+            db::exec(tx, "INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
                             board.id, user_id, value);
             updated = true;
         } else {
@@ -69,7 +69,7 @@ SubmitResult submit(const Board& board, long user_id, long value) {
             // stores what it was handed — including a lower number, which is the
             // entire reason the column exists.
             if (better || !board.keep_best) {
-                tx->execSqlSync(
+                db::exec(tx,
                     "UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
                     "WHERE leaderboard_id=? AND user_id=?",
                     value, board.id, user_id);
@@ -100,7 +100,7 @@ using TxPtr = std::shared_ptr<drogon::orm::Transaction>;
 // through the arithmetic identical. `found` says which of the two it was, so the
 // writer below knows whether to INSERT or UPDATE without reading the row twice.
 long rating_locked(const TxPtr& tx, const Board& board, long user_id, bool& found) {
-    const auto rows = tx->execSqlSync(
+    const auto rows = db::exec(tx,
         std::string("SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?") +
             db::lock_clause(),
         board.id, user_id);
@@ -109,18 +109,18 @@ long rating_locked(const TxPtr& tx, const Board& board, long user_id, bool& foun
 }
 
 long rating_of(const Board& board, long user_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?", board.id, user_id);
     return rows.empty() ? engine::kEloStart : rows[0]["value"].as<long>();
 }
 
 void store_rating(const TxPtr& tx, const Board& board, long user_id, long value, bool exists) {
     if (exists)
-        tx->execSqlSync("UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
+        db::exec(tx, "UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
                         "WHERE leaderboard_id=? AND user_id=?",
                         value, board.id, user_id);
     else
-        tx->execSqlSync("INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
+        db::exec(tx, "INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
                         board.id, user_id, value);
 }
 }  // namespace
@@ -130,9 +130,8 @@ std::pair<long, long> lock_order(long a, long b) {
 }
 
 bool user_in_project(long project_id, long user_id) {
-    return !db::client()
-                ->execSqlSync("SELECT 1 AS x FROM users WHERE id=? AND project_id=?",
-                              user_id, project_id)
+    return !db::exec(db::client(), "SELECT 1 AS x FROM users WHERE id=? AND project_id=?",
+                     user_id, project_id)
                 .empty();
 }
 
@@ -198,7 +197,7 @@ MatchResult apply_match(long project_id, const Board& board, long user_id, long 
 
 std::vector<Entry> top(const Board& board, int limit) {
     const std::string order = board.desc ? "DESC" : "ASC";
-    const auto        rows  = db::client()->execSqlSync(
+    const auto        rows  = db::exec(db::client(),
         "SELECT s.user_id, u.display_name, s.value FROM scores s "
         "JOIN users u ON u.id = s.user_id WHERE s.leaderboard_id=? "
         "ORDER BY s.value " + order + ", s.updated_at ASC LIMIT ?",
@@ -213,7 +212,7 @@ std::vector<Entry> top(const Board& board, int limit) {
 }
 
 std::optional<Entry> rank_of(const Board& board, long user_id) {
-    const auto mine = db::client()->execSqlSync(
+    const auto mine = db::exec(db::client(),
         "SELECT s.value, u.display_name FROM scores s JOIN users u ON u.id = s.user_id "
         "WHERE s.leaderboard_id=? AND s.user_id=?",
         board.id, user_id);

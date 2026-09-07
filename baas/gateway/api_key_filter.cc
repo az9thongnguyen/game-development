@@ -23,7 +23,7 @@ void ApiKeyFilter::doFilter(const drogon::HttpRequestPtr& req,
         // ponytail: execSqlSync blocks this event-loop thread; fine for SQLite +
         // demo load. Switch to execSqlAsync if request throughput ever demands it.
         const auto rows =
-            db::client()->execSqlSync("SELECT id FROM projects WHERE public_key=?", key);
+            db::exec(db::client(), "SELECT id FROM projects WHERE public_key=?", key);
         if (rows.empty()) {
             fcb(make_error(401, "unauthorized", "invalid X-Api-Key"));
             return;

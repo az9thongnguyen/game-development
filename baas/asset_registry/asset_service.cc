@@ -28,7 +28,7 @@ bool valid_kind(const std::string& kind) {
 PutResult put(long project_id, const std::string& name, const std::string& kind,
               const std::string& data, long long if_match) {
     auto       db       = db::client();
-    const auto existing = db->execSqlSync(
+    const auto existing = db::exec(db,
         "SELECT version FROM assets WHERE project_id=? AND name=?", project_id, name);
 
     if (if_match > 0) {   // caller requires the current version to match
@@ -38,12 +38,12 @@ PutResult put(long project_id, const std::string& name, const std::string& kind,
 
     long long new_version = 1;
     if (existing.empty()) {
-        db->execSqlSync(
+        db::exec(db,
             "INSERT INTO assets(project_id, name, kind, data, version) VALUES(?,?,?,?,1)",
             project_id, name, kind, data);
     } else {
         new_version = existing[0]["version"].as<long>() + 1;
-        db->execSqlSync(
+        db::exec(db,
             "UPDATE assets SET kind=?, data=?, version=?, updated_at=CURRENT_TIMESTAMP "
             "WHERE project_id=? AND name=?",
             kind, data, new_version, project_id, name);
@@ -52,7 +52,7 @@ PutResult put(long project_id, const std::string& name, const std::string& kind,
 }
 
 std::optional<Record> get(long project_id, const std::string& name) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT kind, data, version, updated_at FROM assets WHERE project_id=? AND name=?",
         project_id, name);
     if (rows.empty()) return std::nullopt;
@@ -69,8 +69,8 @@ std::vector<Meta> list(long project_id, const std::string& kind_filter) {
         "SELECT name, kind, version, length(CAST(data AS BLOB)) AS sz, updated_at FROM assets "
         "WHERE project_id=? AND kind=? ORDER BY name ASC";
     const auto rows = kind_filter.empty()
-        ? db::client()->execSqlSync(sql_all, project_id)
-        : db::client()->execSqlSync(sql_kind, project_id, kind_filter);
+        ? db::exec(db::client(), sql_all, project_id)
+        : db::exec(db::client(), sql_kind, project_id, kind_filter);
     std::vector<Meta> out;
     for (const auto& r : rows)
         out.push_back({r["name"].as<std::string>(), r["kind"].as<std::string>(),
@@ -80,7 +80,7 @@ std::vector<Meta> list(long project_id, const std::string& kind_filter) {
 }
 
 bool remove(long project_id, const std::string& name) {
-    const auto r = db::client()->execSqlSync(
+    const auto r = db::exec(db::client(),
         "DELETE FROM assets WHERE project_id=? AND name=?", project_id, name);
     return r.affectedRows() > 0;
 }

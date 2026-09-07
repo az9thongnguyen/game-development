@@ -16,12 +16,12 @@ void record(long project_id, const std::string& actor, const std::string& action
     try {
         if (project_id == 0) {
             // Platform-level action: store NULL so it is distinct from project id 0.
-            db->execSqlSync(
+            db::exec(db,
                 "INSERT INTO audit_log(project_id, actor, action, detail) "
                 "VALUES(NULL, ?, ?, ?)",
                 actor, action, detail);
         } else {
-            db->execSqlSync(
+            db::exec(db,
                 "INSERT INTO audit_log(project_id, actor, action, detail) "
                 "VALUES(?, ?, ?, ?)",
                 project_id, actor, action, detail);
@@ -38,11 +38,11 @@ std::vector<Entry> recent(long project_id, int limit) {
     if (!db) return out;
     const auto rows =
         project_id == 0
-            ? db->execSqlSync(
+            ? db::exec(db,
                   "SELECT id, project_id, actor, action, detail, created_at "
                   "FROM audit_log WHERE project_id IS NULL ORDER BY id DESC LIMIT ?",
                   limit)
-            : db->execSqlSync(
+            : db::exec(db,
                   "SELECT id, project_id, actor, action, detail, created_at "
                   "FROM audit_log WHERE project_id=? ORDER BY id DESC LIMIT ?",
                   project_id, limit);

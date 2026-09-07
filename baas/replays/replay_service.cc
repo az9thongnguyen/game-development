@@ -15,14 +15,13 @@ bool valid_name(const std::string& name) {
 }
 
 long long create(long project_id, long user_id, const std::string& name, const std::string& data) {
-    const auto r = db::client()->execSqlSync(
+    return db::insert_id(db::client(),
         "INSERT INTO replays(project_id, user_id, name, data) VALUES(?,?,?,?)",
         project_id, user_id, name, data);
-    return static_cast<long long>(r.insertId());
 }
 
 std::optional<Record> get(long project_id, long user_id, long long id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT id, name, data, created_at FROM replays "
         "WHERE id=? AND project_id=? AND user_id=?",
         static_cast<long>(id), project_id, user_id);
@@ -32,7 +31,7 @@ std::optional<Record> get(long project_id, long user_id, long long id) {
 }
 
 std::vector<Meta> list(long project_id, long user_id) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT id, name, length(CAST(data AS BLOB)) AS sz, created_at FROM replays "
         "WHERE project_id=? AND user_id=? ORDER BY id DESC",
         project_id, user_id);
@@ -44,7 +43,7 @@ std::vector<Meta> list(long project_id, long user_id) {
 }
 
 bool remove(long project_id, long user_id, long long id) {
-    const auto r = db::client()->execSqlSync(
+    const auto r = db::exec(db::client(),
         "DELETE FROM replays WHERE id=? AND project_id=? AND user_id=?",
         static_cast<long>(id), project_id, user_id);
     return r.affectedRows() > 0;

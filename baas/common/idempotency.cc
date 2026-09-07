@@ -8,7 +8,7 @@
 namespace web::idem {
 
 std::optional<long long> lookup(long project_id, const std::string& key) {
-    const auto rows = db::client()->execSqlSync(
+    const auto rows = db::exec(db::client(),
         "SELECT result FROM idempotency_keys WHERE project_id=? AND idem_key=?",
         project_id, key);
     if (rows.empty()) return std::nullopt;
@@ -19,7 +19,7 @@ void record_with(const std::shared_ptr<drogon::orm::DbClient>& db, long project_
                  const std::string& key, long long result) {
     // ON CONFLICT DO NOTHING (portable across SQLite >= 3.24 and Postgres): a racing
     // duplicate is a harmless no-op, first writer wins.
-    db->execSqlSync(
+    db::exec(db,
         "INSERT INTO idempotency_keys(project_id, idem_key, result) VALUES(?,?,?) "
         "ON CONFLICT(project_id, idem_key) DO NOTHING",
         project_id, key, result);

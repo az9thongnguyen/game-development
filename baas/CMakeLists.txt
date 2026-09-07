@@ -124,6 +124,14 @@ add_test(NAME baas_dialect COMMAND test_baas_dialect)
 
 # Concurrency: eight buyers, one purse. Toothless on SQLite by construction (see the
 # file), which is exactly why the Postgres run exists.
+# The SQL seam: the translation from this codebase's one dialect into the backend's,
+# and the source-level proof that nothing goes around it. BAAS_SRC_DIR because half of
+# this test reads the tree it is testing.
+add_executable(test_baas_sql_seam ${CMAKE_SOURCE_DIR}/tests/test_baas_sql_seam.cc)
+target_link_libraries(test_baas_sql_seam PRIVATE baas_core CURL::libcurl engine_flags)
+target_compile_definitions(test_baas_sql_seam PRIVATE BAAS_SRC_DIR="${CMAKE_SOURCE_DIR}/baas")
+add_test(NAME baas_sql_seam COMMAND test_baas_sql_seam)
+
 add_executable(test_baas_concurrency ${CMAKE_SOURCE_DIR}/tests/test_baas_concurrency.cc)
 target_link_libraries(test_baas_concurrency PRIVATE baas_core CURL::libcurl engine_flags)
 add_test(NAME baas_concurrency COMMAND test_baas_concurrency)
