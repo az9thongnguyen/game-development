@@ -117,6 +117,17 @@ add_executable(test_baas_secret_rotation ${CMAKE_SOURCE_DIR}/tests/test_baas_sec
 target_link_libraries(test_baas_secret_rotation PRIVATE baas_core engine_flags)
 add_test(NAME baas_secret_rotation COMMAND test_baas_secret_rotation)
 
+# The dialect seam: the one line of SQL that differs between the two backends.
+add_executable(test_baas_dialect ${CMAKE_SOURCE_DIR}/tests/test_baas_dialect.cc)
+target_link_libraries(test_baas_dialect PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_dialect COMMAND test_baas_dialect)
+
+# Concurrency: eight buyers, one purse. Toothless on SQLite by construction (see the
+# file), which is exactly why the Postgres run exists.
+add_executable(test_baas_concurrency ${CMAKE_SOURCE_DIR}/tests/test_baas_concurrency.cc)
+target_link_libraries(test_baas_concurrency PRIVATE baas_core CURL::libcurl engine_flags)
+add_test(NAME baas_concurrency COMMAND test_baas_concurrency)
+
 # Idempotency: retry-safe inventory grant (H2 correctness) — pure DB.
 add_executable(test_baas_idempotency ${CMAKE_SOURCE_DIR}/tests/test_baas_idempotency.cc)
 target_link_libraries(test_baas_idempotency PRIVATE baas_core engine_flags)
@@ -232,6 +243,15 @@ else()
     "WebSocket API (needs >= 7.86). The SDK's native realtime is a stub in this build "
     "too, so the tests would have nothing to drive.")
 endif()
+
+# A TIMEOUT on every test in this directory. Not a tidiness setting: chapter 140
+# added transactions to five read-then-write paths, one of them self-deadlocked on
+# SQLite (a transaction holds the only connection in the pool, and the code that ran
+# next asked the pool for one), and the suite simply STOPPED. ctest's default timeout
+# is 1500 s, so a deadlock costs twenty-five minutes before anything says "failed" —
+# and a hang and a slow test look identical until then.
+get_property(_baas_tests DIRECTORY PROPERTY TESTS)
+set_tests_properties(${_baas_tests} PROPERTIES TIMEOUT 120)
 
 # ---- one target for the Drogon-gated half ------------------------------------
 # CI runs the engine's 48 tests in a job with no Drogon, and these 28 in a job that
