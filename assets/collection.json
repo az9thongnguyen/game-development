@@ -1,13 +1,24 @@
 {
   "games": [
     {
+      "manifest": "projects/colony.gameproject",
+      "name": "Colony",
+      "summary": "Agents, jobs and a job queue — the engine's own cores, running as a game.",
+      "entry": "colony",
+      "cover": "textures/colony_cover.hrt",
+      "readme": "",
+      "package": "eddfe1089358ed14",
+      "playable": true,
+      "problems": []
+    },
+    {
       "manifest": "projects/creator.gameproject",
       "name": "Creator Demo (FPS + Labs)",
       "summary": "A hand-written raycaster walking a level this project drew.",
       "entry": "fps",
       "cover": "textures/wall_1.hrt",
       "readme": "",
-      "package": "eac0e534ef24543a",
+      "package": "cf26af95337927fa",
       "playable": true,
       "problems": []
     },
@@ -18,7 +29,7 @@
       "entry": "creatures",
       "cover": "textures/creatures_cover.hrt",
       "readme": "",
-      "package": "e0d8f431296632cd",
+      "package": "7a8855283b410a9f",
       "playable": true,
       "problems": []
     },
@@ -29,7 +40,18 @@
       "entry": "farm",
       "cover": "textures/town.hrt",
       "readme": "projects/farm.md",
-      "package": "ad198c1438ff8160",
+      "package": "9da64c5136c8729d",
+      "playable": true,
+      "problems": []
+    },
+    {
+      "manifest": "projects/iso.gameproject",
+      "name": "Iso Farm",
+      "summary": "Build a farm on an isometric grid — place, path, bulldoze, and save it.",
+      "entry": "iso",
+      "cover": "textures/iso_cover.hrt",
+      "readme": "",
+      "package": "7489e717c7ecd787",
       "playable": true,
       "problems": []
     }

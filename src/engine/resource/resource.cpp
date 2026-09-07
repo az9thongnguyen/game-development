@@ -4,6 +4,7 @@
 #include "engine/resource/resource.hpp"
 
 #include <algorithm>
+#include <string>
 
 namespace engine {
 
@@ -31,28 +32,38 @@ void sort_by_path(std::vector<PackagedResource>& r) {
 }
 }  // namespace
 
-uint64_t package_hash(std::vector<PackagedResource> resources) {
-    sort_by_path(resources);
-    // Fingerprint the canonical "path hexhash\n" of each resource (sorted). Path gives
-    // identity, hash gives content; type is metadata and stays out of the fingerprint.
-    std::string canon;
-    for (const auto& r : resources) canon += r.path + " " + hash_hex(r.hash) + "\n";
-    return content_hash(std::vector<uint8_t>(canon.begin(), canon.end()));
-}
-
-std::string build_package(const std::string& name, int schema, const std::string& entry,
-                          std::vector<PackagedResource> resources) {
-    const uint64_t pkg = package_hash(resources);   // computed before the (in-place) sort below
-    sort_by_path(resources);
+namespace {
+// Everything the package file says except its own hash — written ONCE, so the id is by
+// construction the fingerprint of the text it is appended to. Strip the last line of a
+// `package.txt`, hash what is left, and the id comes back; there is no second spelling
+// of "canonical" that could drift from the first.
+std::string canonical_body(const std::string& name, int schema, const std::string& entry,
+                           const std::vector<PackagedResource>& sorted) {
     std::string out;
     out += "package1\n";
     out += "project " + name + "\n";
     out += "schema " + std::to_string(schema) + "\n";
     out += "entry " + entry + "\n";
-    for (const auto& r : resources)
-        out += "resource " + r.type + " " + r.path + " " + hash_hex(r.hash) + "\n";
-    out += "packagehash " + hash_hex(pkg) + "\n";
+    // Type is metadata and stays out: `asset data foo.def` and `asset map foo.def`
+    // would ship the same bytes at the same path.
+    for (const auto& r : sorted) out += "resource " + r.type + " " + r.path + " " + hash_hex(r.hash) + "\n";
     return out;
+}
+}  // namespace
+
+uint64_t package_hash(const std::string& name, int schema, const std::string& entry,
+                      std::vector<PackagedResource> resources) {
+    sort_by_path(resources);
+    const std::string canon = canonical_body(name, schema, entry, resources);
+    return content_hash(std::vector<uint8_t>(canon.begin(), canon.end()));
+}
+
+std::string build_package(const std::string& name, int schema, const std::string& entry,
+                          std::vector<PackagedResource> resources) {
+    sort_by_path(resources);
+    const std::string body = canonical_body(name, schema, entry, resources);
+    const uint64_t    pkg  = content_hash(std::vector<uint8_t>(body.begin(), body.end()));
+    return body + "packagehash " + hash_hex(pkg) + "\n";
 }
 
 } // namespace engine

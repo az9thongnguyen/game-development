@@ -29,10 +29,19 @@ struct PackagedResource {
     uint64_t    hash = 0;
 };
 
-// A combined package fingerprint: the release-id seed. Computed over the resources
-// sorted by path, so reordering the declaration list never changes the package hash;
-// changing any resource's path or content does. Empty package == the offset basis.
-uint64_t package_hash(std::vector<PackagedResource> resources);
+// The release-id seed: a fingerprint of the package FILE — identity and resources
+// together — with the resources sorted by path, so reordering the declaration list
+// never moves it and changing any resource's path or content does.
+//
+// It covered only the RESOURCES until chapter 145, and the hole was invisible for as
+// long as every project had some: two projects that ship nothing hashed to the same
+// thing (the FNV offset basis, `cbf29ce484222325`), so publishing the second was
+// refused with "already stored with different bytes". More generally, two projects
+// sharing their art and differing only in `entry` were one release. The id must cover
+// everything `package.txt` SAYS, or the store's own rule — identical bytes are a no-op,
+// different bytes under an existing id are refused — cannot be kept.
+uint64_t package_hash(const std::string& name, int schema, const std::string& entry,
+                      std::vector<PackagedResource> resources);
 
 // The deterministic package manifest text ("package1" magic): project identity +
 // resources sorted by path (each with its content hash) + the combined package hash.

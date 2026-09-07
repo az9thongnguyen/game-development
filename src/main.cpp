@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "engine/app.hpp"
+#include "engine/bench.hpp"
 #include "engine/assets.hpp"
 #include "engine/hub/hub.hpp"
 #include "engine/hub/hub_build.hpp"
@@ -143,6 +144,30 @@ const std::vector<Entry>& entries() {
                 return std::unique_ptr<engine::Scene>(new creature::CreaturesScene());
             }});
         }
+        // Two scenes that were sitting in the LAB table (chapter 145). A lab is a demo
+        // of a subsystem or a scene that has not earned a manifest; both of these are
+        // games — the iso sim has a save file and a build/bulldoze loop, the colony has
+        // agents, jobs and a backend client — and being reachable only through `--lab`
+        // meant neither had ever been through inspect, package, publish or the hub, and
+        // neither appeared on the page you send someone.
+        {
+            platform::Config c;
+            c.title = "hand-engine — iso farm sim";
+            c.fb_width = 960; c.fb_height = 600;
+            c.scale = 1; c.smooth = true; c.highdpi = true; c.supersample = kAA;
+            v.push_back({"iso", c, [] {
+                return std::unique_ptr<engine::Scene>(new iso::IsoScene());
+            }});
+        }
+        {
+            platform::Config c;
+            c.title = "hand-engine — colony (ECS + jobs + UI)";
+            c.fb_width = 1000; c.fb_height = 760;   // room for the taller design-system panel
+            c.scale = 1; c.smooth = true; c.highdpi = true; c.supersample = kAA;
+            v.push_back({"colony", c, [] {
+                return std::unique_ptr<engine::Scene>(new colony::ColonyScene());
+            }});
+        }
         return v;
     }();
     return table;
@@ -230,15 +255,6 @@ const std::vector<Entry>& labs() {
         v.push_back({"viz3d", win("hand-engine — viz3d sandbox", 960, 600, kAA), [] {
             return std::unique_ptr<engine::Scene>(new viz3d::EditorScene());
         }});
-        v.push_back({"iso", win("hand-engine — iso farm sim", 960, 600, kAA), [] {
-            return std::unique_ptr<engine::Scene>(new iso::IsoScene());
-        }});
-        {   // the colony wants room for the taller design-system panel
-            platform::Config c = win("hand-engine — colony (ECS + jobs + UI)", 1000, 760, kAA);
-            v.push_back({"colony", c, [] {
-                return std::unique_ptr<engine::Scene>(new colony::ColonyScene());
-            }});
-        }
         return v;
     }();
     return table;
@@ -266,7 +282,7 @@ int usage(const std::string& unknown) {
         "    --release-rollback <channel> <release-id> <reason>\n"
         "    --release-status                --release-log [channel]\n"
         "    --hub <manifest>                --cmd [id] [args...]\n"
-        "    --bench-ui [frames] [manifest]  --runner <base_url> <api_key>\n"
+        "    --bench-ui [frames] [all|<entry>|<manifest>]   --runner <base_url> <api_key>\n"
         "    --pvp <base_url> <api_key>      (one rated creature match, headless)\n"
         "\n  retired (chapter 120)\n"
         "    --hub-ui   -> --shell, Hub section\n"
@@ -305,7 +321,14 @@ int run_lab(const std::string& id) {
             cmd::register_all(known_entries());
             return run_window(e.cfg, e.make());
         }
-    std::fprintf(stderr, "unknown lab: %s   (run `demo --lab` to list them)\n", id.c_str());
+    // A lab that GREW UP is the one wrong id worth answering properly. `--lab iso`
+    // worked for a hundred chapters; "unknown lab" alone would read as "deleted".
+    if (find_entry(id))
+        std::fprintf(stderr,
+                     "%s is a game now, not a lab:  demo --project projects/%s.gameproject\n",
+                     id.c_str(), id.c_str());
+    else
+        std::fprintf(stderr, "unknown lab: %s   (run `demo --lab` to list them)\n", id.c_str());
     return 1;
 }
 
@@ -632,52 +655,67 @@ int main(int argc, char** argv) {
         auto font = text::Font::load_from_bytes(std::move(*bytes));
         if (!font) { std::fprintf(stderr, "bench-ui: cannot parse Inter.ttf\n"); return 1; }
 
-        const std::string proj = (argc > 3) ? argv[3] : "projects/creator.gameproject";
-        constexpr int LW = 1280, LH = 720;
-        // Which build this is matters more than any other line of output: the same
-        // code is ~5x slower unoptimized, so a Debug number quoted as a shipping
-        // cost is simply wrong.
+        // The target: an ENTRY id benches that game at its own native size, anything
+        // with a '/' is a manifest and benches the Studio holding it, and `all` does the
+        // Studio and every game in one run. The rule is the presence of a slash rather
+        // than a guess, because a manifest path always has one and an entry id never can
+        // — `entries()` ids are single words by construction.
+        const std::string target = (argc > 3) ? argv[3] : "all";
+        constexpr int SW = 1280, SH = 720;
 #ifdef NDEBUG
         const char* build = "Release";
 #else
         const char* build = "Debug (unoptimized — NOT the shipping cost)";
 #endif
-        std::printf("bench-ui  %dx%d logical, %d frames per configuration (after 20 warm-up)\n",
-                    LW, LH, frames);
+        if (frames <= 0) {
+            // Reported rather than crashed. `--bench-ui 0` used to index an empty vector
+            // and take the process with it; `atoi` also turns any typo into 0, so this
+            // is the branch a mistyped argument lands in. Checked BEFORE the header, so
+            // the run does not announce itself and then fail.
+            std::fprintf(stderr, "bench-ui: nothing to measure (frames = %d)\n", frames);
+            return 1;
+        }
+        std::printf("bench-ui  %d frames per configuration (after 20 warm-up), RENDER only\n",
+                    frames);
         std::printf("          build: %s\n", build);
 
-        for (int ss : {1, 2}) {
-            studioshell::StudioShellScene scene(proj, known_entries());
-            std::vector<std::uint32_t> buf(static_cast<std::size_t>(LW * ss) * (LH * ss), 0);
-            platform::Framebuffer fb{buf.data(), LW * ss, LH * ss, LW * ss};
-            platform::InputState  in{};
+        // One row of output, whatever is being measured, so two rows are comparable.
+        const auto report = [&](const char* what, int lw, int lh, int ss,
+                                engine::Scene& scene) {
+            const bench::Summary r =
+                bench::run(scene, bench::Config{lw, lh, ss, frames, 20}, font.get());
+            std::printf("  %-12s %4d x %-4d ss=%d  (%5d x %-5d px)  median %6.2f ms"
+                        "  p95 %6.2f ms   %s\n",
+                        what, lw, lh, ss, lw * ss, lh * ss, r.median, r.p95,
+                        r.median <= 8.0 ? "within the 8 ms budget" : "OVER the 8 ms budget");
+        };
 
-            // Warm up before timing. The first frames pay for first-touch page faults
-            // on a freshly-allocated 14 MB framebuffer and for rasterizing each type-scale
-            // size once; including them measures start-up, not steady state, and produces
-            // a number that drifts by 3x between runs.
-            {
-                gfx::Renderer2D r(fb, ss);
-                const engine::Context ctx{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
-                for (int i = 0; i < 20; ++i) scene.render(ctx);
-            }
+        const bool want_all = target == "all";
+        const bool is_entry = !want_all && target.find('/') == std::string::npos;
 
-            std::vector<double> ms;
-            ms.reserve(static_cast<std::size_t>(frames));
-            for (int i = 0; i < frames; ++i) {
-                const auto t0 = std::chrono::steady_clock::now();
-                gfx::Renderer2D r(fb, ss);
-                const engine::Context ctx{r, in, 1.0 / 60.0, 0.0, 0.0, font.get()};
-                scene.render(ctx);
-                const auto t1 = std::chrono::steady_clock::now();
-                ms.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+        if (want_all || !is_entry) {
+            const std::string proj = is_entry || want_all ? std::string("projects/creator.gameproject")
+                                                          : target;
+            for (int ss : {1, 2}) {
+                studioshell::StudioShellScene scene(proj, known_entries());
+                report("studio", SW, SH, ss, scene);
             }
-            std::sort(ms.begin(), ms.end());
-            const double med = ms[ms.size() / 2];
-            const double p95 = ms[static_cast<std::size_t>(ms.size() * 95 / 100)];
-            std::printf("  ss=%d  (%d x %d physical px)   median %6.2f ms   p95 %6.2f ms   %s\n",
-                        ss, LW * ss, LH * ss, med, p95,
-                        med <= 8.0 ? "within the 8 ms budget" : "OVER the 8 ms budget");
+        }
+        if (want_all || is_entry) {
+            // Through `entries()`, not a second list. A game benched at a size its
+            // manifest does not launch it at would answer a question nobody asked.
+            for (const Entry& e : entries()) {
+                if (!want_all && e.id != target) continue;
+                std::unique_ptr<engine::Scene> sc = e.make();
+                const int ss = e.cfg.supersample > 0 ? e.cfg.supersample : 1;
+                report(e.id.c_str(), e.cfg.fb_width, e.cfg.fb_height, ss, *sc);
+            }
+            if (!want_all && find_entry(target) == nullptr) {
+                std::fprintf(stderr, "bench-ui: unknown target '%s' — an entry id (", target.c_str());
+                for (const Entry& e : entries()) std::fprintf(stderr, "%s ", e.id.c_str());
+                std::fprintf(stderr, "), a manifest path, or 'all'\n");
+                return 1;
+            }
         }
         return 0;
     }

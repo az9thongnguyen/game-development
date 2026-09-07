@@ -71,7 +71,12 @@ Inspection inspect(const std::string& project_path,
         in.assets.push_back(std::move(ia));
     }
 
-    if (in.shippable()) in.package = hash_hex(package_hash(in.resources()));
+    // Identity as well as content: two projects that ship nothing are not one release
+    // (chapter 145). Same arguments, same order, as build_package — the id `inspect`
+    // reports and the id in `package.txt` are the same number by construction.
+    if (in.shippable())
+        in.package = hash_hex(package_hash(in.project.name, in.project.schema,
+                                           in.project.entry, in.resources()));
     return in;
 }
 

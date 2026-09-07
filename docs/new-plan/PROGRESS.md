@@ -2108,6 +2108,107 @@ không phải sót · `/v1/ws` không so được với bảng route theo phươ
 mô tả Drogon tự ghi · chưa có UI đọc spec (Swagger/Redoc cần CDN, mà trang này không có).
 
 
+### S30c — hai game băm ra cùng một số ✅ 2026-09-07 · chương 145
+
+Một slice có hai việc nhỏ: cho `--bench-ui` đo được **game**, và cấp manifest cho `iso`
+với `colony`. Cả hai đều là việc sổ sách. Cả hai đều biến thành thứ khác sau khoảng bốn
+phút.
+
+**Cái benchmark không ai hỏi được.** `--bench-ui` sống trọn vẹn trong `src/main.cpp` từ
+chương 108: warm-up, số học phân vị, phán quyết 8 ms và in ấn — sáu mươi dòng trong một
+khối sau một cờ. Đó đúng là hình dạng repo này **cấm ở mọi chỗ khác**, và cái giá của
+ngoại lệ đúng như luật dự đoán:
+
+```
+$ ./build/demo --bench-ui 0
+[1]    12873 segmentation fault
+```
+
+`ms[ms.size() / 2]` trên vector rỗng. Và `atoi` biến mọi lỗi gõ thành `0`, nên
+`--bench-ui twenty` cũng thế. **Chưa ai từng tìm ra**, vì muốn hỏi đoạn code phân vị một
+câu thì phải cấp phát 14 MB framebuffer và render cả Studio.
+
+Còn sai lần thứ hai mà không tiếng nổ nào báo: `ms[size * 95 / 100]` là số học nguyên
+**trên chỉ số**. Với 120 mẫu ra 114, gần đúng. Với **mười** mẫu ra chỉ số 9 — **khung
+tệ nhất của cả lượt chạy**, được in ra như phân vị 95 của nó.
+
+**Bốn cái sống sót là bốn dòng thừa.** `percentile` ban đầu có cả early-out *lẫn* clamp,
+và bốn mutation sống sót: bỏ bất kỳ dòng nào trong bốn dòng ấy cũng không đổi câu trả lời
+ở đâu cả. Lý do lộ ra khi nói thành lời — **early-out và clamp phủ nhau khít**. Cám dỗ là
+viết test ghim cả bốn; như thế là ghim một sự trùng hợp. **Bốn cái sống sót không phải bốn
+test còn thiếu, chúng là bốn dòng thừa.** Xoá early-out, giữ clamp (đó là cái mà `p` ngoài
+khoảng cần), và tính rank bằng **số có dấu** để một rank âm không cuộn thành chỉ số khổng
+lồ. Hai assertion `p = -1` và `p = 2` là thứ làm clamp có gánh nặng thật.
+
+**Và những con số chưa ai có.** `PROJECT-BRIEF` mang cảnh báo *"`--bench-ui` đo Studio khi
+KHÔNG có game nào chạy"* từ chương 117; cả hai game vẽ nguyên một bàn điều khiển trên màn
+hình mỗi khung ở `ss=2` đều ra đời **sau** dòng đó. Release, 200 khung:
+
+```
+  studio  1280x720 ss=2   median  5.63 ms
+  fps      640x400 ss=1   median  0.94 ms
+  farm     640x360 ss=2   median  2.20 ms
+  creatures 640x360 ss=2  median  3.27 ms
+```
+
+Cả hai game đều thoải mái. Đó là một câu trả lời tốt, và là **lần đầu tiên nó là một câu
+trả lời** thay vì một giả định.
+
+**Hai lab vốn là game.** `iso` và `colony` nằm trong bảng LAB từ chương 120, nghĩa là
+chưa cái nào từng đi qua inspect, package, publish hay hub, và chưa cái nào xuất hiện
+trên trang bạn gửi cho người khác. Hai manifest, hai dòng chuyển từ `labs()` sang
+`entries()`. Rồi:
+
+```
+published Iso Farm → development cbf29ce484222325
+cbf29ce484222325 already stored with different bytes — refusing
+```
+
+**Release id không đặt tên cho release.** Hai game khác nhau, cùng một id — và
+`cbf29ce484222325` không phải trùng hợp: đó là **FNV-1a 64 offset basis**, tức băm của
+*không có gì*. `package_hash` phủ các resource; nó **không** phủ `project`, `schema`,
+`entry` — ba dòng mà `build_package` ghi vào file, ngay phía trên chỗ băm.
+
+Trường hợp closure rỗng là bản ồn ào. Bản tổng quát tệ hơn và im lặng hơn: **hai project
+dùng chung art và chỉ khác `entry` là MỘT release.** Luật của store — cùng byte thì
+verified no-op, khác byte dưới id đã có thì từ chối — **không giữ được** trừ khi id phủ
+mọi thứ `package.txt` nói. Giờ nó phủ, và bằng *cấu tạo* chứ không bằng cẩn thận: một
+`canonical_body` viết một lần, dùng cho cả băm lẫn file. Bóc dòng cuối của một
+`package.txt`, băm phần còn lại, id quay về — và đó là một test.
+
+**Và test đã mã hoá cái bug thành giá trị mong đợi của nó:**
+
+```cpp
+// A shippable project with no assets (package hash = the empty/FNV-basis hash).
+CHECK(dev.has_value() && *dev == "cbf29ce484222325");
+```
+
+Không phải test yếu — là test **sai thứ**, viết bởi người đã suy luận ra và suy luận ra
+một bất biến sai.
+
+**Một thẻ trống đọc thành hỏng.** Trang collection từ chối hiển thị thẻ không có ảnh, và
+comment của chính nó nói vì sao: *"một panel trống lặng lẽ không phân biệt được với một
+game không có art"*. Nên hai game cần bìa, và bìa là `.hrt`, tức phải đi qua **một trong
+bốn cửa**. Đi cửa `asset.pixels`, và bìa của iso được bố trí bằng **phép chiếu của chính
+game** — ô `(col,row)` nằm ở `x = 32 + (col-row)*9, y = 20 + (col+row)*5`, đúng hình thoi
+`iso_render` đi qua. Cửa thứ **năm** (nướng một khung của game đang chạy — mà `bench_core`
+vừa viết xong làm việc đó chỉ tốn sáu dòng) đã được cân nhắc và **từ chối**: cửa thứ năm
+là một quyết định có chương riêng, không phải hệ quả phụ của việc cần hai cái thumbnail.
+
+**Cổng:** 94/94 ctest **hai lần** · **23 mutation, 22 giết, 1 tương đương** (ghi rõ), cộng
+bốn cái sống sót được giải quyết bằng **xoá code thừa** chứ không phải thêm test · trang
+web chạy thật qua Chrome: 5 game, **mọi bìa giải mã được**, 5 thẻ chơi được, bấm Play vào
+thẳng colony đang chạy · golden path xanh, 0 rò `.tmp` · web build xanh · **đã nhìn** hai
+bìa và thẻ Colony đã render.
+
+**Chưa xác minh:** `--bench-ui` đo **RENDER thôi** — không `update()`, nên vòng ngày của
+farm và hàng đợi job của colony không nằm trong các số này · cột p95 không đáng tin trên
+máy này · **chưa game mới nào được chơi từ manifest trong cửa sổ native** · iso lưu vào
+`farm_save.txt` ở gốc asset, không dưới `saves/`, không gắn tên project · `colony` vẫn
+sinh `colony_agent.hrt` lúc chạy — một `.hrt` gitignore, do C++ tạo chứ không qua cửa nào
+trong bốn cửa, và do đó vô hình với sổ provenance.
+
+
 ### S30b — cái comment tự đặt tên cho slice của chính nó ✅ 2026-09-07 · chương 144
 
 Chương 112 viết Edit section rồi để lại một ghi chú trên đúng hai dòng tính bề rộng
@@ -2290,7 +2391,7 @@ làm chín T6).
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
 | ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
-| S30c | `--bench-ui` chạy được cả farm/creatures; manifest cho `iso` và `colony` | S |
+| ~~S30c~~ | ~~`--bench-ui` chạy được cả farm/creatures; manifest cho `iso` và `colony`~~ — **XONG**, chương 145: và hai game không có asset nào **băm ra cùng một release id** | S |
 
 Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,
 chọn một cái, chơi. Điểm tiếp theo là **sau S28** (hai game + PvP).

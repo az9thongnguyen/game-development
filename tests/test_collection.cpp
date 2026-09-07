@@ -208,7 +208,7 @@ static void test_committed_index_is_what_the_manifests_bake_to() {
     // tolerable is that it fails LOUDLY and immediately: adding a game to the table
     // without touching this line turns this test red in the same commit, which is
     // exactly what happened when `creatures` arrived in chapter 137.
-    const auto want = to_json(build_collection("projects", {"fps", "farm", "creatures"}));
+    const auto want = to_json(build_collection("projects", {"fps", "farm", "creatures", "iso", "colony"}));
 
     const auto got = assets::load_file("collection.json");
     CHECK(got.has_value());

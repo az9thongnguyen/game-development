@@ -104,3 +104,7 @@ index like this rots.
 | 107 | A workspace's status strip is a SENTENCE it builds itself | [116](../book/116-two-workspaces.md) | Superseded by 108 |
 | 108 | The status strip is a list of cells, each with its own tone; the separator is drawn, not typed | [144](../book/144-the-comment-that-named-its-own-slice.md) | Accepted |
 | 109 | A Scene REPORTS a `ui::CursorHint` and `App` applies it — a scene cannot call `platform::set_cursor`, because most of them compile into tests that link no backend | [144](../book/144-the-comment-that-named-its-own-slice.md) | Accepted |
+| 110 | The package hash — the release id — is a fingerprint of the RESOURCES | [93](../book/93-immutable-release-store.md) | Superseded by 111 |
+| 111 | The release id fingerprints the whole package FILE, identity included: two projects that ship nothing, or share their art and differ only in `entry`, are two releases | [145](../book/145-two-games-that-hashed-the-same.md) | Accepted |
+| 112 | A lab is a demo of a subsystem or a scene with no manifest; `iso` and `colony` were games sitting in that table and now have manifests | [145](../book/145-two-games-that-hashed-the-same.md) | Accepted |
+| 113 | A benchmark lives in a core like every other operation, so its arithmetic can be asked a question without allocating a framebuffer | [145](../book/145-two-games-that-hashed-the-same.md) | Accepted |

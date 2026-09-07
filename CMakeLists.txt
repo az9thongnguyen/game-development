@@ -179,7 +179,7 @@ if(EMSCRIPTEN)
     VERBATIM)
   add_dependencies(demo web_pages)
 endif()
-target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags chess_core fps_core farm_core creature_core creature_pvp map_edit_core paint_core mix_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
+target_link_libraries(demo PRIVATE ${SDL2_LINK} engine_flags bench_core chess_core fps_core farm_core creature_core creature_pvp map_edit_core paint_core mix_core commands_core document_core render3d_core viz3d_core ui_core text_core physics_core colony_core mem_core gbaas_sdk studio_core particles_core tween_core light_core audio_core runner_core project_core inspect_core resource_core release_core release_ops_core hub_core hub_build_core)
 # (runner_core PUBLIC-links sandbox_core, so demo gets it transitively — no duplicate)
 # (colony_core PUBLIC-links iso_core/ecs_core/jobs_core, so demo gets them transitively)
 endif()  # EMSCRIPTEN OR ENGINE_BUILD_DESKTOP
@@ -302,6 +302,18 @@ add_test(NAME aa COMMAND test_aa)
 
 # ---- Immediate-mode GUI (subsystem F): editor support -----------------------------
 # Draws via Renderer2D (symbols provided by the linking target); logic runs headless.
+# ---- Bench: what one frame costs, as data ---------------------------------------
+# Renderer2D symbols are provided by whatever target links this (the same arrangement
+# renderer3d.cpp uses), so the library itself stays dependency-free.
+add_library(bench_core STATIC src/engine/bench.cpp)
+target_include_directories(bench_core PUBLIC src)
+target_link_libraries(bench_core PRIVATE engine_flags)
+
+add_executable(test_bench tests/test_bench.cpp src/engine/renderer2d.cpp)
+target_include_directories(test_bench PRIVATE src)
+target_link_libraries(test_bench PRIVATE bench_core text_core engine_flags)
+add_test(NAME bench COMMAND test_bench)
+
 add_library(ui_core STATIC src/engine/ui/ui.cpp)
 target_include_directories(ui_core PUBLIC src)
 target_link_libraries(ui_core PRIVATE engine_flags)
