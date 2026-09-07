@@ -204,6 +204,13 @@ jobs:
           # of the battle, acknowledged, then saved. Two games, two shapes, one
           # script, because both games print where their buttons are.
           node scripts/web_touch_check.mjs --dir build-web --game creatures
+          # A THIRD toolchain agrees about the arithmetic. `build-test` already
+          # re-plays assets/creatures/reference.crep on x86-64/gcc and on
+          # arm64/clang; this runs the same verify inside the WebAssembly build,
+          # which is the target this project actually ships on and the one whose
+          # compiler nothing else here has ever asked to compute anything twice.
+          node scripts/web_touch_check.mjs --dir build-web \
+            --cmd creature.verify --args creatures/reference.crep --expect OK
 
       # -----------------------------------------------------------------------
       #  The other half of "one link": a page that lists what there is, and a Play

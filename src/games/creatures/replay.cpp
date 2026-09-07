@@ -180,7 +180,10 @@ bool read_replay(const Dex& d, const std::string& text, Replay& out, std::string
             int k0 = 0, i0 = 0, k1 = 0, i1 = 0;
             std::string h;
             if (!(ln >> k0 >> i0 >> k1 >> i1 >> h)) return fail(why, "bad turn");
-            if (k0 < 0 || k0 > 3 || k1 < 0 || k1 > 3) return fail(why, "unknown action kind");
+            // No range check on the kind: `legal_action` below is the one gate, and a
+            // cast of any int to this enum lands on a value its switch answers false
+            // for. A second guard here read like belt and braces and was neither —
+            // a mutation deleting it changed nothing, which is how it was found.
             Turn t;
             t.a0 = Action{static_cast<Action::Kind>(k0), i0};
             t.a1 = Action{static_cast<Action::Kind>(k1), i1};

@@ -967,7 +967,45 @@ void test_the_format_refuses(const Dex& d) {
         {"a version from the future", future},
         {"no magic",         good.substr(6)},
         {"an unknown record", good + "colour blue\n"},
-        {"a side declared twice", good + "side 0 3 0\n"},
+        // A COMPLETE second declaration. The first version of this case appended a
+        // bare `side 0 3 0` and was refused for being three creatures short — so it
+        // passed with the duplicate-guard deleted, which is a case that tests the
+        // wrong guard and reads exactly like one that tests the right one.
+        {"a side declared twice",
+         good + "side 0 1 0\nc 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"},
+        {"a move slot one past the end",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"
+                     "t 0 4 0 0 0000000000000000\n")},
+        {"a ball with no bonus at all",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"
+                     "t 3 0 0 0 0000000000000000\n")},
+        // A FULL party plus one. The count check at the end refuses this file either
+        // way; what `p.count >= want` prevents is the write to `member[6]` that
+        // happens first. That makes it a memory guard rather than a behaviour one,
+        // and no assertion here can see the difference — the ASan build can, and
+        // that is what the chapter records.
+        {"a seventh creature in a party of six",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 6 0\n") +
+             "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n" "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n" "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"
+             "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n" "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n" "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n" "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"
+             "side 1 1 0\nc 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"},
+        {"one creature more than the side declared",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"
+                     "c 2 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n")},
+        {"a side short of what it declared",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 3 0\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n")},
+        {"a level nobody can reach",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 1 500 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n")},
         {"a move slot out of range",
          std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
                      "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
@@ -996,6 +1034,91 @@ void test_the_format_refuses(const Dex& d) {
             std::printf("FAIL the format accepted %s\n", c.what);
             ++g_failures;
         }
+    }
+
+    // A DAMAGED start. Every replay above begins with two fresh parties, and a fresh
+    // party is at full HP — so a reader that ignored the stored `hp` and filled every
+    // creature to `max_hp` would round-trip all of them perfectly. That is not a
+    // hypothetical: the game's own recordings always start damaged, because the party
+    // walks into the grass carrying whatever the last fight left it.
+    {
+        Replay hurt;
+        hurt.rules = rules_hash(d);
+        hurt.start.side[0] = make_party(d, {{1, 20}, {5, 18}});
+        hurt.start.side[1] = make_party(d, {{4, 19}});
+        hurt.start.rng     = 0xD00Dull;
+        hurt.start.side[0].member[0].hp = 7;                    // nearly out
+        hurt.start.side[0].member[1].hp = 1;
+        hurt.start.side[0].member[1].status = Status::Burn;
+        hurt.start.side[0].member[1].sleep  = 0;
+        hurt.start.side[1].member[0].hp -= 3;
+        hurt.start.side[0].member[0].moves[0].pp = 2;           // ...and half out of PP
+        hurt.start.side[0].active = 0;
+
+        Battle live = hurt.start;
+        for (int t = 0; t < 40 && !live.over; ++t) {
+            const Action a0 = choose(d, live, 0), a1 = choose(d, live, 1);
+            step(d, live, a0, a1);
+            hurt.turns.push_back(Turn{a0, a1, hash(live)});
+        }
+        CHECK(hurt.turns.size() >= 1);
+
+        std::string w2;
+        const std::string text = write_replay(hurt, &w2);
+        CHECK(!text.empty());
+        Replay in;
+        CHECK(read_replay(d, text, in, &w2));
+        CHECK(hash(in.start) == hash(hurt.start));              // THE assertion
+        CHECK(in.start.side[0].member[0].hp == 7);
+        CHECK(in.start.side[0].member[0].moves[0].pp == 2);
+        CHECK(in.start.side[0].member[1].status == Status::Burn);
+        CHECK(verify(d, in).ok);
+    }
+
+    // Every action kind through the format, including the one no AI ever picks.
+    // `Run` ends the battle on the turn it is chosen, so it can only be last.
+    {
+        Replay all;
+        all.rules = rules_hash(d);
+        all.start.side[0] = make_party(d, {{1, 20}, {5, 20}});
+        all.start.side[1] = make_party(d, {{4, 20}, {8, 20}});
+        all.start.rng     = 0xBEEFull;
+        const Action script[] = {
+            Action{Action::Kind::Move,   0},
+            Action{Action::Kind::Switch, 1},
+            Action{Action::Kind::Ball,   250},
+            Action{Action::Kind::Run,    0},
+        };
+        Battle live = all.start;
+        for (const Action& a0 : script) {
+            if (live.over) break;
+            const Action a1 = choose(d, live, 1);
+            step(d, live, a0, a1);
+            all.turns.push_back(Turn{a0, a1, hash(live)});
+        }
+        CHECK(all.turns.size() == 4);
+        std::string w3;
+        const std::string text = write_replay(all, &w3);
+        CHECK(!text.empty());
+        Replay in;
+        CHECK(read_replay(d, text, in, &w3));
+        CHECK(in.turns.size() == 4);
+        for (std::size_t i = 0; i < 4; ++i) {
+            CHECK(in.turns[i].a0.kind  == script[i].kind);
+            CHECK(in.turns[i].a0.index == script[i].index);     // 250 is not 100
+        }
+        CHECK(verify(d, in).ok);
+        CHECK(play(d, in).fled);
+
+        // ...and turns recorded AFTER the battle ended are skipped rather than
+        // replayed into it. A tape from a network peer can carry them; a verifier
+        // that stepped anyway would compare a state nobody produced.
+        Replay tail = in;
+        tail.turns.push_back(Turn{Action{Action::Kind::Move, 0},
+                                  Action{Action::Kind::Move, 0}, 0xDEADBEEFull});
+        const Verdict v = verify(d, tail);
+        CHECK(v.ok);
+        CHECK(v.turn == 0);
     }
 
     // ...and the writer's own refusal, which has to be checked in BOTH directions:
@@ -1107,11 +1230,16 @@ void test_a_ball_is_a_turn(const Dex& d) {
         CHECK(b.turn == turn_before + 1);
 
         bool saw_ball = false, saw_used = false;
+        int  ball_says = -1;
         for (const Event& e : log) {
-            if (e.kind == Event::Kind::Ball) { saw_ball = true; CHECK(e.side == 0); }
+            if (e.kind == Event::Kind::Ball) { saw_ball = true; ball_says = e.a; CHECK(e.side == 0); }
             if (e.kind == Event::Kind::Used && e.side == 1) saw_used = true;
         }
         CHECK(saw_ball);
+        // The EVENT has to carry the outcome, not just the battle. Events are the
+        // core's string-free report — the thing a log, a network frame or a narrator
+        // reads — and a flag nobody checks is a flag that can be wrong forever.
+        CHECK(ball_says == (b.caught ? 1 : 0));
         if (b.caught) {
             ++stuck;
             CHECK(b.over);
@@ -1140,6 +1268,29 @@ void test_a_ball_is_a_turn(const Dex& d) {
         strong += b.caught ? 1 : 0;
     }
     CHECK(strong > weak);
+
+    // A ball goes FIRST, and the only way to prove that is a fight the thrower is
+    // about to lose. A level-3 starter against a fully evolved level-40 is one-shot
+    // every time: if the ball did not outrank a move, `act` would reach the throw
+    // with the thrower already fainted and there would be no throw at all. Every
+    // other test here pairs a fast thrower with a slow target, where a priority of
+    // zero produces exactly the same battle.
+    {
+        int thrown = 0, lost = 0;
+        for (int seed = 1; seed <= 60; ++seed) {
+            Battle b;
+            b.side[0] = make_party(d, {{1, 3}});
+            b.side[1] = make_party(d, {{18, 40}});
+            b.rng     = static_cast<std::uint64_t>(seed) * 1099511628211ull + 5;
+            CHECK(b.side[1].now().spd > b.side[0].now().spd);   // the premise, asserted
+            std::vector<Event> log;
+            step(d, b, Action{Action::Kind::Ball, 100}, Action{Action::Kind::Move, 0}, &log);
+            for (const Event& e : log) if (e.kind == Event::Kind::Ball) ++thrown;
+            if (b.over && b.winner == 1) ++lost;
+        }
+        CHECK(thrown == 60);
+        CHECK(lost > 30);          // ...and the fight really was being lost
+    }
 }
 
 int main() {
