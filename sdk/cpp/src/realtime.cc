@@ -33,6 +33,12 @@ RtEvent parse_event(const std::string& frame) {
     e.message = v["message"].as_string();
     if (v.has("from"))          e.from = v["from"].as_int();       // msg
     else if (v.has("user_id"))  e.from = v["user_id"].as_int();    // peer_joined / peer_left
+    if (v.has("side")) e.side = static_cast<int>(v["side"].as_int());
+    e.seed = v["seed"].as_string();
+    if (v.has("opponent")) {
+        e.opponent.user_id = v["opponent"]["user_id"].as_int();
+        e.opponent.name    = v["opponent"]["name"].as_string();
+    }
     if (v.has("members")) {
         const auto& m = v["members"];
         for (std::size_t k = 0; k < m.size(); ++k) {

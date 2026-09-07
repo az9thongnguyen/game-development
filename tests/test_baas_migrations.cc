@@ -33,7 +33,7 @@ int main() {
     // A fresh database applies every migration in order and records each one.
     web::db::run_migrations(db);
     auto applied = web::db::applied_migrations(db);
-    CHECK(applied.size() == 8);
+    CHECK(applied.size() == 9);
     CHECK(applied[0].version == 1 && applied[0].name == "initial schema");
     CHECK(applied[1].version == 2 && applied[1].name == "audit log");
     CHECK(applied[2].version == 3 && applied[2].name == "analytics release column");
@@ -42,6 +42,7 @@ int main() {
     CHECK(applied[5].version == 6 && applied[5].name == "operators");
     CHECK(applied[6].version == 7 && applied[6].name == "guest device id");
     CHECK(applied[7].version == 8 && applied[7].name == "guest device id index");
+    CHECK(applied[8].version == 9 && applied[8].name == "leaderboard submit mode");
     CHECK(!applied[0].applied_at.empty());
 
     // Migration 2 really created the table: an insert into it must succeed.

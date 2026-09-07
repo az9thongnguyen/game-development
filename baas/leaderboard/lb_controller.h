@@ -4,6 +4,11 @@
 //  top   : GET  /v1/leaderboards/{key}/top?limit=N   (api-key only; public read)
 //  submit: POST /v1/leaderboards/{key}/scores {value} (api-key + JWT)
 //  me    : GET  /v1/leaderboards/{key}/me            (api-key + JWT)
+//  match : POST /v1/leaderboards/{key}/match {opponent_id, result, match}
+//                                                    (api-key + JWT)
+//          The rating one. `submit` takes a VALUE the client chose; a ladder cannot,
+//          so this takes the OUTCOME and the server does the arithmetic — see
+//          lb_service.h. Reported by both players, hence `match` (idempotency).
 //  Filter order matters: ApiKeyFilter first (sets project), then AuthFilter
 //  (reads project, sets user). The {key} path param arrives as a trailing arg.
 // =============================================================================
@@ -22,6 +27,7 @@ public:
     ADD_METHOD_TO(LbController::top,    "/v1/leaderboards/{key}/top",    drogon::Get,  "web::ApiKeyFilter");
     ADD_METHOD_TO(LbController::submit, "/v1/leaderboards/{key}/scores", drogon::Post, "web::ApiKeyFilter", "web::AuthFilter");
     ADD_METHOD_TO(LbController::me,     "/v1/leaderboards/{key}/me",     drogon::Get,  "web::ApiKeyFilter", "web::AuthFilter");
+    ADD_METHOD_TO(LbController::match,  "/v1/leaderboards/{key}/match",  drogon::Post, "web::ApiKeyFilter", "web::AuthFilter");
     METHOD_LIST_END
 
     void top(const drogon::HttpRequestPtr& req,
@@ -30,6 +36,8 @@ public:
                 std::function<void(const drogon::HttpResponsePtr&)>&& cb, std::string key);
     void me(const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb, std::string key);
+    void match(const drogon::HttpRequestPtr& req,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb, std::string key);
 };
 
 }  // namespace web

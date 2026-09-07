@@ -110,6 +110,23 @@ void Client::Leaderboard::submit(long long value, std::function<void(Result<Rank
                       std::move(cb));
 }
 
+void Client::Leaderboard::report_match(long long opponent_id, int result,
+                                      const std::string& match_id,
+                                      std::function<void(Result<MatchOutcome>)> cb) {
+    const char* outcome = result > 0 ? "win" : (result < 0 ? "loss" : "draw");
+    const std::string body = "{\"opponent_id\":" + std::to_string(opponent_id) +
+                             ",\"result\":\"" + outcome + "\",\"match\":\"" + match_id + "\"}";
+    c_->request<MatchOutcome>("POST", "/v1/leaderboards/" + key_ + "/match", body,
+                              [](const json::Value& j) {
+                                  return MatchOutcome{j["value"].as_int(),
+                                                      j["opponent_value"].as_int(),
+                                                      static_cast<int>(j["rank"].as_int()),
+                                                      static_cast<int>(j["delta"].as_int()),
+                                                      j["applied"].as_bool()};
+                              },
+                              std::move(cb));
+}
+
 void Client::Leaderboard::top(int limit, std::function<void(Result<Board>)> cb) {
     c_->request<Board>("GET", "/v1/leaderboards/" + key_ + "/top?limit=" + std::to_string(limit), "",
                        [](const json::Value& j) {

@@ -58,6 +58,19 @@ struct Rank {
     bool      updated = false;
 };
 
+// The answer to a rated match. Note what is NOT here: a value to send. A ladder
+// where the client picks the number is not a ladder, so `report_match` sends the
+// OUTCOME and the server does the arithmetic (see baas/leaderboard/lb_service.h).
+// `applied` is false when the other player already reported this match — which is
+// the normal case for one of the two, not an error.
+struct MatchOutcome {
+    long long value          = 0;
+    long long opponent_value = 0;
+    int       rank           = 0;
+    int       delta          = 0;
+    bool      applied        = false;
+};
+
 struct Entry {
     int         rank = 0;
     long long   user_id = 0;
@@ -175,6 +188,11 @@ public:
         void submit(long long value, std::function<void(Result<Rank>)> cb);
         void top(int limit, std::function<void(Result<Board>)> cb);
         void me(std::function<void(Result<Rank>)> cb);
+        // `result` is +1 win, 0 draw, -1 loss. `match_id` makes it idempotent, so
+        // both players report and the ratings move once — pass the room the server
+        // matched you in.
+        void report_match(long long opponent_id, int result, const std::string& match_id,
+                          std::function<void(Result<MatchOutcome>)> cb);
     private:
         friend class Client;
         Leaderboard(Client* c, std::string key) : c_(c), key_(std::move(key)) {}

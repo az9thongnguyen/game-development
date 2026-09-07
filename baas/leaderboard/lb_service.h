@@ -15,7 +15,13 @@ namespace web::lb {
 
 struct Board {
     long id;
-    bool desc;   // true: higher value ranks first; false: lower value ranks first
+    bool desc;        // true: higher value ranks first; false: lower value ranks first
+    // What a RESUBMISSION means. A high score keeps the better of the two; a RATING
+    // must be able to go down, and a board that quietly refused to lower it would be
+    // a record of everybody's best day rather than a ladder. Defaulted to `true` so a
+    // caller that forgets gets the older, safer behaviour rather than a board that
+    // silently overwrites.
+    bool keep_best = true;
 };
 
 struct Entry {
@@ -43,5 +49,37 @@ std::vector<Entry> top(const Board& board, int limit);
 
 // This user's rank+value, or nullopt if they have no score yet.
 std::optional<Entry> rank_of(const Board& board, long user_id);
+
+// ---- a rated match ----------------------------------------------------------
+//
+//  A leaderboard is a place a client PUTS a number. A ladder cannot be: whoever
+//  reports the match would be choosing their own rating, and the anti-spoof rule
+//  this project already keeps everywhere else ("the score belongs to the JWT's user,
+//  never a body field") would mean nothing if the VALUE were still a body field.
+//
+//  So the server owns the arithmetic. It reads both ratings, applies the same
+//  integer Elo the client uses to PREDICT the outcome (engine/elo.hpp — shared, not
+//  copied, because two spellings of one curve is exactly the bug it exists to
+//  prevent), and writes both.
+//
+//  Reported by BOTH players, which is not a retry but the normal case, so `match_key`
+//  makes it idempotent: the second report returns the first one's result and moves
+//  nothing.
+struct MatchResult {
+    long value           = 0;   // the reporter's rating after the match
+    long opponent_value  = 0;
+    int  rank            = 0;
+    int  delta           = 0;   // what this match was worth to the reporter
+    bool applied         = false;  // false = this match had already been reported
+};
+
+// `result` is +1 win, 0 draw, -1 loss, from the REPORTER's point of view.
+// `match_key` must be non-empty; it is scoped to the board inside.
+MatchResult apply_match(long project_id, const Board& board, long user_id,
+                        long opponent_id, int result, const std::string& match_key);
+
+// Is this user a player in this project? The match endpoint's tenant check: without
+// it a reporter could name any integer and mint a rating row for it.
+bool user_in_project(long project_id, long user_id);
 
 }  // namespace web::lb

@@ -228,6 +228,18 @@ constexpr const char* kMigration8GuestDeviceIndex = R"SQL(
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_device ON users(project_id, device_id);
 )SQL";
 
+// Migration 9 — how a board treats a resubmission. Every board until now kept the
+// BETTER value, which is right for a high score and wrong for a rating: an Elo goes
+// down, and a board that silently refuses to lower it turns a ladder into a record of
+// everybody's best day. `mode` is 'best' (the existing behaviour, and the default, so
+// every shipped board keeps working) or 'last' (store what was submitted).
+//
+// One statement, per the invariant above ALTER: a re-run of a CREATE IF NOT EXISTS is
+// free and a second ADD COLUMN is not.
+constexpr const char* kMigration9BoardMode = R"SQL(
+ALTER TABLE leaderboards ADD COLUMN mode TEXT NOT NULL DEFAULT 'best';
+)SQL";
+
 constexpr Migration kMigrations[] = {
     {1, "initial schema", kMigration1},
     {2, "audit log", kMigration2Audit},
@@ -237,6 +249,7 @@ constexpr Migration kMigrations[] = {
     {6, "operators", kMigration6Operators},
     {7, "guest device id", kMigration7GuestDevice},
     {8, "guest device id index", kMigration8GuestDeviceIndex},
+    {9, "leaderboard submit mode", kMigration9BoardMode},
 };
 
 bool is_blank(const std::string& s) {
@@ -371,6 +384,22 @@ std::string seed(const DbClientPtr& db) {
             std::string("Harvest Festival"),
             std::string("2000-01-01 00:00:00"), std::string("2000-01-02 00:00:00"),
             std::string("crop parsnip sell=90\ncrop pumpkin sell=180\n"));
+    }
+
+    // ---- the creature demo ---------------------------------------------------
+    // A third project, and the first with a RATING rather than a score. `mode` is
+    // 'last' because an Elo is not a personal best: it has to be able to go down, and
+    // a board that keeps the better value would freeze every player at their peak.
+    const std::string creatures_key = "pk_demo_creatures";
+    if (db->execSqlSync("SELECT id FROM projects WHERE public_key=?", creatures_key).empty()) {
+        const auto ins = db->execSqlSync(
+            "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
+            std::string("Creatures Demo"), creatures_key, pw::hash("sk_demo_creatures"));
+        const auto pid = ins.insertId();
+        db->execSqlSync(
+            "INSERT INTO leaderboards(project_id, key, name, sort, mode) VALUES(?,?,?,?,?)",
+            static_cast<long>(pid), std::string("creature_elo"),
+            std::string("Creature Ladder"), std::string("desc"), std::string("last"));
     }
 
     return public_key;

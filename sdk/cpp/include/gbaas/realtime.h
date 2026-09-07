@@ -38,7 +38,10 @@ struct RtPeer {
 //   "peer_joined"  — `from`/`name` joined your room
 //   "peer_left"    — `from` left your room
 //   "msg"          — `from`/`name` broadcast `data`
-//   "matched"      — matchmaking put you in `room`
+//   "matched"      — matchmaking put you in `room`, as `side` (0 or 1), with
+//                    `seed` (16 hex characters) and `opponent`. All three come from
+//                    the SERVER: a deterministic match needs a side assignment and a
+//                    seed neither player chose (see games/creatures/netbattle.hpp)
 //   "error"        — `message` explains what went wrong
 //   "disconnected" — the socket dropped (synthesized locally)
 struct RtEvent {
@@ -49,6 +52,12 @@ struct RtEvent {
     std::string          data;       // msg payload (opaque to the SDK)
     std::string          message;    // error text
     std::vector<RtPeer>  members;    // joined
+    // matched. `side` is -1 on every other event; `seed` is 16 hex characters and
+    // stays a STRING because a JSON number is a double in a browser and the low bits
+    // of a 64-bit seed are exactly what a deterministic sim needs.
+    int                  side = -1;
+    std::string          seed;
+    RtPeer               opponent;
     std::string          raw;        // the original frame (for game-specific fields)
 };
 

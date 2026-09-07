@@ -5,6 +5,7 @@
 
 #include <cctype>
 
+#include "baas/common/idempotency.h"
 #include "baas/db/db.h"
 
 namespace web::inv {
@@ -18,29 +19,9 @@ Error* validate(const std::string& item, long long amount, Error& scratch) {
 }
 }  // namespace
 
-namespace {
-// Idempotency store, currently used only by grant. Two tiny helpers over the
-// idempotency_keys table (migration 4). ponytail: lookup-then-record has a hair-thin
-// double-apply window under two *concurrent* first uses of one key; single-writer SQLite
-// serializes execSqlSync so it is effectively closed today. When a multi-writer backend
-// (Postgres) is adopted, switch to a claim-first INSERT; when a SECOND endpoint needs
-// idempotency, graduate these to baas/common/idempotency.
-std::optional<long long> idem_lookup(long project_id, const std::string& key) {
-    const auto rows = db::client()->execSqlSync(
-        "SELECT result FROM idempotency_keys WHERE project_id=? AND idem_key=?",
-        project_id, key);
-    if (rows.empty()) return std::nullopt;
-    return rows[0]["result"].as<long long>();
-}
-void idem_record(long project_id, const std::string& key, long long result) {
-    // ON CONFLICT DO NOTHING (portable across SQLite ≥3.24 and Postgres): a racing
-    // duplicate is a harmless no-op, first writer wins.
-    db::client()->execSqlSync(
-        "INSERT INTO idempotency_keys(project_id, idem_key, result) VALUES(?,?,?) "
-        "ON CONFLICT(project_id, idem_key) DO NOTHING",
-        project_id, key, result);
-}
-}  // namespace
+// The idempotency store lived HERE until chapter 139, with a note saying to move it
+// to baas/common when a SECOND endpoint needed it. The match-result endpoint is that
+// second endpoint, so it moved.
 
 bool valid_item(const std::string& item) {
     if (item.empty() || item.size() > 64) return false;
@@ -82,7 +63,7 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
     // Idempotent retry: if this key already produced a result, replay it — do not grant
     // again. (The replayed qty is the item's total after the original grant.)
     if (!scoped_key.empty()) {
-        if (auto prior = idem_lookup(project_id, scoped_key))
+        if (auto prior = idem::lookup(project_id, scoped_key))
             return {Item{item, *prior}, std::nullopt};
     }
 
@@ -102,7 +83,7 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
             "WHERE project_id=? AND user_id=? AND item=?",
             qty, project_id, user_id, item);
     }
-    if (!scoped_key.empty()) idem_record(project_id, scoped_key, qty);   // remember for retries
+    if (!scoped_key.empty()) idem::record(project_id, scoped_key, qty);   // remember for retries
     return {Item{item, qty}, std::nullopt};
 }
 
@@ -118,7 +99,7 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
         idem_key.empty() ? std::string()
                          : "purchase|" + std::to_string(user_id) + "|" + item + "|" + idem_key;
     if (!scoped_key.empty()) {
-        if (auto prior = idem_lookup(project_id, scoped_key))
+        if (auto prior = idem::lookup(project_id, scoped_key))
             return {Item{item, *prior}, std::nullopt};   // replay — no second purchase
     }
 
@@ -166,9 +147,7 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
         // Record idempotency INSIDE the transaction so the key commits atomically with the
         // spend+grant — a retry cannot land between the effect and the record.
         if (!scoped_key.empty())
-            tx->execSqlSync(
-                "INSERT INTO idempotency_keys(project_id, idem_key, result) VALUES(?,?,?) "
-                "ON CONFLICT(project_id, idem_key) DO NOTHING",
+            idem::record_with(tx, 
                 project_id, scoped_key, qty);
 
         return {Item{item, qty}, std::nullopt};   // tx commits on scope exit
