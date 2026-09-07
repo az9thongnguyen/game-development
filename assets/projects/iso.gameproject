@@ -3,3 +3,4 @@ name Iso Farm
 schema 1
 entry iso
 summary Build a farm on an isometric grid — place, path, bulldoze, and save it.
+cover textures/iso_cover.hrt

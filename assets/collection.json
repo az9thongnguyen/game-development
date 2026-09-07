@@ -5,9 +5,9 @@
       "name": "Colony",
       "summary": "Agents, jobs and a job queue — the engine's own cores, running as a game.",
       "entry": "colony",
-      "cover": "",
+      "cover": "textures/colony_cover.hrt",
       "readme": "",
-      "package": "ffa0b38762ed0727",
+      "package": "eddfe1089358ed14",
       "playable": true,
       "problems": []
     },
@@ -49,9 +49,9 @@
       "name": "Iso Farm",
       "summary": "Build a farm on an isometric grid — place, path, bulldoze, and save it.",
       "entry": "iso",
-      "cover": "",
+      "cover": "textures/iso_cover.hrt",
       "readme": "",
-      "package": "b22cd5816efffef9",
+      "package": "7489e717c7ecd787",
       "playable": true,
       "problems": []
     }

@@ -91,6 +91,32 @@ Reproduce it with:
 ./build/demo --cmd asset.pixels textures/farm_path.pix textures/farm_path.hrt
 ```
 
+## Ours — the two covers, because a blank card reads as broken
+
+`textures/iso_cover.hrt` and `textures/colony_cover.hrt` exist for one reason: chapter
+145 gave the iso sim and the colony manifests, which put them on the collection page,
+and that page refuses to show a card with no picture. The refusal is right — the page's
+own comment says why: *"a silently blank panel is indistinguishable from a game that has
+no art."*
+
+Neither borrows a palette. They are the games' own colours: the iso cover uses the
+grass/tilled-earth pair `iso_render` draws with, laid out by the game's OWN projection
+(a tile at `(col,row)` sits at `x = 32 + (col-row)*9, y = 20 + (col+row)*5`, the same
+diamond the renderer walks), so the cover is the game's geometry rather than a drawing
+of it. The colony cover is what that scene looks like from a distance — agents over a
+dark field with the design-system panel down the right — with two agents in the
+highlight colour because they are carrying something.
+
+**Deliberately not screenshots.** Baking a frame of a running game into a `.hrt` would
+be a FIFTH door, and a fifth door is a decision with its own chapter (see the four the
+project has, and what chapter 135 had to argue to add the fourth) — not a side effect of
+needing two thumbnails.
+
+```sh
+./build/demo --cmd asset.pixels textures/iso_cover.pix    textures/iso_cover.hrt
+./build/demo --cmd asset.pixels textures/colony_cover.pix textures/colony_cover.hrt
+```
+
 ## The ledger — generated, not remembered
 
 Everything above is prose: why a tile exists, which palette it borrows, what the
@@ -133,6 +159,7 @@ Re-bake it with:
 | `pieces/wQ.hrt` | declared | `ours.pack` | this repository |
 | `pieces/wR.hrt` | declared | `ours.pack` | this repository |
 | `sprites/spin_8.hrt` | declared | `ours.pack` | this repository |
+| `textures/colony_cover.hrt` | drawn | `textures/colony_cover.pix` | this repository |
 | `textures/creature_01.hrt` | mixed | `textures/creature_01.mix` | this repository |
 | `textures/creature_02.hrt` | mixed | `textures/creature_02.mix` | this repository |
 | `textures/creature_03.hrt` | mixed | `textures/creature_03.mix` | this repository |
@@ -156,6 +183,7 @@ Re-bake it with:
 | `textures/farm_path.hrt` | drawn | `textures/farm_path.pix` | this repository |
 | `textures/farm_player.hrt` | mixed | `textures/farm_player.mix` | this repository |
 | `textures/farm_water.hrt` | generated | `textures/farm_water.recipe` | this repository |
+| `textures/iso_cover.hrt` | drawn | `textures/iso_cover.pix` | this repository |
 | `textures/parts_creature.hrt` | drawn | `textures/parts_creature.pix` | this repository |
 | `textures/parts_farm.hrt` | drawn | `textures/parts_farm.pix` | this repository |
 | `textures/studio_00.hrt` | declared | `ours.pack` | this repository |
@@ -166,7 +194,7 @@ Re-bake it with:
 | `textures/wall_2.hrt` | declared | `ours.pack` | this repository |
 | `textures/wall_3.hrt` | declared | `ours.pack` | this repository |
 
-46 raster assets, 0 unrecorded.
+48 raster assets, 0 unrecorded.
 
 <!-- END LEDGER (generated) -->
 

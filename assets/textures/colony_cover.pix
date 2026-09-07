@@ -1,0 +1,91 @@
+# =============================================================================
+#  assets/textures/colony_cover.pix  —  the collection page's cover for Colony
+# =============================================================================
+#  The companion to iso_cover.pix, and the same rule: a card on the collection page
+#  must show something, and a cover comes through one of the four doors.
+#
+#  What the colony actually looks like from a distance is agents scattered over a
+#  dark field with the design-system panel down the right-hand side — which is the
+#  whole point of that scene, since it exists to exercise ECS + jobs + the UI at
+#  once. Two of the agents are drawn in the highlight colour: they are the ones
+#  carrying something.
+#
+#  Re-bake after editing:
+#      ./build/demo --cmd asset.pixels textures/colony_cover.pix textures/colony_cover.hrt
+# =============================================================================
+
+size 64
+grid 1 1
+
+palette b 141821ff     # the field
+palette p 1e2530ff     # the panel down the right
+palette l 3d4757ff     # a control in it
+palette a 78b4e6ff     # an agent
+palette A f0c86eff     # ...one carrying something
+palette r 8a6b4aff     # a resource pile
+
+tile 0
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppllllllllllppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbaaabbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbaaabbbbbbbbbbbbbbbbbbbbbaaaaabbbbbbbbbbbbpppppppppppppppp
+bbbbbbaaaaabbbbbbbbbbbbbbbbbbbbbaaabbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbaaabbbbbbbbbbbbbbbbbbbbbbbabbbbbbbbbbbbbbpppllllllllllppp
+bbbbbbbbabbbbbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbaaabbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbaaaaabbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbaaabbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbrrrbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbrrrbbbbbbbbbbbbbbbpppllllllllllppp
+bbbbbbbbbbbbbbbbrrrbbbbbbbbbbbrrrbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbrrrbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbrrrbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaabbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbabbbbbbbbbbbbbbbbbbbbbbaaaaabbbbbbbpppppppppppppppp
+bbbbbbbbbbbbaaabbbbbbbbbbbbbbbbbbbbbbaaabbbbbbbbpppllllllllllppp
+bbbbbbbbbbbaaaaabbbbbbbbbbbbbbbbbbbbbbabbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbAbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbAAAbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbAAAAAbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbAAAbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbAbbbbbbbbbbbbbbbbbbbbpppllllllllllppp
+bbbbbbrrrbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbrrrbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbrrrbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbrrrbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbrrrbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbrrrbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbabbbbbbbbbrrrbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbaaabbbbbbbbrrrbbbbbbbbbbbbbbabbbbbbbbbbpppllllllllllppp
+bbbbbbbbaaaaabbbbbbbrrrbbbbbbbbbbbbbaaabbbbbbbbbpppppppppppppppp
+bbbbbbbbbaaabbbbbbbbbbbbbbbbbbbbbbbaaaaabbbbbbbbpppppppppppppppp
+bbbbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbaaabbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbAbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbAAAbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbAAAAAbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbAAAbbbbbbbbbbbbbbbbbbbbbbpppllllllllllppp
+bbbbbbbbbbbbbbbbbbbbbbbbAbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppllllllllllppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpppppppppppppppp

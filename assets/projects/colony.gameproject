@@ -3,3 +3,4 @@ name Colony
 schema 1
 entry colony
 summary Agents, jobs and a job queue — the engine's own cores, running as a game.
+cover textures/colony_cover.hrt
