@@ -211,20 +211,40 @@ bool Context::checkbox(Rect r, const char* label, bool& value) {
     return toggled;
 }
 
-bool Context::slider(Rect r, const char* label, float& value, float lo, float hi) {
-    const Id   id   = id_of(label);
+// The press-hold-release loop. A dragging control does NOT go through interact(),
+// which fires on release-over-the-rect — that is a click. This stays active while the
+// button is HELD, wherever the pointer wanders to.
+//
+// Written once because it was written three times: `slider` had it, `splitter` copied
+// it in chapter 144, and `xy_pad` would have been the third. Three copies of a state
+// machine is three chances for one of them to keep `active_` after the button is up.
+bool Context::drag_in(Id id, Rect r, bool focusable) {
     const bool over = point_in(r) && !inert_;
-    if (!inert_) { tab_order_.push_back(id); }
+    if (focusable && !inert_) tab_order_.push_back(id);
     if (over) { hot_ = id; hovering_ = true; }
 
-    // A slider drags rather than clicks, so it does not go through interact():
-    // it stays active while the button is HELD, not until release-over.
-    if (active_ == id) {
-        if (!in_.down) active_ = 0;
-    } else if (over && in_.pressed) {
-        active_  = id;
-        focused_ = id;
+    // No `if (!in_.down) active_ = 0;` here. It was, and a mutation that deleted it
+    // survived: `end()` already clears `active_` once a frame with the button up, and
+    // the `&& in_.down` below already makes this return false. Two guards covering each
+    // other are two guards no test can tell apart — and the one that MATTERS is end()'s,
+    // because without it the last control dragged follows the next press anywhere on
+    // the screen. That one has a test now.
+    if (active_ != id && over && in_.pressed) {
+        active_ = id;
+        if (focusable) focused_ = id;
     }
+    // `&& in_.down` is not redundant with end()'s clear: end() runs AFTER the widgets,
+    // so on the frame the button comes up `active_` is still set and only this stops the
+    // control acting on it. What it decides is that **a release is not a drag** — the
+    // value is whatever the last held frame said, so letting go sloppily cannot nudge
+    // it. A release that carries a different position from the last hold is a real thing
+    // (a fast mouse), and that is the case the test pins.
+    return active_ == id && in_.down;
+}
+
+bool Context::slider(Rect r, const char* label, float& value, float lo, float hi) {
+    const Id   id   = id_of(label);
+    const bool held = drag_in(id, r, /*focusable*/ true);
 
     bool changed = false;
     // Keyboard: arrows nudge by 1/50 of the range, so a slider is reachable without
@@ -234,7 +254,7 @@ bool Context::slider(Rect r, const char* label, float& value, float lo, float hi
         const float nv   = clampf(value + (in_.keys.right ? step : -step), lo, hi);
         if (nv != value) { value = nv; changed = true; }
     }
-    if (active_ == id && in_.down && r.w > 0) {
+    if (held && r.w > 0) {
         const float t  = clampf(static_cast<float>(in_.mx - r.x) / static_cast<float>(r.w), 0.0f, 1.0f);
         const float nv = lo + t * (hi - lo);
         if (nv != value) { value = nv; changed = true; }
@@ -732,22 +752,18 @@ std::string joined(const std::vector<Seg>& segs) {
 // divider you can only reach with a mouse is still a divider whose two panels are both
 // fully usable without one.
 bool Context::splitter(const char* id_str, Rect r, int& pos, int lo, int hi) {
-    const Id   id   = id_of(id_str);
-    const bool over = point_in(r) && !inert_;
-    if (over) { hot_ = id; hovering_ = true; }
-
-    if (active_ == id) {
-        if (!in_.down) active_ = 0;
-    } else if (over && in_.pressed) {
-        active_      = id;
-        // Where inside the handle it was grabbed. Without this the divider jumps so
-        // that its left edge lands under the cursor the instant you press — a jolt of
-        // up to the handle's width before you have moved at all.
-        drag_anchor_ = in_.mx - pos;
-    }
+    const Id id = id_of(id_str);
+    // Not focusable: there is nothing here Tab should stop on, and a divider only a
+    // mouse can reach is still a divider whose two panels are both usable without one.
+    const bool was_active = active_ == id;
+    const bool held       = drag_in(id, r, /*focusable*/ false);
+    // Where inside the handle it was grabbed, captured on the frame the grab happened.
+    // Without it the divider jumps so its left edge lands under the cursor the instant
+    // you press — a jolt of up to the handle's width before you have moved at all.
+    if (held && !was_active) drag_anchor_ = in_.mx - pos;
 
     bool moved = false;
-    if (active_ == id && in_.down) {
+    if (held) {
         int want = in_.mx - drag_anchor_;
         if (want < lo) want = lo;
         if (want > hi) want = hi;
@@ -757,10 +773,10 @@ bool Context::splitter(const char* id_str, Rect r, int& pos, int lo, int hi) {
     // cursor shape, and it is why a hit zone wider than the drawn line is not a cheat:
     // the line is 2px because it should be quiet, the zone is a finger wide because it
     // should be catchable.
-    if (over || active_ == id) cursor_ = CursorHint::ResizeH;
+    if (hot_ == id || active_ == id) cursor_ = CursorHint::ResizeH;
 
     if (r_) {
-        const bool lit = (active_ == id) || over;
+        const bool lit = (active_ == id) || hot_ == id;
         r_->fill_rect(r.x + r.w / 2 - 1, r.y, 2, r.h, lit ? th::accent : th::border);
         // The grip: three dots at the middle, so a divider that has never been dragged
         // still looks like something you may drag.
@@ -770,6 +786,43 @@ bool Context::splitter(const char* id_str, Rect r, int& pos, int lo, int hi) {
                           lit ? th::accent : th::text_muted);
     }
     return moved;
+}
+
+bool Context::xy_pad(const char* id_str, Rect r, float& x, float& y) {
+    const Id   id   = id_of(id_str);
+    const bool held = drag_in(id, r, /*focusable*/ true);
+
+    bool changed = false;
+    // Arrows nudge by 1/50 of each axis, the same step a slider uses — a control only a
+    // mouse can reach is the thing this project keeps having to go back and fix.
+    if (!inert_ && focused_ == id) {
+        const float step = 0.02f;
+        float       nx = x, ny = y;
+        if (in_.keys.left)  nx = clampf(x - step, 0.0f, 1.0f);
+        if (in_.keys.right) nx = clampf(x + step, 0.0f, 1.0f);
+        if (in_.keys.up)    ny = clampf(y - step, 0.0f, 1.0f);
+        if (in_.keys.down)  ny = clampf(y + step, 0.0f, 1.0f);
+        if (nx != x || ny != y) { x = nx; y = ny; changed = true; }
+    }
+    if (held && r.w > 0 && r.h > 0) {
+        const float nx = clampf(static_cast<float>(in_.mx - r.x) / static_cast<float>(r.w), 0.0f, 1.0f);
+        const float ny = clampf(static_cast<float>(in_.my - r.y) / static_cast<float>(r.h), 0.0f, 1.0f);
+        if (nx != x || ny != y) { x = nx; y = ny; changed = true; }
+    }
+
+    if (r_) {
+        if (focused_ == id) focus_ring(r, th::radius_sm);
+        // The crosshair only. What is INSIDE the pad is the caller's — this widget has
+        // no idea whether it is a colour, a gradient or a map, and a widget that painted
+        // one would be a colour picker pretending to be a primitive.
+        const int cx = r.x + static_cast<int>(x * static_cast<float>(r.w));
+        const int cy = r.y + static_cast<int>(y * static_cast<float>(r.h));
+        r_->draw_circle(cx, cy, 6, gfx::rgba(0, 0, 0, 200));
+        r_->draw_circle(cx, cy, 5, gfx::rgba(255, 255, 255, 230));
+        r_->draw_rect(r.x, r.y, r.w, r.h, (hot_ == id || active_ == id) ? th::border_strong
+                                                                       : th::border);
+    }
+    return changed;
 }
 
 void Context::status_bar(Rect r, const std::vector<Seg>& left, const char* right) {

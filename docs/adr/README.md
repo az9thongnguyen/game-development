@@ -111,3 +111,5 @@ index like this rots.
 | 114 | The rated-match client picks its own actions with `choose` | [139](../book/139-four-bytes-a-turn.md) | Superseded by 115 |
 | 115 | Who picks the action is a SWITCH on the client (`set_auto_play`), so the headless worker and the game screen are one implementation | [146](../book/146-a-match-nobody-could-play.md) | Accepted |
 | 116 | ONE `shown_battle()`/`my_side()` decides which battle is on screen and which half is yours — the server hands out sides, and a screen hard-coded to 0 shows you your opponent's party | [146](../book/146-a-match-nobody-could-play.md) | Accepted |
+| 117 | Saturation and value are two sliders; `ui::hit` reports a click and not a drag | [127](../book/127-a-colour-the-sheet-did-not-have.md) | Superseded by 118 |
+| 118 | A colour is a PLACE: one `xy_pad` on the shared `drag_in` loop, and a mixed colour goes into the same palette the image built | [147](../book/147-a-colour-is-a-place.md) | Accepted |

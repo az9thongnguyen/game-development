@@ -2108,6 +2108,79 @@ không phải sót · `/v1/ws` không so được với bảng route theo phươ
 mô tả Drogon tự ghi · chưa có UI đọc spec (Swagger/Redoc cần CDN, mà trang này không có).
 
 
+### S32 — một màu là một CHỖ ✅ 2026-09-07 · chương 147
+
+Hai dòng nằm im trong mục *đã hoãn có chủ ý*: **không có ô vuông S/V 2D** (ba slider, vì
+`ui::hit` báo click chứ không báo drag) và **màu đã pha không có nhà**.
+
+**Cái cản trở đã tan từ lâu mà không ai để ý.** `ui::hit` đúng là báo click — nhưng
+`slider` **chưa bao giờ dùng** nó: nó có vòng press-hold-release riêng, vì một slider vẫn
+"đang hoạt động" chừng nào nút còn **giữ**, con trỏ đi đâu cũng vậy. `splitter` của chương
+144 **chép** vòng đó. Cái này sẽ là bản thứ ba. Ba bản của một máy trạng thái là ba cơ hội
+để một trong số chúng quên xoá `active_`. Nên vòng đó được tách ra: `drag_in`, và
+**đây mới là kiểu tách mà luật của repo cho phép** — không phải một consumer cộng một hy
+vọng, mà **hai cái đã tồn tại và một cái thứ ba đang tới**.
+
+`xy_pad` cố ý mỏng: nó sở hữu con trỏ và phím mũi tên, vẽ một dấu chữ thập, và **không
+biết gì** về cái nằm dưới. Gradient do **caller** vẽ — một widget tự vẽ dải màu là một
+colour picker giả dạng primitive. `y` chạy **xuống**, đúng chiều framebuffer, nên cú lật
+duy nhất mà một bộ chọn màu cần nằm ở caller, chỗ người đọc thấy được.
+
+**Một màu là một CHỖ**, không phải hai con số: chọn nó bằng hai thanh trượt nghĩa là phải
+tìm lại cùng một sắc độ hai lần.
+
+**Và nó phải vừa trong chiều cao hai slider trả lại.** Panel này **không cuộn** — nó tính
+`inspector_clipped_` và báo trên status strip khi Save rơi khỏi khung. Nên ngân sách đúng
+bằng 64px. Bản đầu 96px đẩy Save xuống dưới, và cái bắt được là chính test bấm Save.
+
+**Rồi tấm ảnh.** Ở 64×64 nó là một hình vuông, canh trái, với một khoảng panel rộng bằng
+bàn tay bỏ trống bên cạnh. Nó **đọc ra như chưa làm xong**. Không dòng code nào nói thế,
+không assertion nào nói được, khung hình nói trong một giây. Giờ nó rộng bằng panel,
+thẳng hàng với thanh hue. Hai trục không còn nhạy như nhau — đúng như **mọi** bộ chọn màu
+ai cũng từng dùng, và cái lập luận "hai trục đọc giống nhau" sinh ra để biện minh cho hình
+vuông chứ không phải ngược lại. **Năm chương liên tiếp** có một bug hoặc một quyết định
+tồi chỉ khung hình mới thấy.
+
+**Cái nhà.** Màu đã pha là cây cọ và không gì khác: lang thang tới một sắc độ, tô, rồi bấm
+một màu bên cạnh để so — thế là mất. Đường về duy nhất là tô một pixel rồi hút lại.
+**Keep** đưa nó vào palette. Không phải palette thứ hai: **chính cái đó**, cái được dựng
+lại từ **ẢNH** mỗi lần mở file. Luật rơi ra miễn phí, và không ai cần được dạy:
+*một màu đã pha sống sót qua một lần mở lại đúng khi bạn thật sự đã dùng nó.*
+
+**Mười chín mutation, ba vòng, giết hết.** Nhưng sáu cái sống sót ở vòng đầu, và bốn trong
+số đó cùng một hình dạng. **`active_` được xoá ở bốn chỗ**: `end()` mỗi khung một lần,
+`drag_in` lần nữa, và `&& in_.down` trong lệnh return lần thứ ba. Xoá cái ở giữa **không
+đổi gì ở đâu cả** — đó là ý nghĩa của một mutation sống sót. Hai cái còn lại **không**
+thừa, và tách chúng ra phải đọc xem mỗi cái để làm gì: `end()` là cái quan trọng **giữa
+các khung** (thiếu nó, control cuối cùng bị kéo sẽ bám theo cú bấm tiếp theo ở **bất cứ
+đâu** trên màn hình), còn `&& in_.down` quan trọng đúng **một khung** — `end()` chạy *sau*
+các widget, nên ở khung nút nhả ra `active_` vẫn còn, và chỉ dòng này ngăn control hành
+động. Cái nó quyết định là: **một cú NHẢ không phải một cú KÉO.**
+
+`Keep` có **hai cổng** — cờ `enabled` của nút và một `find` phía update, cùng một câu hỏi
+hỏi hai lần cách nhau hai dòng. `find` bị xoá: **nút là cổng, update là thao tác.** Và hai
+cái sống sót cuối là **khẳng định về sơn**: một nút sống và một nút chết là cùng một hình
+chữ nhật; một gradient hoán trục là cùng những pixel ở cùng những chỗ. Cả hai giải quyết
+bằng cách **đọc khung hình renderer thật sự tạo ra**.
+
+**Và một thứ nữa hỏng, lỗi của người vận hành.** Một cái sống sót xuất hiện sớm ở vòng đầu
+và tôi **sửa code trong khi harness còn đang chạy**. Lần restore kế tiếp đặt `.mutbak` —
+chụp trước bản sửa — trở lại, nên bản sửa **biến mất**, một mutation sống nằm lại trong
+working tree, và một bộ test tôi vừa nhìn thấy xanh đã được biên dịch với một file **không
+còn tồn tại**. Harness sở hữu working tree khi nó chạy. Đó giờ là **luật thứ tư** trong
+file memory vốn đã có ba.
+
+**Cổng:** 95/95 ctest **hai lần** · **19/19 mutation** · golden path xanh, 0 rò `.tmp` ·
+web build xanh · **đã nhìn khung hình ba lần**.
+
+**Chưa xác minh:** **chưa ai chọn màu bằng tay ở đây** — mọi cú kéo là con trỏ tổng hợp,
+và 64px chiều dọc có đủ để rơi trúng sắc độ mình muốn hay không là câu hỏi một cú kéo tổng
+hợp không hỏi được · gradient là **một `fill_rect` mỗi pixel** (~11.500 mỗi khung), không
+nằm trong con số bench nào vì `--bench-ui` không mở tab Pixels · **palette vẫn không có
+thứ tự và không xoá được**: màu giữ lại nằm ở cuối, và cách duy nhất bỏ một swatch là mở
+lại file.
+
+
 ### S31 — một trận không ai chơi được ✅ 2026-09-07 · chương 146
 
 Chương 139 xây PvP có xếp hạng: matchmaking, trận đấu qua socket, replay lưu lại, bảng
@@ -2468,6 +2541,7 @@ làm chín T6).
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
 | ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
+| S32 | **Một màu là một chỗ** — `ui::xy_pad` trên `drag_in` dùng chung, và `Keep` cho màu đã pha một cái nhà — **XONG**, chương 147 |
 | S31 | **PvP chơi được bằng tay** — `Mode::Online`, `set_auto_play`, và test live lái chính `CreaturesScene` — **XONG**, chương 146 |
 | ~~S30c~~ | ~~`--bench-ui` chạy được cả farm/creatures; manifest cho `iso` và `colony`~~ — **XONG**, chương 145: và hai game không có asset nào **băm ra cùng một release id** | S |
 

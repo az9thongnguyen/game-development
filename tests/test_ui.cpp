@@ -876,6 +876,117 @@ static void test_status_cells_join_one_way() {
     CHECK(ui::joined({{""}}).empty());
 }
 
+// ---- the two-axis pad (chapter 147) ----------------------------------------
+static void test_xy_pad() {
+    ui::Context ui;
+    float x = 0.5f, y = 0.5f;
+    const ui::Rect r{100, 100, 100, 100};
+    const auto frame = [&](const ui::Input& in) {
+        ui.begin(nullptr, in);
+        const bool moved = ui.xy_pad("sv", r, x, y);
+        ui.end();
+        return moved;
+    };
+
+    // Hovering moves nothing.
+    CHECK(!frame(idle(150, 150)));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // Pressing outside does not grab it, and a drag afterwards does nothing.
+    frame(press(10, 10));
+    frame(hold(150, 130));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // Grab it and drag. `y` runs DOWNWARD, like the framebuffer — a pad that reported
+    // it upward would put the flip inside the widget, where a caller cannot see it.
+    frame(idle(-1, -1));
+    frame(press(150, 150));
+    CHECK(frame(hold(125, 175)));
+    CHECK(x == 0.25f);
+    CHECK(y == 0.75f);
+
+    // Both axes clamp, at both ends, and BOTH clamps lift again.
+    frame(hold(-500, -500));
+    CHECK(x == 0.0f && y == 0.0f);
+    frame(hold(9000, 9000));
+    CHECK(x == 1.0f && y == 1.0f);
+    frame(hold(150, 150));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // A drag that lands where it already is is not a change.
+    CHECK(!frame(hold(150, 150)));
+
+    // A RELEASE is not a drag: letting go somewhere else in the same frame leaves the
+    // value where the last held frame put it. A fast mouse does exactly this, and the
+    // alternative — the release position counting — would let a sloppy hand nudge a
+    // colour on the way up.
+    frame(press(150, 150));
+    frame(hold(150, 150));
+    const float bx = x, by = y;
+    frame(release(180, 190));
+    CHECK(x == bx && y == by);
+
+    // Release ends it: moving afterwards moves nothing.
+    frame(release(150, 150));
+    frame(hold(110, 110));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // ...and a press somewhere ELSE afterwards does not wake it up. `active_` is cleared
+    // once a frame in end(); without that the last control dragged follows the next
+    // press anywhere on the screen, which is the one thing that clear is for.
+    frame(press(150, 150));
+    frame(release(150, 150));
+    const float ax = x, ay = y;
+    frame(press(10, 10));
+    frame(hold(120, 120));
+    CHECK(x == ax && y == ay);
+
+    // The keyboard reaches it, on both axes and in both directions — a control only a
+    // mouse can use is what this project keeps having to go back and fix.
+    frame(press(150, 150));
+    frame(release(150, 150));
+    const auto near = [](float a, float b) { return std::fabs(a - b) < 1e-4f; };
+    ui::Keys k;      k.right = true;
+    CHECK(frame(keys(k)));  CHECK(x > 0.5f);
+    ui::Keys l;      l.left = true;
+    CHECK(frame(keys(l)));  CHECK(near(x, 0.5f));
+    ui::Keys dn;     dn.down = true;
+    CHECK(frame(keys(dn))); CHECK(y > 0.5f);
+    ui::Keys up;     up.up = true;
+    CHECK(frame(keys(up))); CHECK(near(y, 0.5f));
+    // ...and it stops at the edges rather than running off them.
+    for (int i = 0; i < 200; ++i) frame(keys(l));
+    CHECK(x == 0.0f);
+    CHECK(!frame(keys(l)));      // already there: not a change
+    for (int i = 0; i < 200; ++i) frame(keys(up));
+    CHECK(y == 0.0f);
+
+    // Inert (a modal is up): neither the pointer nor the keyboard reaches it. The pad
+    // is FOCUSED first — a press that lands on nothing takes the keyboard back, and the
+    // check above did exactly that, so without this the keyboard half of the assertion
+    // is about a control that was not listening anyway.
+    frame(press(150, 150));
+    frame(release(150, 150));
+    CHECK(ui.focused() == ui.id_for("sv"));
+    // The key DOES move it, first — so the assertion below is about `inert_` and not
+    // about a key nobody was listening for.
+    CHECK(frame(keys(k)));
+    const float kx = x, ky = y;
+    // The KEYBOARD half before the pointer half, deliberately: a press that lands on
+    // nothing takes the keyboard back, so testing the pointer first would leave the pad
+    // unfocused and the keyboard check vacuous.
+    ui.begin(nullptr, keys(k));
+    ui.begin_inert();
+    ui.xy_pad("sv", r, x, y);
+    ui.end();
+    CHECK(x == kx && y == ky);
+    ui.begin(nullptr, press(120, 120));
+    ui.begin_inert();
+    ui.xy_pad("sv", r, x, y);
+    ui.end();
+    CHECK(x == kx && y == ky);
+}
+
 int main() {
     test_button_click();
     test_checkbox();
@@ -894,6 +1005,7 @@ int main() {
     test_confirm_reason();
     test_splitter();
     test_status_cells_join_one_way();
+    test_xy_pad();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;
