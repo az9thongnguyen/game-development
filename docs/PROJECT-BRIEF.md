@@ -346,6 +346,26 @@ Studio shell over extracted, tested release ops (97) · clean-checkout CI ·
 | RBAC | 106 | Operator identity + project roles |
 | Deployment | 107 | Backend container + `ENGINE_BUILD_DESKTOP=OFF` build split |
 
+### ...and forty chapters after them (108–147), by theme
+
+The table above stops at 107 because that is where the slices were still one-per-concern.
+What followed was the PLAN-v2 correction roadmap (S19–S30c) plus two slices beyond it, and
+it is more honestly read by theme than by row:
+
+| Theme | Chapters | What changed |
+|---|---|---|
+| **Studio and UI** | 108–116, 120, 127, 132–133, 144, 147 | UTF-8 + a real design system · `ui` v2 (clip, overlays, focus, layout) · workspaces as tabs *and* full-screen labs · one door per kind (12 flags → `--lab`) · a draggable split with a persisted layout · a status strip of cells · `xy_pad` on one shared drag loop |
+| **Content formats** | 110, 131, 134–135 | `map2` is the only format anything writes · autotile rules live in the MAP · provenance DERIVED from the marks four doors leave · the fourth door (`asset.mix`) |
+| **Games** | 113, 117, 124–126, 136–138, 143, 146 | The farm (day loop, NPCs, cloud save, seasons as a RULE) · Creatures (18 species, integer battle, replay as a file, rated PvP a hand can play) |
+| **Web** | 118, 123, 128, 130 | The page runs in CI, driven by a real finger · the collection page a stranger can open |
+| **Backend** | 129, 139–142 | CI runs the BaaS suite · Elo shared header · every read-then-write locked · **Postgres actually works** (30/30, CI runs both backends) · the API describes itself |
+| **The spine** | 145 | The release id names the RELEASE, not just its bytes — two asset-less games used to collide |
+| **Bookkeeping** | 143, 145 | `docs/adr/` decision index · `bench_core` (the games' frame cost, measured for the first time) |
+
+**Where that leaves Horizon 2:** the golden path, the Studio, five games, a backend on
+Postgres and a self-describing API are done. §9 below is what is left, and the largest
+untouched piece is **segments and experiments**.
+
 ---
 
 ## 8. Verification ledger — what is proven, what is only written

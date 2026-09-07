@@ -12,6 +12,67 @@
 
 ---
 
+## ⏸ QUAY LẠI TỪ ĐÂY — chốt phiên 2026-09-07
+
+> Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
+
+**Trạng thái:** `main` @ `222a82c`, cây **sạch**, đồng bộ `origin/main`, không branch treo.
+**148 chương** (`docs/book/00`–`147`) · **95 test xanh** (60 khi build không có Drogon) ·
+**40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
+**63 dòng ADR**, 13 dòng `Superseded by`.
+
+**Lộ trình PLAN v2 (S19→S30c) đã ĐÓNG HẾT.** Sau đó làm thêm hai slice ngoài bảng:
+S31 (ch.146, PvP chơi được bằng tay) và S32 (ch.147, một màu là một chỗ).
+
+### Việc kế tiếp — S33, và vì sao là nó
+
+**S33 — vật liệu autotile thứ hai + nước động** (cỡ M).
+
+Chương 134 dựng luật *"road hay region là chuyện của MAP, không phải của file art một
+game"* và xoá `farm::line_piece`. Nhưng **mới có đúng MỘT vật liệu dùng luật đó** (con
+đường của farm). Một luật tổng quát với một ví dụ là một luật chưa ai kiểm — và sáu chương
+gần nhất đều tìm ra bug đúng ở loại chỗ đó. Nước động đi kèm vì cùng một mặt phẳng:
+`anim::frames_in_sheet` đã có, `studio::make_sheet` xuất được sheet nhiều frame, mà
+renderer tilemap của farm **chưa biết gì về frame**.
+
+Bước đầu tiên cụ thể: `grep -rn "rule_piece\|rule " src/engine/tilemap/` để đọc lại
+`tilemap::rule_piece` và cú pháp `rule <value> line|blob` trong `map2`, rồi xem
+`assets/farm/theme.def` đặt tên sheet thế nào.
+
+**Sau S33 (chưa xếp thứ tự):**
+- **Segments + experiments** trong BaaS — *vùng lớn nhất còn nguyên vẹn của Horizon 2*,
+  chặn điều khoản 6 của cổng ra. ⚠️ **chưa có người tiêu thụ**: cần một game hỏi được câu
+  hỏi đó trước, nếu không sẽ lại là hạ tầng không ai dùng.
+- Sáu **failure drill** còn lại (migration hỏng · BaaS chết · telemetry chết · mất object ·
+  credential hết hạn · config sai) + backup mã hoá. Khuôn đã có ở ch.98.
+- Scene canvas: pan/zoom, multi-select, copy/paste. Inspector cho Spawner/OnOverlap.
+
+### Rủi ro đã biết, chưa xử (đừng để quên)
+
+1. **Chưa ai chơi một trận PvP xếp hạng trong cửa sổ native hay trình duyệt.** Mọi khẳng
+   định của ch.146 đến từ driver headless, và ws transport bản web là hiện thực khác.
+2. **`colony` vẫn sinh `colony_agent.hrt` lúc chạy** — một `.hrt` gitignore, do C++ tạo,
+   **không qua cửa nào trong bốn cửa**, nên vô hình với sổ provenance.
+3. **Inspector của Pixels không cuộn** — chỉ báo khi bị cắt. Mọi control mới ở đó phải vừa
+   trong chiều cao đang có, nếu không sẽ đẩy Save khỏi khung (đã xảy ra ở ch.147).
+4. **`iso` lưu vào `farm_save.txt` ở gốc asset** — không dưới `saves/`, không gắn tên
+   project. Nó là game có manifest rồi, nên đây là chuyện đáng sửa.
+5. **`--bench-ui` chỉ đo RENDER**, không `update()` — vòng ngày của farm và hàng đợi job
+   của colony không nằm trong con số nào.
+
+### Môi trường máy này (tiết kiệm nửa giờ khi quay lại)
+
+- `build/` (Debug, 949 M) · `build-rel/` (Release, dùng cho `--bench-ui` — số Debug **sai
+  gấp 5 lần**) · `build-web/` (Emscripten). Cả ba gitignore, giữ nguyên để khỏi build lại.
+- **Cổng :8080 đang bị chiếm** → test chạm BaaS phải tiêm transport. Muốn thấy đúng cái CI
+  thấy: `cmake -B <dir> -DCMAKE_DISABLE_FIND_PACKAGE_Drogon=ON`.
+- Harness mutation ở `…/scratchpad/mut2/c1NN.py` — copy cái gần nhất rồi đổi `MUTS`.
+  **Bốn luật của nó nằm trong file memory `mutation-harness-needs-its-own-check`; luật thứ
+  tư là: KHÔNG sửa source khi harness đang chạy.**
+- Chụp khung hình: render offscreen → PPM → PNG (không screencapture được ở máy này).
+
+---
+
 ## Bảng slice
 
 | Slice | Tên | Trạng thái | Branch | Chapter |
