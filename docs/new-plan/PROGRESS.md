@@ -2028,6 +2028,86 @@ là **lập luận** (một deadlock cần hai transaction lấy cùng cặp ng�
 đồng thời của cùng một key (ghi trong `idempotency.h` từ ch.102, chưa đóng).
 
 
+### S29c — cái image chưa bao giờ trả lời ✅ 2026-09-07 · chương 142
+
+Slice này có hai phần: một mô tả OpenAPI cho `/v1` **không thể trôi** so với router, và
+một job CI dựng image backend rồi chọc `/healthz`. Phần một đi đúng như thiết kế. Phần
+hai phát hiện **cái image chưa từng phục vụ một request nào trong đời**.
+
+**Một mô tả sinh ra từ chính cái bảng đang phục vụ.** Một spec gõ tay bên cạnh một
+router gõ tay là hai cái bảng khớp nhau đúng ngày viết ra và không bao giờ khớp lại —
+project này đã xem chuyện đó xảy ra hai lần (ledger attribution ở ch.131, đường Postgres
+ở ch.141). Nên ràng buộc thiết kế là: **không được phép để document và server bất đồng.**
+
+`baas/openapi/spec.cc` là **một bảng**, một dòng một operation. Trong dòng đó chỉ có thứ
+router **không thể biết**: endpoint để làm gì, chìa nào mở, và các câu trả lời nghĩa là
+gì. Mọi thứ khác đều **suy ra** — tham số từ `{…}` trong path, `operationId` từ method +
+path, danh sách tag từ lần xuất hiện đầu. *Một thứ đã viết xuống một lần thì không được
+có bản sao thứ hai để mà quên.*
+
+Rồi hai test, đóng hai khe khác nhau: **so với ROUTER** (`getHandlersInfo()` là bảng
+route server thật sự dựng; so hai chiều — thêm route không thêm dòng là ĐỎ, xoá route mà
+để lại dòng cũng ĐỎ) và **so với FILE** (`baas/openapi.json` được commit, nướng lại phải
+ra **đúng byte** — chuẩn mà `.recipe`, `collection.json`, `reference.crep` đã chịu).
+
+Hai chuyện nhỏ rơi ra từ cách làm đó. `/dashboard` từng đăng ký trong `main.cc`, nghĩa là
+`register_routes()` *gần như* là toàn bộ bảng route — và "gần như" là một ngoại lệ, mà
+ngoại lệ là chỗ cái route không-tài-liệu tiếp theo sẽ chui vào. Nó chuyển chỗ, đường dẫn
+file thành một field của `AppConfig`, và **không còn gì để loại trừ**. Còn WebSocket:
+Drogon liệt `/v1/ws` **một lần cho mỗi HTTP method** — mười một dòng cho một route. Bản
+test đầu tiên hard-code `GET /v1/ws` làm ngoại lệ; đó là một cái TÊN nằm trong test, và
+tên trong test thì mục. Chính Drogon ghi mô tả `WebsocketController: …`, nên cái LUẬT
+chuyển vào `live_routes()`. Test **không còn ngoại lệ nào**. 51 route đăng ký, 51 tài liệu.
+
+**`--seed` trả về 0.** `baas/ops/Dockerfile` kết thúc bằng `CMD [..., "--seed"]` từ chương
+107, và `main.cc` thì `if (do_seed) { seed(db); printf(...); return 0; }`. **Container
+seed xong rồi thoát. Mọi lần.** `docker-compose.yml` đặt `restart: unless-stopped` trước
+mặt nó, nên thứ đã ship là một vòng lặp: seed → thoát 0 → khởi động lại → seed → thoát 0
+— và **chưa bao giờ lắng nghe**. Cái healthcheck ngay bên cạnh, `curl … /healthz`, không
+đời nào pass được. Chạy thật trên image trước khi sửa:
+
+```
+running: false  exit: 0
+curl: (7) Failed to connect to 127.0.0.1 port 18101
+```
+
+Cái cờ mang **hai ý định dưới một cái tên**. Người ngồi trước terminal gõ `--seed` để in
+key rồi lấy lại dấu nhắc; một container truyền `--seed` với nghĩa "bảo đảm project demo
+tồn tại **trước khi phục vụ**". Giờ là hai cờ: `--seed` seed rồi chạy tiếp, `--seed-only`
+seed rồi dừng. Và một cái nhỏ hơn, phát hiện khi đọc `docker logs` mà thấy **trống trơn**:
+`stdout` bị đệm theo khối khi nó là pipe, nên dòng duy nhất operator cần — key của project
+demo — nằm trong buffer suốt thời gian server chạy, tức là mãi mãi. Một `fflush`.
+
+**Vì sao không test nào bắt được.** Mọi test trong bộ này link `baas_core` rồi **tự gọi**
+`register_routes()`. Cách đó phủ toàn bộ server **trừ đúng cái file quyết định server LÀM
+GÌ lúc khởi động** — và lỗi nằm trong `main()`. Chín mươi test, và **chưa cái nào từng
+chạy `main()`**. Nên `test_baas_boot` chạy: `posix_spawn` chính cái binary, cổng trống,
+stdout ra file, rồi hỏi nó từ **bên ngoài** — `--seed` phải **VẪN CÒN SỐNG** sau khi
+`/healthz` trả lời, phải đã log key *trong lúc đang chạy*, một guest phải đăng nhập được,
+và `/openapi.json` nó phục vụ phải trùng byte với file đã commit; `--seed-only` phải thoát
+0; `--openapi FILE` phải ghi ra đúng byte đó.
+
+Đây là **lần thứ tư** cùng một bài học được ghi lại: ch.137 (kiểm chứng trình duyệt không
+sống sót qua game thứ hai), ch.138 (một ngàn replay trong một process không nói gì về hai
+toolchain), ch.139 (một process chơi cả hai bên không bao giờ cho chúng cùng một đội),
+ch.141 (backend một kết nối che ba bảo đảm). **Bằng chứng không đi qua được cái biên mà
+bạn đã không bước qua.**
+
+## Mutation: 17
+
+Hai cái quan trọng nhất là M1 và M2: đặt lại `return 0` vào đúng chỗ cũ, và xoá hẳn cái
+early-return để `--seed-only` không bao giờ dừng. Cả hai chết trong `test_baas_boot` —
+đúng lý do nó tồn tại: **trước slice này cả hai đều sống sót qua toàn bộ bộ test.**
+
+**⚠️ Chưa xác minh:** job `baas-docker` **chưa chạy trên runner GitHub** (image đã dựng và
+chọc thật ở local, dưới emulation amd64; YAML thì chưa) · `docker compose` chưa chạy lần
+nào — healthcheck của nó *bây giờ mới có thể* pass (đã kiểm `curl` CÓ trong runtime image)
+nhưng chưa ai chạy `up` · document OpenAPI **không mô tả schema thân request/response**,
+chỉ mô tả "một object" + prose; đó là quyết định (schema gõ tay là bảng thứ hai để trôi),
+không phải sót · `/v1/ws` không so được với bảng route theo phương pháp này, nó dựa vào
+mô tả Drogon tự ghi · chưa có UI đọc spec (Swagger/Redoc cần CDN, mà trang này không có).
+
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -2050,7 +2130,7 @@ làm chín T6).
 | ~~S28b~~ | ~~PvP realtime + ELO — consumer thật đầu tiên của realtime/matchmaking~~ — **XONG**, chương 139 | L |
 | ~~S29a~~ | ~~Khoá mọi đường đọc-rồi-ghi + seam dialect + bản tái hiện Postgres~~ — **XONG**, chương 140 | M |
 | ~~S29b~~ | ~~**Làm Postgres CHẠY**~~ — **XONG**, chương 141: 30/30 trên Postgres thật, CI chạy cả bộ test **hai lần**, một lần mỗi backend | L |
-| S29c | OpenAPI `/v1/*` (sinh từ bảng route, không trôi được) + job Docker chọc `/healthz` | M |
+| ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
 
 Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,

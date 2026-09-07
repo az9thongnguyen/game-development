@@ -17,6 +17,7 @@
 #include "baas/common/errors.h"
 #include "baas/gateway/rate_limiter.h"
 #include "baas/observability/metrics.h"
+#include "baas/openapi/openapi.h"
 
 namespace web {
 namespace {
@@ -127,6 +128,35 @@ void register_routes() {
             cb(drogon::HttpResponse::newHttpJsonResponse(j));
         },
         {drogon::Get, std::string("web::ApiKeyFilter")});
+
+    // The API, described. Generated from the same table `test_baas_openapi` compares
+    // to Drogon's own route list, so this document cannot describe an endpoint that
+    // does not exist and an endpoint cannot exist without appearing in it.
+    // Unauthenticated on purpose: a description of which doors need which key is not
+    // itself a key, and a spec you need a credential to read is a spec nobody reads.
+    drogon::app().registerHandler(
+        "/openapi.json",
+        [](const drogon::HttpRequestPtr&,
+           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            static const std::string doc =
+                openapi::document(openapi::spec(), openapi::kApiVersion);
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+            resp->setBody(doc);
+            cb(resp);
+        },
+        {drogon::Get});
+
+    // The operator's admin page. Registered HERE rather than in main.cc so that this
+    // function is the whole route table — see app_config.h.
+    drogon::app().registerHandler(
+        "/dashboard",
+        [](const drogon::HttpRequestPtr&,
+           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            cb(drogon::HttpResponse::newFileResponse(config().dashboard_path, "",
+                                                     drogon::CT_TEXT_HTML));
+        },
+        {drogon::Get});
 
     // Metrics scrape — platform-admin only (X-Admin-Secret). Returns the request
     // totals, the status-class tally, and the per-route tally as JSON.

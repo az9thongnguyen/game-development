@@ -68,7 +68,10 @@ curl -fsS localhost:8080/healthz            # {"status":"ok"}
 | Database URL | `--db` | — | `sqlite:///app/data/baas.db` |
 | JWT secret | `--jwt-secret` | `BAAS_JWT_SECRET` | insecure dev default (warns) |
 | Admin secret | `--admin-secret` | `BAAS_ADMIN_SECRET` | insecure dev default (warns) |
-| Seed demo project | `--seed` | — | off |
+| Seed demo project, then serve | `--seed` | — | off (the image's CMD passes it) |
+| Seed demo project, then stop | `--seed-only` | — | off |
+| Admin page file | `--dashboard` | — | `baas/web/dashboard.html` |
+| Write the OpenAPI document and stop | `--openapi FILE` | — | off |
 
 ## 5. Persistence & backups
 

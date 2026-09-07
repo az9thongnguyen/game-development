@@ -281,6 +281,25 @@ of guarantees. ⚠️ still unproven: no `baas` process has ever **booted** agai
 before ctest's default timeout noticed, which is why every baas test now carries
 `TIMEOUT 120`.
 
+**The API describes itself, from the table that serves it** (chapter 142).
+`baas/openapi/spec.cc` is ONE row per operation carrying only what a router cannot
+know — what the endpoint is for, which credential opens it, what the answers mean;
+parameters, operationIds and tags are DERIVED. `GET /openapi.json` serves it,
+`baas --openapi FILE` re-bakes the committed `baas/openapi.json`, and two tests keep
+it honest: the (METHOD, path) set Drogon actually registered must equal the
+documented set **both ways**, and re-baking must produce the same bytes. There are
+**no exemptions** — `/dashboard` moved out of `main.cc` into `register_routes()` so
+that function is the whole table, and the WebSocket route (which Drogon lists once
+per HTTP method) is collapsed by a rule reading Drogon's own handler description.
+
+**`--seed` seeds and then SERVES; `--seed-only` seeds and stops.** The Dockerfile's
+CMD has passed `--seed` since chapter 107 and the flag used to `return 0`, so the
+shipped image seeded and exited — forever, behind `restart: unless-stopped` — and had
+never answered a request. No test could see it: all ninety link `baas_core` and call
+`register_routes()` themselves, so **none had ever run `main()`**. `test_baas_boot`
+now spawns the real binary and asks it from outside, and CI's `baas-docker` job
+builds the image, asserts the container is still RUNNING, then probes it.
+
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
 **28 of the 83 tests**: `ctest` here reports 83, a build configured without Drogon
@@ -294,6 +313,11 @@ directory's targets; `ctest --test-dir <dir>/baas` runs exactly its tests):
 brew install drogon libsodium                  # enables the 'baas' target
 cp baas/config.example.json baas/config.json   # gitignored local dev config
 ./build/baas/baas                              # or: docker compose -f baas/ops/docker-compose.yml up
+
+./build/baas/baas --seed-only                  # create the demo project, print its keys, stop
+./build/baas/baas --seed                       # ...create it and KEEP SERVING (what the image does)
+./build/baas/baas --openapi baas/openapi.json  # re-bake the committed API description
+#   GET /openapi.json on a running server serves the same bytes
 ```
 
 CI (`.github/workflows/ci.yml`, ubuntu + macos) does a clean configure/build, runs
