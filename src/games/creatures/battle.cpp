@@ -273,6 +273,16 @@ void step(const Dex& d, Battle& b, Action a0, Action a1, std::vector<Event>* out
         }
     }
 
+    // ---- a stalemate is a draw --------------------------------------------------
+    // Checked BEFORE the replacement below so the last turn of a capped battle looks
+    // like every other ended one: over, with a winner (or -1), and no side left
+    // holding a fainted active.
+    if (!b.over && b.turn >= kMaxTurns) {
+        b.over   = true;
+        b.winner = -1;
+        emit(out, Event::Kind::Win, -1);
+    }
+
     // ---- fainted actives are replaced; an empty bench ends it -------------------
     if (!b.over) {
         const bool live0 = b.side[0].any_alive();
@@ -367,8 +377,18 @@ Action choose(const Dex& d, const Battle& b, int side) {
     }
     if (best >= 0) return Action{Action::Kind::Move, best};
 
-    const int bench = me.first_alive(me.active);
-    if (bench >= 0) return Action{Action::Kind::Switch, bench};
+    // Nothing out here can attack. Switching helps only if somebody on the BENCH
+    // can — the old version switched to the first living creature whatever its PP,
+    // and two out-of-PP teams then rotated at each other forever. Neither side was
+    // doing anything wrong; each was making the only move it had.
+    for (int i = 0; i < kPartySize; ++i) {
+        if (i == me.active || !me.member[i].alive()) continue;
+        const Creature& sub = me.member[i];
+        for (int m = 0; m < kMoveSlots; ++m)
+            if (sub.moves[m].move >= 0 && sub.moves[m].pp > 0)
+                return Action{Action::Kind::Switch, i};
+    }
+    // Out of options entirely: spend the turn. `kMaxTurns` ends what this cannot.
     return Action{Action::Kind::Move, 0};
 }
 

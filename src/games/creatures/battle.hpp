@@ -44,6 +44,21 @@ namespace creature {
 inline constexpr int kPartySize = 6;
 inline constexpr int kMoveSlots = 4;
 
+// A battle that reaches this many turns is a DRAW. Not a safety valve bolted on the
+// outside — a rule of the game, so every consumer gets it at once: the wild game, a
+// stored replay, and a rated match between two strangers.
+//
+// It is here because a battle CAN stall. When both sides run out of PP nothing can
+// take damage, and two identical teams then rotate their benches at each other
+// forever. That is not hypothetical: it is what the first two real `--pvp` processes
+// did for five hundred turns while every in-process test passed, because no test had
+// ever given both sides the SAME party (chapter 139).
+//
+// 200 is far beyond any real fight — the longest of a thousand random battles was 28
+// — so no existing recording moves, and `test_creature` checks that the committed
+// reference still bakes to the same bytes.
+inline constexpr int kMaxTurns = 200;
+
 enum class Status : std::uint8_t { None = 0, Burn, Paralyze, Sleep };
 
 struct MoveSlot {
