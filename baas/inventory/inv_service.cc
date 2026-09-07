@@ -54,11 +54,11 @@ void put_qty(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_i
              long user_id, const std::string& item, long long qty, bool exists) {
     if (exists)
         db::exec(tx, "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
-                        "WHERE project_id=? AND user_id=? AND item=?",
-                        qty, project_id, user_id, item);
+                     "WHERE project_id=? AND user_id=? AND item=?",
+                     qty, project_id, user_id, item);
     else
         db::exec(tx, "INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,?)",
-                        project_id, user_id, item, qty);
+                     project_id, user_id, item, qty);
 }
 
 }  // namespace

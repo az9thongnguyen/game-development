@@ -22,6 +22,7 @@
 #pragma once
 
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -83,12 +84,46 @@ enum class Dialect { Sqlite = 0, Postgres };
 //  database anywhere near it.
 [[nodiscard]] std::string portable(const std::string& sql, Dialect d);
 
+namespace detail {
+
+// A Postgres parameter, and why it is not simply forwarded.
+//
+// Drogon binds an integral parameter in BINARY — `sizeof(T)` raw bytes, network order,
+// with no type OID. Postgres therefore infers the parameter's type from the column and
+// then insists the payload be exactly that wide. Every id column in this schema is
+// INTEGER (4 bytes) and every id in this code is a C++ `long` (8), so the first run
+// against a real Postgres produced fifty-eight of:
+//
+//     ERROR:  incorrect binary data format in bind parameter 1
+//
+// The fix is not "make all the widths agree". That is a rule with no test, held across
+// a hundred call sites, that fails at runtime on the one backend nobody develops on —
+// which is the exact shape of the problem this whole slice exists to end.
+//
+// A TEXT parameter has no width. Postgres coerces an untyped literal to whatever the
+// column is, so `int`, `long` and `long long` all arrive as the same thing and none of
+// them can be the wrong size. SQLite is left alone: its binding is typed and correct,
+// and text there would lean on column affinity for no reason.
+template <typename T>
+decltype(auto) pg_arg(T&& v) {
+    using D = std::decay_t<T>;
+    if constexpr (std::is_integral_v<D> && !std::is_same_v<D, char>)
+        return std::to_string(v);
+    else
+        return std::forward<T>(v);
+}
+
+}  // namespace detail
+
 // Execute one statement, translated. `conn` is a DbClientPtr or a TransactionPtr — both
 // answer `->execSqlSync`, and the point of the template is that a caller does not have
 // to know which one it is holding.
 template <typename Conn, typename... Args>
 drogon::orm::Result exec(const Conn& conn, const std::string& sql, Args&&... args) {
-    return conn->execSqlSync(portable(sql, dialect()), std::forward<Args>(args)...);
+    if (dialect() == Dialect::Postgres)
+        return conn->execSqlSync(portable(sql, Dialect::Postgres),
+                                 detail::pg_arg(std::forward<Args>(args))...);
+    return conn->execSqlSync(portable(sql, Dialect::Sqlite), std::forward<Args>(args)...);
 }
 
 // INSERT, and hand back the id of the row it made.
@@ -102,7 +137,7 @@ long long insert_id(const Conn& conn, const std::string& sql, Args&&... args) {
     if (dialect() == Dialect::Postgres) {
         const drogon::orm::Result r =
             conn->execSqlSync(portable(sql + " RETURNING id", Dialect::Postgres),
-                              std::forward<Args>(args)...);
+                              detail::pg_arg(std::forward<Args>(args))...);
         return r.empty() ? 0 : r[0]["id"].as<long long>();
     }
     const drogon::orm::Result r =

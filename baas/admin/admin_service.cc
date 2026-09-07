@@ -40,7 +40,7 @@ NewProject create_project(const std::string& name) {
 std::string rotate_secret(long project_id) {
     const std::string sec = rand_token("sk_", 16);
     db::exec(db::client(), "UPDATE projects SET secret_key_hash=? WHERE id=?",
-                              pw::hash(sec), project_id);
+                           pw::hash(sec), project_id);
     audit::record(project_id, "admin", "secret.rotate", "project secret rotated");
     return sec;   // returned once; the old secret no longer verifies
 }

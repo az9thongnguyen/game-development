@@ -49,7 +49,7 @@ int main() {
     // ...and a locking read has to actually RUN on this backend. A clause that is
     // right in a string comparison and wrong in the parser is the failure this file
     // exists to catch, so the query is executed rather than inspected.
-    const auto rows = db->execSqlSync(
+    const auto rows = web::db::exec(db,
         std::string("SELECT value FROM scores WHERE leaderboard_id=? AND user_id=?") +
             web::db::lock_clause(),
         1, 1);

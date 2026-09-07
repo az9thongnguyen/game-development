@@ -73,10 +73,10 @@ int main() {
     tester.join();
 
     // Verify persistence: 2 recorded; the attributed one carries the user id.
-    CHECK(db->execSqlSync("SELECT count(*) AS c FROM analytics_events")[0]["c"].as<long>() == 2);
-    const auto row = db->execSqlSync("SELECT user_id FROM analytics_events WHERE name='score.submitted'");
+    CHECK(web::db::exec(db, "SELECT count(*) AS c FROM analytics_events")[0]["c"].as<long>() == 2);
+    const auto row = web::db::exec(db, "SELECT user_id FROM analytics_events WHERE name='score.submitted'");
     CHECK(!row.empty() && !row[0]["user_id"].isNull());
-    const auto anon = db->execSqlSync("SELECT user_id FROM analytics_events WHERE name='app.open'");
+    const auto anon = web::db::exec(db, "SELECT user_id FROM analytics_events WHERE name='app.open'");
     CHECK(!anon.empty() && anon[0]["user_id"].isNull());
 
     baastest::cleanup_db(db_path);

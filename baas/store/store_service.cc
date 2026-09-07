@@ -52,7 +52,7 @@ bool upsert(long project_id, const std::string& sku, const std::string& currency
 
     auto       db = db::client();
     const auto ex = db::exec(db, "SELECT id FROM catalog WHERE project_id=? AND sku=?",
-                                    project_id, sku);
+                                 project_id, sku);
     if (ex.empty())
         db::exec(db,
             "INSERT INTO catalog(project_id, sku, currency, cost, item, amount) VALUES(?,?,?,?,?,?)",

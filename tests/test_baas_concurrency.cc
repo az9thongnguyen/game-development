@@ -50,10 +50,9 @@ constexpr long long kPrice = 10;
 constexpr long long kFunds = 100;      // exactly ten affordable purchases
 
 long make_user(long project_id, const char* name) {
-    const auto ins = web::db::client()->execSqlSync(
+    return static_cast<long>(web::db::insert_id(web::db::client(),
         "INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
-        project_id, std::string(name));
-    return static_cast<long>(ins.insertId());
+        project_id, std::string(name)));
 }
 
 }  // namespace
@@ -71,7 +70,7 @@ int main() {
                 web::db::dialect() == web::db::Dialect::Postgres ? "postgres" : "sqlite");
     std::printf("  lock clause: \"%s\"\n", web::db::lock_clause());
 
-    const long pid = db->execSqlSync("SELECT id FROM projects WHERE public_key=?", pk)[0]["id"]
+    const long pid = web::db::exec(db, "SELECT id FROM projects WHERE public_key=?", pk)[0]["id"]
                          .as<long>();
     const long uid = make_user(pid, "Spender");
 

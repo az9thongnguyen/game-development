@@ -108,13 +108,27 @@ int main() {
     // `portable` is the ONE translation only while `execSqlSync` is unreachable from
     // anywhere else. db.h is where the seam is built, so it is the only file allowed
     // to say the word.
+    // Two roots, because a fixture is a query too: half these tests INSERT the project
+    // they then talk to, and a fixture written in `?` fails on Postgres exactly as
+    // loudly as a service would — one slice later, in a test whose name says
+    // "leaderboard".
+    //
+    // Two files are exempt and both say why in their own text: db.h BUILDS the seam,
+    // and baas_test_util.h issues `DROP SCHEMA` on a raw client before any dialect has
+    // been chosen. This file is exempt from itself, because it names the pattern in a
+    // string in order to look for it.
     int offenders = 0, scanned = 0;
-    for (const auto& e : std::filesystem::recursive_directory_iterator(BAAS_SRC_DIR)) {
+    const std::string roots[] = {BAAS_SRC_DIR, TESTS_SRC_DIR};
+    const std::string exempt[] = {"db.h", "baas_test_util.h", "test_baas_sql_seam.cc"};
+    for (const auto& root : roots)
+    for (const auto& e : std::filesystem::recursive_directory_iterator(root)) {
         if (!e.is_regular_file()) continue;
         const std::string path = e.path().string();
         const std::string ext  = e.path().extension().string();
         if (ext != ".cc" && ext != ".h") continue;
-        if (e.path().filename() == "db.h") continue;   // the seam itself
+        bool skip = false;
+        for (const auto& x : exempt) skip = skip || e.path().filename() == x;
+        if (skip) continue;
         ++scanned;
         std::ifstream in(path);
         std::string   line;
@@ -133,8 +147,8 @@ int main() {
             }
         }
     }
-    std::printf("  scanned %d source files under %s\n", scanned, BAAS_SRC_DIR);
-    CHECK(scanned > 30);       // the walk found the tree, not an empty directory
+    std::printf("  scanned %d source files under baas/ and tests/\n", scanned);
+    CHECK(scanned > 100);      // the walk found the trees, not two empty directories
     CHECK(offenders == 0);
 
     // ---- 3. insert_id actually returns the id it made -----------------------

@@ -28,7 +28,7 @@ static int g_failures = 0;
 
 // Read a project's current stored secret hash (what SecretKeyFilter verifies against).
 static std::string secret_hash(long pid) {
-    const auto rows = web::db::client()->execSqlSync(
+    const auto rows = web::db::exec(web::db::client(),
         "SELECT secret_key_hash FROM projects WHERE id=?", pid);
     return rows.empty() ? std::string() : rows[0]["secret_key_hash"].as<std::string>();
 }

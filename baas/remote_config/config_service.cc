@@ -30,7 +30,7 @@ void set(long project_id, const std::string& key, const std::string& value) {
         "SELECT id FROM config WHERE project_id=? AND key=?", project_id, key);
     if (ex.empty())
         db::exec(db, "INSERT INTO config(project_id, key, value) VALUES(?,?,?)",
-                        project_id, key, value);
+                     project_id, key, value);
     else
         db::exec(db,
             "UPDATE config SET value=?, updated_at=CURRENT_TIMESTAMP WHERE project_id=? AND key=?",

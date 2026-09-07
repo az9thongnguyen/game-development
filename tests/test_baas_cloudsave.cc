@@ -43,7 +43,7 @@ int main() {
     web::db::run_migrations(db);
     const std::string pkA = web::db::seed(db);
 
-    const auto insB = db->execSqlSync(
+    const auto insB = web::db::exec(db,
         "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
         std::string("Proj B"), std::string("pk_b"), std::string("unset"));
     (void)insB;

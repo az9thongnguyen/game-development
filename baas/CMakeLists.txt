@@ -129,7 +129,8 @@ add_test(NAME baas_dialect COMMAND test_baas_dialect)
 # this test reads the tree it is testing.
 add_executable(test_baas_sql_seam ${CMAKE_SOURCE_DIR}/tests/test_baas_sql_seam.cc)
 target_link_libraries(test_baas_sql_seam PRIVATE baas_core CURL::libcurl engine_flags)
-target_compile_definitions(test_baas_sql_seam PRIVATE BAAS_SRC_DIR="${CMAKE_SOURCE_DIR}/baas")
+target_compile_definitions(test_baas_sql_seam PRIVATE
+    BAAS_SRC_DIR="${CMAKE_SOURCE_DIR}/baas" TESTS_SRC_DIR="${CMAKE_SOURCE_DIR}/tests")
 add_test(NAME baas_sql_seam COMMAND test_baas_sql_seam)
 
 add_executable(test_baas_concurrency ${CMAKE_SOURCE_DIR}/tests/test_baas_concurrency.cc)

@@ -60,7 +60,7 @@ SubmitResult submit(const Board& board, long user_id, long value) {
 
         if (existing.empty()) {
             db::exec(tx, "INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
-                            board.id, user_id, value);
+                         board.id, user_id, value);
             updated = true;
         } else {
             const long old    = existing[0]["value"].as<long>();
@@ -117,11 +117,11 @@ long rating_of(const Board& board, long user_id) {
 void store_rating(const TxPtr& tx, const Board& board, long user_id, long value, bool exists) {
     if (exists)
         db::exec(tx, "UPDATE scores SET value=?, updated_at=CURRENT_TIMESTAMP "
-                        "WHERE leaderboard_id=? AND user_id=?",
-                        value, board.id, user_id);
+                     "WHERE leaderboard_id=? AND user_id=?",
+                     value, board.id, user_id);
     else
         db::exec(tx, "INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)",
-                        board.id, user_id, value);
+                     board.id, user_id, value);
 }
 }  // namespace
 
