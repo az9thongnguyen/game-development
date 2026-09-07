@@ -157,20 +157,77 @@ every assertion about the protocol and proved nothing about a player taking turn
 
 ---
 
+## Twenty-five mutations, and fourteen survivors
+
+The first run killed 11 of 25. Fourteen survivors is a lot, and every one of them said
+something:
+
+**Six were plain gaps** a pure test closes in a line — `Box::overlaps` on an empty box,
+the button on a screen too short for it, the search screen claiming two creature rects it
+has nothing to draw in, starting a rated match from inside a wild one, a failed session
+drawing two blank creatures, and a result line an ink count could not tell apart from a
+leftover toast.
+
+**Two were assertions that had nothing to say.** `my_side()` hard-coded to 0 survived
+because the scene queued **first** and got side 0 — the check was true either way. The
+opponent queues first now, the player is side 1, and the assertion means something. This
+is the memory that keeps coming back: *a test can pass without touching the code.*
+
+**Three were a flag only one caller ever set.** `waiting_for_action`'s auto-play half was
+never exercised on a client that was Playing and owed an action — the only state it means
+anything in. It is now toggled both ways at that exact moment: same client, same phase, no
+update in between, so the only thing that changed is the flag.
+
+**One was unobservable by construction.** The between-turns refusal needs "I have acted
+and my opponent has not", and with auto-play on a client acts inside the very `update()`
+that builds the battle — the peer is always ahead, and that state lasts less than one tap.
+The peer is now driven by hand too, which also gives `act()` a second caller that is not a
+screen.
+
+**Two were the code's fault.**
+
+- `cancel()` used a **blacklist** of states to skip, and `Done` was not on it — so
+  cancelling a finished session reset it to Idle and threw away the result still on
+  screen. A whitelist of the states an operation applies to cannot forget a state; a
+  blacklist can, and did.
+- `cancel()` also sent the cancel frame **and** dropped the socket, and dropping the
+  socket clears the server's queue by itself. Two mechanisms covering each other, which is
+  chapter 145's lesson exactly — no test could tell the frame from its own absence. It
+  keeps the socket now (a player who cancels and looks again should not pay for a new
+  connection) and the test keeps a **ghost** client alive: cancelled, still connected, and
+  never matched. If the frame had not reached the server, the two real clients would be
+  paired with the ghost instead of each other, which is what a player experiences as "my
+  opponent never moved".
+
+**And the last one was equivalent, twice over.** `if (oy >= kMargin)` around the button's
+placement could not fail: the d-pad only appears from ~360 px of height, and at that
+height the row above it is already 150 px down. Dead code — deleted, with the check moved
+into the test where a future regression can be loud instead of silent. Then the *test*
+that was supposed to prove it turned out to sweep heights 120–400, where the pad does not
+exist below 360, so almost every pass hit `continue` and the loop asserted **nothing**. A
+sweep that never reaches its body is decoration. It sweeps 300–900 now and counts how many
+times it ran.
+
+Final: **25 mutations, 24 killed, 1 equivalent (deleted rather than pinned)**, across three
+rounds.
+
 ## What is verified, and what is not
 
 Verified:
 
 - **95/95 `ctest`, twice.** `test_creatures_online_live` is new: a real Drogon server, a
   real socket, a real `CreaturesScene`, and `--pvp`'s own client on the other side.
-- A rated match **played by tapping**, with the rating moved on the ladder and both
-  clients reporting exactly once.
-- The screen shows the player **their** side, asserted against the side the server chose.
+- A rated match **played by tapping**, with the rating moved on the ladder, both clients
+  reporting exactly once, and the recording holding exactly as many turns as the player
+  tapped moves for.
+- The screen shows the player **their** side — asserted with the player on **side 1**,
+  because on side 0 the assertion is true of a screen that never looked.
 - **A rendered frame looked at** — which is what found the third bug.
-- With no server anywhere: the button is clear of its neighbours, the d-pad is gone while
-  a session is up, a second session is refused, the world does not move, the failure
-  reaches the screen, Cancel works by being **tapped**, and Continue restores the route
-  without healing the party.
+- With no server anywhere: the button is clear of its neighbours at every height the pad
+  exists at, the d-pad is gone while a session is up, a second session is refused, the
+  world does not move, the failure reaches the screen, Cancel works by being **tapped**,
+  and Continue restores the route without healing the party.
+- Golden path on `projects/creatures.gameproject`, 0 `.tmp` leaks; Emscripten build.
 
 Not verified:
 
@@ -190,3 +247,7 @@ Not verified:
   is queued and nothing resolves, and the tap says "Waiting for your opponent" — but a
   player who taps three times sees the same sentence three times, not a screen that looks
   busy.
+- **One guard is untested and known to be**: `start_online` refuses an empty party. The
+  world's party always has the starter in it, so the branch is unreachable short of a
+  corrupt save — kept as insurance against exactly that, and recorded here rather than
+  pinned by a test that would have to fake the state it defends against.
