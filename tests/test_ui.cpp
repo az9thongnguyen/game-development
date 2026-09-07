@@ -916,6 +916,16 @@ static void test_xy_pad() {
     // A drag that lands where it already is is not a change.
     CHECK(!frame(hold(150, 150)));
 
+    // A RELEASE is not a drag: letting go somewhere else in the same frame leaves the
+    // value where the last held frame put it. A fast mouse does exactly this, and the
+    // alternative — the release position counting — would let a sloppy hand nudge a
+    // colour on the way up.
+    frame(press(150, 150));
+    frame(hold(150, 150));
+    const float bx = x, by = y;
+    frame(release(180, 190));
+    CHECK(x == bx && y == by);
+
     // Release ends it: moving afterwards moves nothing.
     frame(release(150, 150));
     frame(hold(110, 110));

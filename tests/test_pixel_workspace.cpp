@@ -31,6 +31,7 @@
 #include "engine/image.hpp"
 #include "engine/paint/colour.hpp"
 #include "engine/renderer2d.hpp"
+#include "engine/ui/theme.hpp"
 #include "engine/ui/ui.hpp"
 #include "games/studio_shell/pixel_workspace.hpp"
 
@@ -734,6 +735,47 @@ void test_mix_by_slider() {
     d.panel(ws, mouse(mx, sv.y + sv.h / 2, true, false));   // back to the middle
     d.panel(ws, mouse(mx, sv.y + sv.h / 2, false, false));  // release
 
+    // ---- the gradient runs the way the axes do (chapter 147) ----------------
+    // A claim about what is PAINTED, which no coordinate assertion can make: the same
+    // rectangle with saturation running downward instead of across is the same number
+    // of pixels in the same place. Read at the corners, in the frame the renderer
+    // produced.
+    {
+        // A hue with three distinguishable corners: white top-left (sat 0, val 1), the
+        // hue itself top-right (sat 1, val 1), black along the bottom (val 0).
+        d.panel(ws, mouse(hue_bar.x + hue_bar.w / 2, hue_bar.y + hue_bar.h / 2, true, true));
+        d.panel(ws, mouse(hue_bar.x + hue_bar.w / 2, hue_bar.y + hue_bar.h / 2, false, false));
+        d.panel(ws, ui::Input{});
+        const ui::Rect q = ws.sv_rect();
+        const auto at = [&](int px, int py) {
+            return d.buf[static_cast<std::size_t>(py) * d.w + static_cast<std::size_t>(px)];
+        };
+        const std::uint32_t tl = at(q.x + 1, q.y + 1);
+        const std::uint32_t tr = at(q.x + q.w - 2, q.y + 1);
+        const std::uint32_t bl = at(q.x + 1, q.y + q.h - 2);
+        const std::uint32_t br = at(q.x + q.w - 2, q.y + q.h - 2);
+        // Read one pixel INSIDE each corner, so the values are near the extremes rather
+        // than at them — the assertions are about direction, not about arithmetic
+        // test_paint already covers.
+        const auto lum  = [](std::uint32_t c) {
+            return (static_cast<int>((c >> 16) & 0xFF) + static_cast<int>((c >> 8) & 0xFF) +
+                    static_cast<int>(c & 0xFF)) / 3;
+        };
+        const auto chroma = [](std::uint32_t c) {
+            const int r = static_cast<int>((c >> 16) & 0xFF);
+            const int g2 = static_cast<int>((c >> 8) & 0xFF);
+            const int b = static_cast<int>(c & 0xFF);
+            return std::max({r, g2, b}) - std::min({r, g2, b});
+        };
+        CHECK(lum(tl) > 240 && chroma(tl) < 12);   // top-left: bright and grey
+        // A fully saturated colour has a channel near zero, so its MEAN is about two
+        // thirds of a white pixel's however bright it is — 120, not 240.
+        CHECK(lum(tr) > 120 && chroma(tr) > 200);  // top-right: bright and SATURATED
+        CHECK(chroma(tr) > chroma(tl) + 100);      // ...so saturation runs ACROSS
+        CHECK(lum(bl) < 12 && lum(br) < 12);       // the bottom is dark on BOTH edges
+        CHECK(lum(tl) > lum(bl) + 200);            // ...so value runs DOWN
+    }
+
     // ---- the colour you mixed has a home (chapter 147) ----------------------
     // It had none: it was the brush and nothing else, so getting it back after
     // wandering off meant painting a pixel and eyedroppering it.
@@ -760,12 +802,30 @@ void test_mix_by_slider() {
         click(d, ws, keep);
         CHECK(ws.palette().size() == before + 1);
 
+        // ...and it SAYS it is disabled. Counted as a colour in the rendered frame,
+        // because a live button and a dead one are the same rectangle otherwise — the
+        // greying is the only thing that stops "press it again" being a reasonable
+        // thing for a person to try.
+        d.panel(ws, ui::Input{});
+        const auto grey = [&] {
+            int n = 0;
+            const ui::Rect k = ws.add_rect();
+            for (int yy = k.y; yy < k.y + k.h; ++yy)
+                for (int xx = k.x; xx < k.x + k.w; ++xx)
+                    if (d.buf[static_cast<std::size_t>(yy) * d.w +
+                              static_cast<std::size_t>(xx)] == ui::theme::ctrl_disabled)
+                        ++n;
+            return n;
+        };
+        CHECK(grey() > 0);
+
         // Move the colour off the palette again and the button comes back.
         d.panel(ws, mouse(mx, sv.y + sv.h / 4, true, true));
         d.panel(ws, mouse(mx, sv.y + sv.h / 4, false, false));
         d.panel(ws, ui::Input{});
         CHECK(std::find(ws.palette().begin(), ws.palette().end(), ws.colour()) ==
               ws.palette().end());
+        CHECK(grey() == 0);        // ...and the grey lifts with the refusal
         click(d, ws, ws.add_rect());
         CHECK(ws.palette().size() == before + 2);
     }

@@ -312,10 +312,13 @@ void PixelWorkspace::update(double dt, const platform::InputState& in, bool inte
     // the moment value reached the bottom.
     if (want_add_) {
         want_add_ = false;
-        if (std::find(palette_.begin(), palette_.end(), colour_) == palette_.end()) {
-            palette_.push_back(colour_);
-            note(true, "kept " + paint::to_hex(colour_) + " in the palette");
-        }
+        // No second `find` here. The button's `enabled` is that same question, computed
+        // two lines from where it is drawn, and `want_add_` has exactly one setter — so
+        // a check here could only ever agree with it. Two guards covering each other are
+        // two guards no test can tell apart, and a mutation that deleted this one
+        // survived saying so. The button is the gate; this is the operation.
+        palette_.push_back(colour_);
+        note(true, "kept " + paint::to_hex(colour_) + " in the palette");
     }
     if (want_mix_) {
         mix_    = *want_mix_;

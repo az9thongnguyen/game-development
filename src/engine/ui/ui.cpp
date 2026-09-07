@@ -233,6 +233,12 @@ bool Context::drag_in(Id id, Rect r, bool focusable) {
         active_ = id;
         if (focusable) focused_ = id;
     }
+    // `&& in_.down` is not redundant with end()'s clear: end() runs AFTER the widgets,
+    // so on the frame the button comes up `active_` is still set and only this stops the
+    // control acting on it. What it decides is that **a release is not a drag** — the
+    // value is whatever the last held frame said, so letting go sloppily cannot nudge
+    // it. A release that carries a different position from the last hold is a real thing
+    // (a fast mouse), and that is the case the test pins.
     return active_ == id && in_.down;
 }
 
