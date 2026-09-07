@@ -62,7 +62,7 @@ int main() {
     // --- key scoping (regression: the same client key must not collide across user/item) ---
     // A DIFFERENT user in the same project reusing the SAME key value gets their OWN grant,
     // not a replay of user 1's — otherwise user 2 would be silently credited nothing.
-    const long uid2 = 2;
+    const long uid2 = baastest::make_user(db, pid, "Second Player");
     auto u2 = web::inv::grant(pid, uid2, item, 10, "req-1");   // "req-1" was used by user 1
     CHECK(u2.item && u2.item->qty == 10);                      // user 2's own fresh balance
     CHECK(web::inv::get(pid, uid2, item).qty == 10);

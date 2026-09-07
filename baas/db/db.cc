@@ -4,6 +4,8 @@
 #include "baas/db/db.h"
 
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 
@@ -380,6 +382,27 @@ const char* lock_clause() {
     // syntactic difference between the two backends in the whole codebase, and it is
     // the one that decides whether money can be spent twice.
     return g_dialect == Dialect::Postgres ? " FOR UPDATE" : "";
+}
+
+Transaction::Transaction(const DbClientPtr& db) {
+    auto p = std::make_shared<std::promise<bool>>();
+    done_  = p->get_future();
+    tx_    = db->newTransaction([p](bool ok) { p->set_value(ok); });
+}
+
+Transaction::~Transaction() {
+    const bool wait = !rolled_back_;
+    tx_.reset();   // this is what enqueues the COMMIT
+    if (!wait || !done_.valid()) return;
+    // Bounded, because chapter 140 already spent twenty-five minutes inside a wait that
+    // could not finish and reported nothing. A timeout here is a message, not a hang.
+    if (done_.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+        std::fprintf(stderr, "db::Transaction: commit did not report within 10s\n");
+}
+
+void Transaction::rollback() {
+    rolled_back_ = true;
+    tx_->rollback();
 }
 
 DbClientPtr make_db_client(const std::string& url, int pool) {

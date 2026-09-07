@@ -119,7 +119,7 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
     // say. A locking read locks a ROW, and the first grant of an item has none: both
     // threads read nothing, both inserted, and one of them lost the item to a unique
     // constraint. Hence `ensure_item` — chapter 141.
-    auto tx = db::client()->newTransaction();
+    db::Transaction tx(db::client());
     try {
         ensure_item(tx, project_id, user_id, item);
         const long long qty = qty_locked(tx, project_id, user_id, item) + amount;
@@ -128,7 +128,7 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
         if (!scoped_key.empty()) idem::record_with(tx, project_id, scoped_key, qty);
         return {Item{item, qty}, std::nullopt};
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "grant failed"}};
     }
 }
@@ -158,11 +158,11 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
     // anybody points this at Postgres — which is the whole plan. `qty_locked` asks for
     // the row lock, and asks for it in the only place that knows whether the backend
     // has one.
-    auto tx = db::client()->newTransaction();
+    db::Transaction tx(db::client());
     try {
         const long long have = qty_locked(tx, project_id, user_id, currency);
         if (have < cost) {
-            tx->rollback();
+            tx.rollback();
             return {std::nullopt, Error{409, "insufficient", "not enough " + currency}};
         }
 
@@ -187,7 +187,7 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
 
         return {Item{item, qty}, std::nullopt};   // tx commits on scope exit
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "purchase failed"}};
     }
 }
@@ -198,18 +198,18 @@ Result consume(long project_id, long user_id, const std::string& item, long long
 
     // Same shape as grant, and the same fix — except this one could go NEGATIVE, which
     // is the version of a lost update a player notices.
-    auto tx = db::client()->newTransaction();
+    db::Transaction tx(db::client());
     try {
         const long long cur = qty_locked(tx, project_id, user_id, item);
         if (cur < amount) {
-            tx->rollback();
+            tx.rollback();
             return {std::nullopt, Error{409, "insufficient", "not enough " + item}};
         }
         const long long qty = cur - amount;
         put_qty(tx, project_id, user_id, item, qty);
         return {Item{item, qty}, std::nullopt};
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "consume failed"}};
     }
 }

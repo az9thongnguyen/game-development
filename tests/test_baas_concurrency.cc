@@ -54,9 +54,7 @@ constexpr long long kPrice = 10;
 constexpr long long kFunds = 100;      // exactly ten affordable purchases
 
 long make_user(long project_id, const char* name) {
-    return static_cast<long>(web::db::insert_id(web::db::client(),
-        "INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
-        project_id, std::string(name)));
+    return baastest::make_user(web::db::client(), project_id, name);
 }
 
 }  // namespace

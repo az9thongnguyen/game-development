@@ -30,7 +30,7 @@ PutResult put(long project_id, const std::string& name, const std::string& kind,
     // Materialise, lock, then write — the same shape as cloud save, and for the same
     // reason: two editors publishing the same NEW asset both read nothing and both
     // inserted (chapter 141).
-    auto tx = db::client()->newTransaction();
+    db::Transaction tx(db::client());
     try {
         db::ensure_row(tx,
             "INSERT INTO assets(project_id, name, kind, data, version) VALUES(?,?,'','',0)",
@@ -42,7 +42,7 @@ PutResult put(long project_id, const std::string& name, const std::string& kind,
         const long long have = cur.empty() ? 0 : cur[0]["version"].as<long>();
 
         if (if_match > 0 && have != if_match) {
-            tx->rollback();   // do not leave the materialised empty asset behind
+            tx.rollback();   // do not leave the materialised empty asset behind
             return {std::nullopt, Error{409, "version_conflict", "asset was modified"}};
         }
 
@@ -54,7 +54,7 @@ PutResult put(long project_id, const std::string& name, const std::string& kind,
         return {Meta{name, kind, new_version, static_cast<long long>(data.size()), ""},
                 std::nullopt};
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "asset put failed"}};
     }
 }

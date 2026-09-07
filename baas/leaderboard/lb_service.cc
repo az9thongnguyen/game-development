@@ -62,7 +62,7 @@ SubmitResult submit(const Board& board, long user_id, long value) {
     // self-deadlock, and the first version of this code had one: `rank_for_value`
     // below ran with `tx` still in scope and the whole suite hung.
     {
-        auto tx = db::client()->newTransaction();
+        db::Transaction tx(db::client());
         try {
             // The first submission on a board has no row to lock, and two of them
             // arriving together both used to INSERT — one of which is a unique
@@ -92,7 +92,7 @@ SubmitResult submit(const Board& board, long user_id, long value) {
                 }
             }
         } catch (const std::exception&) {
-            tx->rollback();
+            tx.rollback();
             throw;
         }
     }
@@ -166,7 +166,7 @@ MatchResult apply_match(long project_id, const Board& board, long user_id, long 
     // is a deadlock, and a ladder is exactly where that pair occurs.
     long mine_after = 0, their_after = 0, mine_before = 0;
     {   // scoped: see `submit` — the rank below needs a connection this holds
-        auto tx = db::client()->newTransaction();
+        db::Transaction tx(db::client());
         try {
             const auto [lo, hi] = lock_order(user_id, opponent_id);
             const long lo_before = rating_locked(tx, board, lo);
@@ -191,7 +191,7 @@ MatchResult apply_match(long project_id, const Board& board, long user_id, long 
             idem::record_with(tx, project_id, key,
                               static_cast<long long>(mine_after - mine_before));
         } catch (const std::exception&) {
-            tx->rollback();
+            tx.rollback();
             throw;
         }
     }

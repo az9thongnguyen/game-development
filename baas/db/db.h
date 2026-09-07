@@ -21,6 +21,7 @@
 // =============================================================================
 #pragma once
 
+#include <future>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -168,6 +169,49 @@ long long insert_id(const Conn& conn, const std::string& sql, Args&&... args) {
             portable(sql, Dialect::Sqlite), std::forward<Args>(args)...);
     return static_cast<long long>(r.insertId());   // raw-sql: and this is the other half
 }
+
+// ---------------------------------------------------------------------------
+//  A transaction that has actually COMMITTED by the time it goes out of scope
+// ---------------------------------------------------------------------------
+//  Drogon commits a transaction in its destructor, and the COMMIT is ENQUEUED on that
+//  connection's event loop rather than executed there and then. With a pool of one that
+//  is invisible: whatever the caller does next queues behind the commit on the same
+//  connection, so it always sees it. With a real pool the next statement takes a
+//  DIFFERENT connection and reads the state from before the commit.
+//
+//  That is what the first clean Postgres run actually looked like — no SQL errors left,
+//  and the wrong number everywhere. `grant` returned 8 and the GET immediately after it
+//  returned 7; forty-eight grants of one produced forty-seven. Not a lost update: a
+//  write that had not landed yet. It is the third thing the pool of one was silently
+//  providing, after atomicity (chapter 140) and the row that a lock could hold
+//  (materialise-then-lock, above): read-your-own-writes.
+//
+//  So this waits. A mutating request must not answer before its commit is real, or the
+//  GET that follows it is entitled to be older than the POST it followed.
+class Transaction {
+  public:
+    explicit Transaction(const DbClientPtr& db);
+    ~Transaction();
+
+    Transaction(const Transaction&)            = delete;
+    Transaction& operator=(const Transaction&) = delete;
+
+    // Roll back, and do NOT wait afterwards: the caller is on an error path, is
+    // returning a failure, and has nothing to read back. It also means this class never
+    // depends on whether Drogon fires the commit callback for a rollback — the question
+    // that would otherwise turn a wrong guess into a hung test suite.
+    void rollback();
+
+    // Both of these exist so a call site reads exactly as it did before: `db::exec(tx,
+    // …)` finds `operator->`, and a helper taking the shared_ptr finds the conversion.
+    drogon::orm::Transaction* operator->() const { return tx_.get(); }
+    operator const std::shared_ptr<drogon::orm::Transaction>&() const { return tx_; }
+
+  private:
+    std::shared_ptr<drogon::orm::Transaction> tx_;
+    std::future<bool>                         done_;
+    bool                                      rolled_back_ = false;
+};
 
 // Build a DbClient from a url:
 //   "sqlite://PATH"     — single connection; SQLite is single-writer

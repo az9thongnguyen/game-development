@@ -25,7 +25,7 @@ PutResult put(long project_id, long user_id, const std::string& slot,
     // saw nothing and both inserted, which on a real pool is an uncaught UniqueViolation
     // and a dead process. Version 0 is the materialised value, so a brand-new save still
     // lands at version 1 and an `if_match` against a row that did not exist still fails.
-    auto tx = db::client()->newTransaction();
+    db::Transaction tx(db::client());
     try {
         db::ensure_row(tx,
             "INSERT INTO saves(project_id, user_id, slot, data, version) VALUES(?,?,?,'',0)",
@@ -39,7 +39,7 @@ PutResult put(long project_id, long user_id, const std::string& slot,
         if (if_match > 0 && have != if_match) {
             // ROLLBACK, not just return: the materialised row is this transaction's, and
             // a refused write must not leave an empty save behind.
-            tx->rollback();
+            tx.rollback();
             return {std::nullopt, Error{409, "version_conflict", "save was modified"}};
         }
 
@@ -50,7 +50,7 @@ PutResult put(long project_id, long user_id, const std::string& slot,
             data, new_version, project_id, user_id, slot);
         return {Meta{slot, new_version, static_cast<long long>(data.size()), ""}, std::nullopt};
     } catch (const std::exception&) {
-        tx->rollback();
+        tx.rollback();
         return {std::nullopt, Error{500, "internal", "save failed"}};
     }
 }

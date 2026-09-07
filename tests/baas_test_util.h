@@ -166,6 +166,14 @@ struct Fixture {
     long user_id    = 0;
 };
 
+// A second (third, …) player in a project that already exists.
+inline long make_user(const drogon::orm::DbClientPtr& db, long project_id,
+                      const std::string& display_name) {
+    return static_cast<long>(web::db::insert_id(db,
+        "INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
+        project_id, display_name));
+}
+
 inline Fixture make_fixture(const drogon::orm::DbClientPtr& db,
                             const std::string& public_key = "pk_fixture") {
     Fixture f;
