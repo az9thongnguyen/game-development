@@ -2,18 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Start here, if you are picking this up
+
+Read **`docs/new-plan/PROGRESS.md`** first — the `⏸ QUAY LẠI TỪ ĐÂY` block at the very
+top is the resume point: where the work stopped, what is next and **why**, the first
+command to run, the five known risks nobody has fixed, and this machine's quirks (which
+build directory is Release, that port 8080 is taken, that a mutation harness owns the
+working tree while it runs).
+
+**`AGENTS.md`** is the same map for any other agent, plus the read order and the
+non-negotiables in checklist form. Everything below is the operating manual.
+
 ## What this is
 
 A **hand-written C++20 game engine** built from scratch to learn deeply, plus a
 collection of games/tools on top of it and a hand-written Game Backend-as-a-Service.
 `requirements.md` (Vietnamese) owns the original *learning* vision; `docs/strategy/`
 owns the *product* direction (how this grows into a self-hostable game-creation
-platform) — read it before touching the platform spine. `docs/book/` is a 100+-chapter
+platform) — read it before touching the platform spine. `docs/book/` is a 148-chapter
 guidebook where each chapter maps to the code that implements it; **the guidebook
 chapter is the best explanation of any given subsystem** (e.g. `93` = release store,
 `95`–`97` = Hub/Studio shell). `docs/guides/author-to-url.md` walks the operator
 golden path end to end. **`docs/adr/README.md` is the decision index** — one line per
-architectural decision, pointing at the chapter that argues it, and eight rows marked
+architectural decision, pointing at the chapter that argues it, and 13 rows marked
 `Superseded by N` so a reversed decision says so instead of surviving as folklore
 (`test_adr_index` checks the pointers, the ids and the supersessions). **`docs/PROJECT-BRIEF.md` is the single orientation document**:
 current state, full feature inventory, a verified-vs-unproven ledger, the roadmap

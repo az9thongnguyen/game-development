@@ -22,7 +22,33 @@ outcome-gated roadmap, metrics, and competitive watchlist). `requirements.md` ow
 the original *learning* vision; `docs/strategy/` owns the *product* direction and its
 adopted execution posture. The two are complementary, not competing.
 
+## Where things stand
+
+**148 guidebook chapters · 95 test suites · 40 SDL-free `*_core` libraries · five games,
+each launched from its own manifest.** A hand-written engine, a Studio that authors for
+it, a platform spine that publishes and promotes releases, and a Drogon backend running
+on SQLite *and* PostgreSQL with a self-describing API.
+
+Three documents own the current picture, and the milestone table below is **not** one of
+them — it is a historical log that stops at Horizon 1 (chapter 94):
+
+| Read | For |
+|---|---|
+| **[`AGENTS.md`](AGENTS.md)** | The ten-minute orientation: read order, the rules that break the design, how a slice is done. Written for an AI agent and just as useful to a person |
+| **[`docs/PROJECT-BRIEF.md`](docs/PROJECT-BRIEF.md)** | Current state, the full feature inventory, and **§8 — the verified-vs-unproven ledger**, which says ❌ about this project's own past where that is the truth |
+| **[`docs/new-plan/PROGRESS.md`](docs/new-plan/PROGRESS.md)** | Where the work stopped and what is next. The block at the top is the resume point |
+
+`docs/adr/README.md` indexes 63 architectural decisions in one line each — 13 of them
+marked `Superseded by N`, because a decision that was reversed is more useful to a reader
+than one that was quietly deleted. `docs/book/NN` is the argument behind each.
+
 ## Roadmap (milestones)
+
+> **This table is a log, not a status board.** It records milestones up to Horizon 1
+> (chapter 94) one row at a time. Forty chapters landed after it — the farm and Creatures
+> as shipped games, rated PvP, the collection page, PostgreSQL, an API that describes
+> itself, the Studio's four workspaces — and they are summarised by theme in
+> `docs/PROJECT-BRIEF.md §7` rather than as forty more rows here.
 
 | MS | What | Status |
 |----|------|--------|
@@ -92,7 +118,12 @@ cmake --build build
 ./build/demo --shell projects/creator.gameproject     # windowed: the Studio (Edit / Project / Play / Hub …)
 ./build/demo --project-new projects/mine.gameproject fps "My Game"  # headless: scaffold a new launchable manifest (create verb)
 ./build/demo --project projects/creator.gameproject   # golden path: launch a game from a game.project manifest
-./build/demo --project projects/farm.gameproject      # ...the farm: cloud save, remote-config prices, live events
+./build/demo --project projects/farm.gameproject      # ...the farm: cloud save, remote-config prices, live events, seasons
+./build/demo --project projects/creatures.gameproject # ...Creatures: catch, level up, evolve; every fight writes a replay
+./build/demo --project projects/iso.gameproject       # ...the isometric farm sim
+./build/demo --project projects/colony.gameproject    # ...the colony (ECS + jobs + UI), also the BaaS client
+./build/demo --pvp <baas_url> <api_key>               # one rated Creatures match, headless (a hand plays one from the game's own screen)
+./build/demo --bench-ui 200                           # what one frame costs: the Studio and every game (use a Release build)
 ./build/demo --project-inspect projects/creator.gameproject  # headless: validate/doctor a manifest (no window)
 ./build/demo --project-package projects/creator.gameproject  # headless: emit the deterministic package manifest (release-id seed)
 ./build/demo --project-publish projects/creator.gameproject development "reason"  # headless: store immutably (atomic) + point the development channel + audit

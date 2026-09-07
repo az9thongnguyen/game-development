@@ -73,3 +73,6 @@ farm_*.ppm
 # file while one token in it is flipped. It has been committed once by accident,
 # which is exactly what an ignore line is for.
 *.mutbak
+
+# Drogon's upload scratch: 256 empty tmp/00..ff directories the BaaS makes at boot.
+uploads/
