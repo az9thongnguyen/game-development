@@ -29,7 +29,8 @@ int main() {
     web::db::set_client(db);
     web::db::run_migrations(db);   // must include migration 4 (idempotency_keys)
 
-    const long pid = 1, uid = 1;
+    const auto fx  = baastest::make_fixture(db);
+    const long pid = fx.project_id, uid = fx.user_id;
     const std::string item = "gold";
 
     // First grant with a key: applies. Balance → 10.

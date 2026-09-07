@@ -32,7 +32,7 @@ std::optional<Record> get(long project_id, long user_id, long long id) {
 
 std::vector<Meta> list(long project_id, long user_id) {
     const auto rows = db::exec(db::client(),
-        "SELECT id, name, length(CAST(data AS BLOB)) AS sz, created_at FROM replays "
+        "SELECT id, name, BYTELEN(data) AS sz, created_at FROM replays "
         "WHERE project_id=? AND user_id=? ORDER BY id DESC",
         project_id, user_id);
     std::vector<Meta> out;

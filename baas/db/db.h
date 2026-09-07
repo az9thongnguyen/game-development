@@ -121,9 +121,31 @@ decltype(auto) pg_arg(T&& v) {
 template <typename Conn, typename... Args>
 drogon::orm::Result exec(const Conn& conn, const std::string& sql, Args&&... args) {
     if (dialect() == Dialect::Postgres)
-        return conn->execSqlSync(portable(sql, Dialect::Postgres),
-                                 detail::pg_arg(std::forward<Args>(args))...);
-    return conn->execSqlSync(portable(sql, Dialect::Sqlite), std::forward<Args>(args)...);
+        return conn->execSqlSync(   // raw-sql: this IS the seam
+            portable(sql, Dialect::Postgres), detail::pg_arg(std::forward<Args>(args))...);
+    return conn->execSqlSync(   // raw-sql: ...and so is this
+        portable(sql, Dialect::Sqlite), std::forward<Args>(args)...);
+}
+
+// Create the row if it is not there yet, and say whether THIS call is the one that
+// made it.
+//
+// `FOR UPDATE` cannot lock a row that does not exist. Chapter 140 closed the
+// lost-update race for a row that was already there and left the FIRST write wide
+// open: two concurrent grants of a player's first item both found nothing, both took
+// the INSERT branch, and on a backend with a real pool the loser is a unique-constraint
+// violation — a grant that vanished, or, before the transaction existed, a dead process.
+// SQLite's pool of one hid it perfectly; eight threads on one purse found it against
+// Postgres in a second and a quarter.
+//
+// So: materialise, then lock. `ON CONFLICT DO NOTHING` with the target omitted means
+// "any conflict" in both SQLite (3.24+) and Postgres (9.5+), and the loser of the race
+// blocks until the winner commits and then does nothing — which is exactly what the
+// caller wants, because the locking read that follows will find the winner's row.
+template <typename Conn, typename... Args>
+bool ensure_row(const Conn& conn, const std::string& insert_sql, Args&&... args) {
+    return exec(conn, insert_sql + " ON CONFLICT DO NOTHING",
+                std::forward<Args>(args)...).affectedRows() > 0;
 }
 
 // INSERT, and hand back the id of the row it made.
@@ -136,13 +158,15 @@ template <typename Conn, typename... Args>
 long long insert_id(const Conn& conn, const std::string& sql, Args&&... args) {
     if (dialect() == Dialect::Postgres) {
         const drogon::orm::Result r =
-            conn->execSqlSync(portable(sql + " RETURNING id", Dialect::Postgres),
-                              detail::pg_arg(std::forward<Args>(args))...);
+            conn->execSqlSync(   // raw-sql: this IS the seam
+                portable(sql + " RETURNING id", Dialect::Postgres),
+                detail::pg_arg(std::forward<Args>(args))...);
         return r.empty() ? 0 : r[0]["id"].as<long long>();
     }
     const drogon::orm::Result r =
-        conn->execSqlSync(portable(sql, Dialect::Sqlite), std::forward<Args>(args)...);
-    return static_cast<long long>(r.insertId());
+        conn->execSqlSync(   // raw-sql: this IS the seam
+            portable(sql, Dialect::Sqlite), std::forward<Args>(args)...);
+    return static_cast<long long>(r.insertId());   // raw-sql: and this is the other half
 }
 
 // Build a DbClient from a url:

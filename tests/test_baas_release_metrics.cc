@@ -38,7 +38,7 @@ int main() {
     web::db::set_client(db);
     web::db::run_migrations(db);   // must include migration 3 (the release column)
 
-    const long pid = 1;
+    const long pid = baastest::make_fixture(db).project_id;
     const std::string relA = "a1b2c3d4e5f60718";   // pretend release-store content hashes
     const std::string relB = "0f1e2d3c4b5a6970";
 

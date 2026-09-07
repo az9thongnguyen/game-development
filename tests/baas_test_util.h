@@ -24,6 +24,8 @@
 #include <drogon/orm/DbClient.h>
 #include <json/json.h>
 
+#include "baas/db/db.h"
+
 namespace baastest {
 
 inline std::size_t write_cb(char* p, std::size_t sz, std::size_t n, void* ud) {
@@ -135,8 +137,10 @@ inline void cleanup_db(const std::string& path) {
         try {
             if (!wipe) wipe = new drogon::orm::DbClientPtr(
                 drogon::orm::DbClient::newPgClient(url, 1));
-            (*wipe)->execSqlSync("DROP SCHEMA IF EXISTS public CASCADE");
-            (*wipe)->execSqlSync("CREATE SCHEMA public");
+            // DDL with no parameters, on a client built before any dialect has been
+            // chosen — `db::exec` would ask `dialect()` and get the last test's answer.
+            (*wipe)->execSqlSync("DROP SCHEMA IF EXISTS public CASCADE");  // raw-sql: DDL, no params
+            (*wipe)->execSqlSync("CREATE SCHEMA public");                  // raw-sql: DDL, no params
         } catch (const std::exception& e) {
             std::fprintf(stderr, "cleanup_db: %s\n", e.what());
         }
@@ -144,6 +148,34 @@ inline void cleanup_db(const std::string& path) {
     }
     for (const char* suffix : {"", "-journal", "-wal", "-shm"})
         std::remove((path + suffix).c_str());
+}
+
+// ---- a project and a user that REALLY EXIST ---------------------------------
+//
+// Six tests used to open with:
+//
+//     const long pid = 1;   // a project id; no FK enforcement needed for this unit test
+//
+// That comment was not a design decision. It was a description of SQLite's default:
+// PRAGMA foreign_keys is OFF, so a row pointing at a project nobody ever created is
+// accepted without complaint. Postgres enforces the constraint the schema asked for,
+// and against it those six tests could not insert a single row — a year of green runs
+// over data that no real deployment would have held (chapter 141).
+struct Fixture {
+    long project_id = 0;
+    long user_id    = 0;
+};
+
+inline Fixture make_fixture(const drogon::orm::DbClientPtr& db,
+                            const std::string& public_key = "pk_fixture") {
+    Fixture f;
+    f.project_id = static_cast<long>(web::db::insert_id(db,
+        "INSERT INTO projects(name, public_key, secret_key_hash) VALUES(?,?,?)",
+        std::string("Fixture"), public_key, std::string("unset")));
+    f.user_id = static_cast<long>(web::db::insert_id(db,
+        "INSERT INTO users(project_id, display_name, is_guest) VALUES(?,?,1)",
+        f.project_id, std::string("Fixture Player")));
+    return f;
 }
 
 inline Json::Value parse(const std::string& body) {

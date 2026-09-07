@@ -49,16 +49,21 @@ long long qty_of(long project_id, long user_id, const std::string& item) {
     return rows.empty() ? 0 : rows[0]["qty"].as<long>();
 }
 
-// Write a quantity that has already been decided, inside `tx`.
+// Make sure the row is THERE, so the locking read below has something to lock. See
+// `db::ensure_row` for why this is a separate step and not a branch.
+void ensure_item(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_id,
+                 long user_id, const std::string& item) {
+    db::ensure_row(tx, "INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,0)",
+                   project_id, user_id, item);
+}
+
+// Write a quantity that has already been decided, inside `tx`. No INSERT branch: every
+// caller has materialised the row first, so there is exactly one way to write it.
 void put_qty(const std::shared_ptr<drogon::orm::Transaction>& tx, long project_id,
-             long user_id, const std::string& item, long long qty, bool exists) {
-    if (exists)
-        db::exec(tx, "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
-                     "WHERE project_id=? AND user_id=? AND item=?",
-                     qty, project_id, user_id, item);
-    else
-        db::exec(tx, "INSERT INTO inventory(project_id, user_id, item, qty) VALUES(?,?,?,?)",
-                     project_id, user_id, item, qty);
+             long user_id, const std::string& item, long long qty) {
+    db::exec(tx, "UPDATE inventory SET qty=?, updated_at=CURRENT_TIMESTAMP "
+                 "WHERE project_id=? AND user_id=? AND item=?",
+                 qty, project_id, user_id, item);
 }
 
 }  // namespace
@@ -107,18 +112,18 @@ Result grant(long project_id, long user_id, const std::string& item, long long a
     // A TRANSACTION, since chapter 140. Before it this was a bare read followed by a
     // bare write, and the comment in `purchase` below — "atomic because the SQLite
     // pool is size 1" — was true only of code that opens a transaction. Two threads
-    // calling `execSqlSync` twice each interleave on a pool of one just as happily as
-    // on a pool of ten: the connection is held for one STATEMENT, not for a sequence.
-    // So two concurrent grants of 5 to an empty slot could both read 0 and both write
-    // 5, and the player was owed 10.
+    // calling execSqlSync twice each interleave on a pool of one just as happily as on
+    // a pool of ten: the connection is held for one STATEMENT, not for a sequence.
+    //
+    // ...and the transaction alone was not enough, which only a real Postgres could
+    // say. A locking read locks a ROW, and the first grant of an item has none: both
+    // threads read nothing, both inserted, and one of them lost the item to a unique
+    // constraint. Hence `ensure_item` — chapter 141.
     auto tx = db::client()->newTransaction();
     try {
-        const auto ex  = db::exec(tx,
-            std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
-                db::lock_clause(),
-            project_id, user_id, item);
-        const long long qty = (ex.empty() ? 0 : ex[0]["qty"].as<long>()) + amount;
-        put_qty(tx, project_id, user_id, item, qty, !ex.empty());
+        ensure_item(tx, project_id, user_id, item);
+        const long long qty = qty_locked(tx, project_id, user_id, item) + amount;
+        put_qty(tx, project_id, user_id, item, qty);
         // Inside the transaction, so the key commits with the effect it describes.
         if (!scoped_key.empty()) idem::record_with(tx, project_id, scoped_key, qty);
         return {Item{item, qty}, std::nullopt};
@@ -167,14 +172,12 @@ Result purchase(long project_id, long user_id, const std::string& currency, long
             "WHERE project_id=? AND user_id=? AND item=?",
             have - cost, project_id, user_id, currency);
 
-        // Grant the item (upsert), computing its resulting quantity. Locked for the
-        // same reason: the currency and the item are two different rows.
-        const auto ex = db::exec(tx,
-            std::string("SELECT qty FROM inventory WHERE project_id=? AND user_id=? AND item=?") +
-                db::lock_clause(),
-            project_id, user_id, item);
-        const long long qty = (ex.empty() ? 0 : ex[0]["qty"].as<long>()) + amount;
-        put_qty(tx, project_id, user_id, item, qty, !ex.empty());
+        // Grant the item, computing its resulting quantity. Materialised and then
+        // locked for the same reason: the currency and the item are two different rows,
+        // and this one may not exist yet.
+        ensure_item(tx, project_id, user_id, item);
+        const long long qty = qty_locked(tx, project_id, user_id, item) + amount;
+        put_qty(tx, project_id, user_id, item, qty);
 
         // Record idempotency INSIDE the transaction so the key commits atomically with the
         // spend+grant — a retry cannot land between the effect and the record.
@@ -203,7 +206,7 @@ Result consume(long project_id, long user_id, const std::string& item, long long
             return {std::nullopt, Error{409, "insufficient", "not enough " + item}};
         }
         const long long qty = cur - amount;
-        put_qty(tx, project_id, user_id, item, qty, /*exists=*/true);
+        put_qty(tx, project_id, user_id, item, qty);
         return {Item{item, qty}, std::nullopt};
     } catch (const std::exception&) {
         tx->rollback();

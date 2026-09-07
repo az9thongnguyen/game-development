@@ -350,6 +350,24 @@ std::string portable(const std::string& sql, Dialect d) {
             i += 17;
             continue;
         }
+        if (word_at(sql, i, "BYTELEN") && i + 7 < sql.size() && sql[i + 7] == '(') {
+            // The only rewrite that has to read its own argument, because the two
+            // spellings put it in different places. `length()` counts CHARACTERS in
+            // SQLite, so the byte count of a save needs a cast through BLOB; Postgres
+            // spells the same question `octet_length` and has no BLOB type at all —
+            // the first run against it said so ten times, from three services.
+            std::size_t j = i + 8;
+            int         depth = 1;
+            for (; j < sql.size() && depth > 0; ++j) {
+                if (sql[j] == '(') ++depth;
+                else if (sql[j] == ')') --depth;
+            }
+            const std::string inner = sql.substr(i + 8, (j - 1) - (i + 8));
+            out += pg ? "octet_length(" + inner + ")"
+                      : "length(CAST(" + inner + " AS BLOB))";
+            i = j;
+            continue;
+        }
 
         out += c;
         ++i;

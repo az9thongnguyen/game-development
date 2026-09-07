@@ -100,6 +100,25 @@ int main() {
     EQ(portable("SELECT autoidx, my_autoid FROM t", pg), "SELECT autoidx, my_autoid FROM t");
     EQ(portable("SELECT current_timestamp_utc FROM t", pg), "SELECT current_timestamp_utc FROM t");
 
+    // BYTELEN — the one rewrite that has to read its own argument, because the two
+    // spellings put it in different places. `length()` counts CHARACTERS in SQLite and
+    // Postgres has no BLOB type to cast through at all.
+    EQ(portable("SELECT BYTELEN(data) AS sz FROM saves", lite),
+       "SELECT length(CAST(data AS BLOB)) AS sz FROM saves");
+    EQ(portable("SELECT BYTELEN(data) AS sz FROM saves", pg),
+       "SELECT octet_length(data) AS sz FROM saves");
+    // ...and it survives a nested paren in the argument, and a `?` after it.
+    EQ(portable("SELECT BYTELEN(coalesce(data,'')) FROM t WHERE id=?", pg),
+       "SELECT octet_length(coalesce(data,'')) FROM t WHERE id=$1");
+    // A column merely NAMED bytelen_something is not a call.
+    EQ(portable("SELECT bytelenx FROM t", pg), "SELECT bytelenx FROM t");
+
+    // ensure_row's suffix, which every materialise-then-lock adds, still translates.
+    EQ(portable("INSERT INTO scores(leaderboard_id, user_id, value) VALUES(?,?,?)"
+                " ON CONFLICT DO NOTHING", pg),
+       "INSERT INTO scores(leaderboard_id, user_id, value) VALUES($1,$2,$3)"
+       " ON CONFLICT DO NOTHING");
+
     // Empty in, empty out; and a statement with nothing to translate is untouched.
     EQ(portable("", pg), "");
     EQ(portable("SELECT 1", pg), "SELECT 1");
@@ -113,22 +132,21 @@ int main() {
     // loudly as a service would — one slice later, in a test whose name says
     // "leaderboard".
     //
-    // Two files are exempt and both say why in their own text: db.h BUILDS the seam,
-    // and baas_test_util.h issues `DROP SCHEMA` on a raw client before any dialect has
-    // been chosen. This file is exempt from itself, because it names the pattern in a
-    // string in order to look for it.
-    int offenders = 0, scanned = 0;
+    // A LINE may opt out with a trailing `// raw-sql: <why>`, and nothing else may —
+    // not a file, not a directory. A file-wide exemption is how db.h's neighbours would
+    // quietly acquire one; a marker has to be typed next to the statement it excuses
+    // and comes with the reason attached. There are nine in the tree — five in db.h,
+    // where the seam is built; two in a test helper that runs DDL before any dialect
+    // has been chosen; and two right here, where the pattern is the needle. They are
+    // printed and counted, so growing that number is a visible act.
+    int offenders = 0, scanned = 0, marked = 0;
     const std::string roots[] = {BAAS_SRC_DIR, TESTS_SRC_DIR};
-    const std::string exempt[] = {"db.h", "baas_test_util.h", "test_baas_sql_seam.cc"};
     for (const auto& root : roots)
     for (const auto& e : std::filesystem::recursive_directory_iterator(root)) {
         if (!e.is_regular_file()) continue;
         const std::string path = e.path().string();
         const std::string ext  = e.path().extension().string();
         if (ext != ".cc" && ext != ".h") continue;
-        bool skip = false;
-        for (const auto& x : exempt) skip = skip || e.path().filename() == x;
-        if (skip) continue;
         ++scanned;
         std::ifstream in(path);
         std::string   line;
@@ -139,17 +157,24 @@ int main() {
             // comment ABOUT the seam, and a test that fails on documentation teaches
             // people to stop writing it.
             const auto code = line.substr(0, line.find("//"));
-            if (code.find("->execSqlSync(") != std::string::npos ||
-                code.find(".insertId(") != std::string::npos) {
-                std::printf("FAIL bypasses the seam: %s:%d\n%s\n", path.c_str(), n,
-                            line.c_str());
-                ++offenders;
+            if (code.find("->execSqlSync(") == std::string::npos &&   // raw-sql: the needle
+                code.find(".insertId(") == std::string::npos)          // raw-sql: the needle
+                continue;
+            if (line.find("// raw-sql:") != std::string::npos) {
+                std::printf("  raw-sql %s:%d\n", path.c_str(), n);
+                ++marked;
+                continue;
             }
+            std::printf("FAIL bypasses the seam: %s:%d\n%s\n", path.c_str(), n,
+                        line.c_str());
+            ++offenders;
         }
     }
-    std::printf("  scanned %d source files under baas/ and tests/\n", scanned);
+    std::printf("  scanned %d source files under baas/ and tests/, %d marked raw\n",
+                scanned, marked);
     CHECK(scanned > 100);      // the walk found the trees, not two empty directories
     CHECK(offenders == 0);
+    CHECK(marked == 9);        // 5 in db.h, 2 in baas_test_util.h, 2 in the search above
 
     // ---- 3. insert_id actually returns the id it made -----------------------
     // The RETURNING clause only exists on the Postgres branch, which is exactly the

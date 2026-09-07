@@ -31,7 +31,9 @@ int main() {
     web::db::set_client(db);
     web::db::run_migrations(db);
 
-    const long pid = 1;   // a project id; no FK enforcement needed for this unit test
+    // A REAL project row. It used to be `const long pid = 1` with a note saying no
+    // foreign key was enforced — true only of SQLite, and only by default.
+    const long pid = baastest::make_fixture(db).project_id;
 
     // First set of a new key: previous is unset, client read returns the new value.
     auto prev0 = web::cfg::set_audited(pid, "max_agents", "50", "admin");

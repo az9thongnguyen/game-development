@@ -20,6 +20,7 @@
 // =============================================================================
 #include <atomic>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -27,8 +28,11 @@
 #include <drogon/drogon.h>
 #include <sodium.h>
 
+#include "baas/asset_registry/asset_service.h"
+#include "baas/cloud_save/save_service.h"
 #include "baas/db/db.h"
 #include "baas/inventory/inv_service.h"
+#include "baas/remote_config/config_service.h"
 #include "baas/leaderboard/lb_service.h"
 #include "baas/store/store_service.h"
 #include "tests/baas_test_util.h"
@@ -174,6 +178,66 @@ int main() {
             CHECK(mine.has_value());
             CHECK(mine && mine->value == best);
         }
+    }
+
+    // ---- the FIRST write, which is the one a row lock cannot protect -------
+    //
+    // Chapter 140 put a locking read in front of every read-then-write and believed
+    // that closed it. `FOR UPDATE` locks a ROW, and the first write to a key has none:
+    // both threads find nothing, both INSERT, and the loser gets a unique-constraint
+    // violation. Where a transaction catches it that is a request that silently did
+    // nothing; where there was no transaction — config, catalog, cloud save, the asset
+    // registry, all four of them until chapter 141 — it is an uncaught exception on a
+    // Drogon event-loop thread, which is to say the server process.
+    //
+    // This says nothing on SQLite, whose pool of one serialises the pair. It is the
+    // reason this file exists and the reason CI now runs the whole suite twice.
+    {
+        std::atomic<int> ok{0}, threw{0};
+        const auto storm = [&](const char* what, const std::function<bool(int)>& one) {
+            ok = 0; threw = 0;
+            hands.clear();
+            for (int t = 0; t < kThreads; ++t)
+                hands.emplace_back([&, t] {
+                    for (int i = 0; i < kPerThread; ++i) {
+                        try { if (one(t)) ++ok; } catch (const std::exception&) { ++threw; }
+                    }
+                });
+            for (auto& h : hands) h.join();
+            std::printf("  %s: %d ok, %d threw\n", what, ok.load(), threw.load());
+            CHECK(threw.load() == 0);
+            CHECK(ok.load() == kThreads * kPerThread);
+        };
+
+        // One key, one sku, one slot, one asset — each written for the FIRST time by
+        // eight threads at once. Every call must succeed; none may throw.
+        storm("config.set    ", [&](int t) {
+            web::cfg::set(pid, "hot_key", "v" + std::to_string(t));
+            return true;
+        });
+        storm("catalog.upsert", [&](int t) {
+            return web::store::upsert(pid, "hot_sku", "gold", 10 + t, "sword", 1, "test");
+        });
+        storm("save.put      ", [&](int t) {
+            return web::save::put(pid, uid, "hot_slot", "data" + std::to_string(t), 0)
+                .meta.has_value();
+        });
+        storm("asset.put     ", [&](int t) {
+            return web::asset::put(pid, "hot_asset", "map", "bytes" + std::to_string(t), 0)
+                .meta.has_value();
+        });
+
+        // ...and each landed exactly once, with one value, not eight rows.
+        CHECK(web::cfg::get(pid, "hot_key").has_value());
+        CHECK(web::store::get(pid, "hot_sku").has_value());
+        const auto sv = web::save::get(pid, uid, "hot_slot");
+        CHECK(sv.has_value());
+        // The version counted every write: 48 puts, 48 versions. A lost update here is
+        // not a crash, it is a save that came back older than the one that replaced it.
+        CHECK(sv && sv->version == kThreads * kPerThread);
+        const auto av = web::asset::get(pid, "hot_asset");
+        CHECK(av.has_value());
+        CHECK(av && av->version == kThreads * kPerThread);
     }
 
     if (g_failures == 0) std::printf("baas_concurrency: all tests passed\n");

@@ -43,7 +43,7 @@ int main() {
     CHECK(web::rbac::role_from_string("owner") == Role::Owner);
     CHECK(!web::rbac::role_from_string("wizard").has_value());
 
-    const long pid = 1;
+    const long pid = baastest::make_fixture(db).project_id;
 
     // --- provisioning: mint operators with distinct keys and roles ---
     auto alice_key = web::rbac::create_operator(pid, "alice", Role::Owner, "admin");

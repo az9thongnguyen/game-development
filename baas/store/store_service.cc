@@ -50,18 +50,14 @@ bool upsert(long project_id, const std::string& sku, const std::string& currency
     if (!valid_sku(sku) || !inv::valid_item(currency) || !inv::valid_item(item)) return false;
     if (cost <= 0 || amount <= 0) return false;   // an offer must charge and grant something
 
-    auto       db = db::client();
-    const auto ex = db::exec(db, "SELECT id FROM catalog WHERE project_id=? AND sku=?",
-                                 project_id, sku);
-    if (ex.empty())
-        db::exec(db,
-            "INSERT INTO catalog(project_id, sku, currency, cost, item, amount) VALUES(?,?,?,?,?,?)",
-            project_id, sku, currency, cost, item, amount);
-    else
-        db::exec(db,
-            "UPDATE catalog SET currency=?, cost=?, item=?, amount=?, updated_at=CURRENT_TIMESTAMP "
-            "WHERE project_id=? AND sku=?",
-            currency, cost, item, amount, project_id, sku);
+    // ONE statement — the function is named `upsert` and now is one. See cfg::set for
+    // why the read-then-branch it replaced was a crash waiting for a second writer.
+    db::exec(db::client(),
+        "INSERT INTO catalog(project_id, sku, currency, cost, item, amount) VALUES(?,?,?,?,?,?) "
+        "ON CONFLICT(project_id, sku) DO UPDATE SET "
+        "currency=excluded.currency, cost=excluded.cost, item=excluded.item, "
+        "amount=excluded.amount, updated_at=CURRENT_TIMESTAMP",
+        project_id, sku, currency, cost, item, amount);
 
     audit::record(project_id, actor, "catalog.upsert",
                   "sku=" + sku + " cost=" + std::to_string(cost) + " " + currency +
