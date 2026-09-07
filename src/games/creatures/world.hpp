@@ -24,6 +24,7 @@
 
 #include "engine/tilemap/map2.hpp"
 #include "games/creatures/battle.hpp"
+#include "games/creatures/replay.hpp"
 #include "games/creatures/defs.hpp"
 
 namespace creature {
@@ -68,6 +69,13 @@ struct World {
     int    wild_species = 0;
     int    wild_level   = 0;
     std::vector<Event> log;      // events from the last turn, for the scene to narrate
+
+    // The fight, as it is being recorded. Reset by `begin_battle`, appended to by
+    // every resolved turn, and complete the moment the battle ends — which is only
+    // true because a ball is an Action now (chapter 138). It is NOT in the save:
+    // `to_text` cannot store a battle at all, so there is no state in which a
+    // reloaded game owes anyone a half-recording.
+    Replay tape;
 
     // ---- the one stream ----
     std::uint64_t rng = 1;

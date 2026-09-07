@@ -39,15 +39,15 @@ std::string slurp(const char* path) {
     return b ? std::string(b->begin(), b->end()) : std::string();
 }
 
-Dex load_dex() {
+Dex shipped_dex() {
     Dex d;
     std::string why;
-    for (const char* f : {"creatures/types.def", "creatures/moves.def",
-                          "creatures/species.def", "creatures/encounters.def"}) {
-        if (!parse_into(d, slurp(f), &why)) {
-            std::printf("FAIL %s: %s\n", f, why.c_str());
-            ++g_failures;
-        }
+    if (!creature::load_dex(d, [](const char* f, std::string& out) {
+            out = slurp(f);
+            return !out.empty();
+        }, &why)) {
+        std::printf("FAIL %s\n", why.c_str());
+        ++g_failures;
     }
     return d;
 }
@@ -577,7 +577,7 @@ void test_controls() {
 
 int main() {
     assets::set_base_path(ASSET_ROOT "/assets");
-    const Dex d = load_dex();
+    const Dex d = shipped_dex();
     const tilemap::Map m = load_route();
 
     test_the_route(d, m);

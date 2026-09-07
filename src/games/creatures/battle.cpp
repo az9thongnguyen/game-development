@@ -50,6 +50,7 @@ int effective_speed(const Creature& c) {
 int priority_of(const Dex& d, const Party& p, Action a) {
     if (a.kind == Action::Kind::Run)    return 7;
     if (a.kind == Action::Kind::Switch) return 6;
+    if (a.kind == Action::Kind::Ball)   return 6;   // an item goes before any move
     const Creature& c = p.now();
     if (a.index < 0 || a.index >= kMoveSlots) return 0;
     const MoveDef* mv = d.move(c.moves[a.index].move);
@@ -130,6 +131,24 @@ namespace {
 
 // Resolve one side's action. `rng` is the battle's own stream — every draw here is
 // part of the replay.
+// The catch roll, and nothing else: no `over`, no `winner`, no rng bracket. Both
+// doors below own those, and neither owns the arithmetic.
+bool catch_roll(const Dex& d, Battle& b, int side, int ball_bonus, engine::Rng& rng) {
+    Creature& t = b.side[side].now();
+    if (b.over || !t.alive()) return false;
+
+    const SpeciesDef* s = d.species_by_id(t.species);
+    const int rate = s ? s->catch_rate : 190;
+
+    long long a = (3LL * t.max_hp - 2LL * t.hp) * rate * ball_bonus /
+                  (3LL * std::max(1, t.max_hp) * 100);
+    if (t.status == Status::Sleep)      a = a * 2;
+    else if (t.status != Status::None)  a = a * 3 / 2;
+    a = std::clamp<long long>(a, 0, 255);
+
+    return rng.range(0, 255) < a;
+}
+
 void act(const Dex& d, Battle& b, engine::Rng& rng, int side, Action a,
          std::vector<Event>* out) {
     const int other = 1 - side;
@@ -139,6 +158,15 @@ void act(const Dex& d, Battle& b, engine::Rng& rng, int side, Action a,
     if (a.kind == Action::Kind::Run) {
         b.over = true; b.fled = true; b.winner = other;
         emit(out, Event::Kind::Fled, side);
+        return;
+    }
+    if (a.kind == Action::Kind::Ball) {
+        // Thrown AT the other side, and it costs the turn either way: a throw that
+        // told you the odds for free and left you your move would make balls
+        // meaningless. `a.index` is the ball's bonus percent.
+        const bool stuck = catch_roll(d, b, other, a.index, rng);
+        if (stuck) { b.caught = true; b.over = true; b.winner = side; }
+        emit(out, Event::Kind::Ball, side, stuck ? 1 : 0);
         return;
     }
     if (a.kind == Action::Kind::Switch) {
@@ -294,17 +322,10 @@ std::uint64_t hash(const Battle& b) {
     feed(h, static_cast<std::uint64_t>(b.over ? 1 : 0));
     feed(h, static_cast<std::uint64_t>(b.winner));
     feed(h, static_cast<std::uint64_t>(b.fled ? 1 : 0));
+    feed(h, static_cast<std::uint64_t>(b.caught ? 1 : 0));
     return h;
 }
 
-Battle play(const Dex& d, const Replay& r) {
-    Battle b = r.start;
-    for (const auto& [a0, a1] : r.turns) {
-        if (b.over) break;
-        step(d, b, a0, a1, nullptr);
-    }
-    return b;
-}
 
 // ---- the opponent --------------------------------------------------------------
 
@@ -354,25 +375,14 @@ Action choose(const Dex& d, const Battle& b, int side) {
 // ---- catching ------------------------------------------------------------------
 
 bool try_catch(const Dex& d, Battle& b, int side, int ball_bonus) {
-    Creature& t = b.side[side].now();
-    if (b.over || !t.alive()) return false;
-
-    const SpeciesDef* s = d.species_by_id(t.species);
-    const int rate = s ? s->catch_rate : 190;
-
-    long long a = (3LL * t.max_hp - 2LL * t.hp) * rate * ball_bonus /
-                  (3LL * std::max(1, t.max_hp) * 100);
-    if (t.status == Status::Sleep)      a = a * 2;
-    else if (t.status != Status::None)  a = a * 3 / 2;
-    a = std::clamp<long long>(a, 0, 255);
-
     engine::Rng rng(b.rng);
-    const bool caught = rng.range(0, 255) < a;
-    b.rng = rng.state();
+    const bool caught = catch_roll(d, b, side, ball_bonus, rng);
+    b.rng = rng.state();   // an early return drew nothing, so this writes back what it read
 
     if (caught) {
         b.over   = true;
         b.winner = 1 - side;
+        b.caught = true;
     }
     return caught;
 }

@@ -289,4 +289,82 @@ std::vector<std::string> validate(const Dex& d) {
     return bad;
 }
 
+bool load_dex(Dex& d, const std::function<bool(const char*, std::string&)>& read,
+              std::string* why) {
+    Dex built;
+    for (const char* f : kDexFiles) {
+        std::string text;
+        if (!read(f, text)) {
+            if (why) *why = std::string("cannot read ") + f;
+            return false;
+        }
+        std::string bad;
+        if (!parse_into(built, text, &bad)) {
+            if (why) *why = std::string(f) + ": " + bad;
+            return false;
+        }
+    }
+    d = built;
+    return true;
+}
+
+namespace {
+void feed(std::uint64_t& h, std::uint64_t v) {
+    // FNV-1a over eight bytes, the same mixing `hash(Battle)` uses. Fed field by
+    // field rather than as a memcpy of a struct, because struct padding is
+    // uninitialised and would make two machines that agree perfectly disagree.
+    for (int i = 0; i < 8; ++i) {
+        h ^= (v >> (i * 8)) & 0xFF;
+        h *= 0x100000001B3ull;
+    }
+}
+void feed(std::uint64_t& h, const std::string& s) {
+    feed(h, static_cast<std::uint64_t>(s.size()));
+    for (unsigned char c : s) feed(h, c);
+}
+} // namespace
+
+std::uint64_t rules_hash(const Dex& d) {
+    std::uint64_t h = 0xCBF29CE484222325ull;
+
+    feed(h, static_cast<std::uint64_t>(d.types.names.size()));
+    for (const std::string& n : d.types.names) feed(h, n);
+    for (int e : d.types.eff) feed(h, static_cast<std::uint64_t>(e));
+
+    feed(h, static_cast<std::uint64_t>(d.moves.size()));
+    for (const MoveDef& m : d.moves) {
+        feed(h, m.name);   // the NAME is in: a learnset names moves, so renaming one
+                           // re-points a species at a different slot
+        feed(h, static_cast<std::uint64_t>(m.type));
+        feed(h, static_cast<std::uint64_t>(m.power));
+        feed(h, static_cast<std::uint64_t>(m.acc));
+        feed(h, static_cast<std::uint64_t>(m.pp));
+        feed(h, static_cast<std::uint64_t>(m.priority));
+        feed(h, static_cast<std::uint64_t>(m.effect));
+        feed(h, static_cast<std::uint64_t>(m.effect_chance));
+    }
+
+    feed(h, static_cast<std::uint64_t>(d.species.size()));
+    for (const SpeciesDef& s : d.species) {
+        feed(h, static_cast<std::uint64_t>(s.id));
+        feed(h, s.name);
+        feed(h, static_cast<std::uint64_t>(s.type));
+        feed(h, static_cast<std::uint64_t>(s.hp));
+        feed(h, static_cast<std::uint64_t>(s.atk));
+        feed(h, static_cast<std::uint64_t>(s.def));
+        feed(h, static_cast<std::uint64_t>(s.spd));
+        feed(h, static_cast<std::uint64_t>(s.catch_rate));
+        feed(h, static_cast<std::uint64_t>(s.evolve_to));
+        feed(h, static_cast<std::uint64_t>(s.evolve_at));
+        // `sprite` is not fed: what a creature LOOKS like cannot change a turn, and
+        // a replay invalidated by an artist is a replay nobody keeps.
+        feed(h, static_cast<std::uint64_t>(s.learnset.size()));
+        for (const auto& l : s.learnset) {
+            feed(h, static_cast<std::uint64_t>(l.first));
+            feed(h, l.second);
+        }
+    }
+    return h;
+}
+
 } // namespace creature

@@ -131,6 +131,9 @@ void begin_battle(const Dex& d, World& w, int species, int level) {
     w.battle.side[0] = w.party;
     w.battle.side[1] = make_party(d, {{species, level}});
     w.battle.rng     = w.rng;
+    w.tape           = Replay{};
+    w.tape.rules     = rules_hash(d);
+    w.tape.start     = w.battle;
     w.wild_species   = species;
     w.wild_level     = level;
     w.log.clear();
@@ -147,6 +150,22 @@ void settle(const Dex& d, World& w) {
     w.rng   = w.battle.rng;
     if (!w.battle.over) return;
 
+    // Caught is checked BEFORE winner: a ball that stuck sets `winner = 0`, and the
+    // branch below would read that as a knockout — award experience for a creature
+    // that never fainted and call the fight Won.
+    if (w.battle.caught) {
+        if (w.party.count < kPartySize) {
+            w.party.member[w.party.count++] = w.battle.side[1].now();
+            ++w.caught;
+            w.phase = Phase::Caught;
+        } else {
+            // A full party means the throw worked and the creature goes nowhere. It
+            // still ends the fight — the alternative is a ball that vanishes and a
+            // battle that continues, which reads as a bug.
+            w.phase = Phase::Fled;
+        }
+        return;
+    }
     if (w.battle.fled)              { w.phase = Phase::Fled; return; }
     if (w.battle.winner == 1)       { w.phase = Phase::Blackout; return; }
     if (w.battle.winner == 0) {
@@ -166,36 +185,26 @@ void settle(const Dex& d, World& w) {
 void battle_turn(const Dex& d, World& w, Action player) {
     if (w.phase != Phase::Battle) return;
     w.log.clear();
-    step(d, w.battle, player, choose(d, w.battle, 1), &w.log);
+    // The wild side's choice is named rather than inlined into `step`, because the
+    // recording needs BOTH actions. `choose` is deliberately free of the battle's
+    // rng (see battle.hpp), so naming it here changes nothing about the stream.
+    const Action wild = choose(d, w.battle, 1);
+    step(d, w.battle, player, wild, &w.log);
+    w.tape.turns.push_back(Turn{player, wild, hash(w.battle)});
     settle(d, w);
 }
 
 bool throw_ball(const Dex& d, World& w) {
     if (w.phase != Phase::Battle || w.balls <= 0) return false;
     --w.balls;
-    w.log.clear();
 
-    const bool caught = try_catch(d, w.battle, 1);
-    if (caught) {
-        w.rng = w.battle.rng;
-        if (w.party.count < kPartySize) {
-            w.party.member[w.party.count++] = w.battle.side[1].now();
-            ++w.caught;
-            w.phase = Phase::Caught;
-        } else {
-            // A full party means the throw worked and the creature goes nowhere. It
-            // still ends the fight — the alternative is a ball that vanishes and a
-            // battle that continues, which reads as a bug.
-            w.phase = Phase::Fled;
-        }
-        return true;
-    }
-
-    // It broke free, and the turn is spent. The wild side acts; the player does not.
-    step(d, w.battle, Action{Action::Kind::Switch, w.battle.side[0].active},
-         choose(d, w.battle, 1), &w.log);
-    settle(d, w);
-    return false;
+    // One line, because a ball is now a turn. What this used to be — a catch resolved
+    // beside `step`, and, when it failed, a SWITCH TO THE SLOT ALREADY ACTIVE so that
+    // `step` would give the wild side its move — was a lie told to the resolver to
+    // buy a side effect. It also meant the throw never appeared in the list of
+    // actions, so no replay of this game could contain one (chapter 138).
+    battle_turn(d, w, Action{Action::Kind::Ball, 100});
+    return w.battle.caught;
 }
 
 void end_battle(const Dex& d, World& w) {

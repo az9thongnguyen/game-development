@@ -27,6 +27,7 @@
 #include "engine/assets.hpp"
 #include "engine/rand.hpp"
 #include "games/creatures/battle.hpp"
+#include "games/creatures/replay.hpp"
 #include "games/creatures/defs.hpp"
 #include "engine/mix/mix.hpp"
 
@@ -43,22 +44,19 @@ using namespace creature;
 
 namespace {
 
+bool read_asset(const char* path, std::string& out) {
+    const auto bytes = assets::load_file(path);
+    if (!bytes) return false;
+    out.assign(bytes->begin(), bytes->end());
+    return true;
+}
+
 Dex load_shipped_dex() {
     Dex d;
     std::string why;
-    for (const char* f : {"creatures/types.def", "creatures/moves.def",
-                          "creatures/species.def"}) {
-        const auto bytes = assets::load_file(f);
-        if (!bytes) {
-            std::printf("FAIL cannot read %s\n", f);
-            ++g_failures;
-            continue;
-        }
-        const std::string text(bytes->begin(), bytes->end());
-        if (!parse_into(d, text, &why)) {
-            std::printf("FAIL %s: %s\n", f, why.c_str());
-            ++g_failures;
-        }
+    if (!load_dex(d, read_asset, &why)) {
+        std::printf("FAIL %s\n", why.c_str());
+        ++g_failures;
     }
     return d;
 }
@@ -408,6 +406,7 @@ void test_thousand_replays(const Dex& d) {
 
         Replay r;
         r.start = start;
+        r.rules = rules_hash(d);
 
         // Play it once, recording what happened AND the hash after every turn.
         Battle live = start;
@@ -419,9 +418,9 @@ void test_thousand_replays(const Dex& d) {
             Action a1 = choose(d, live, 1);
             if (meta.range(0, 9) == 0) a0 = Action{Action::Kind::Switch, meta.range(0, 5)};
             if (meta.range(0, 19) == 0) a1 = Action{Action::Kind::Move, meta.range(0, 3)};
-            r.turns.emplace_back(a0, a1);
             step(d, live, a0, a1);
             marks.push_back(hash(live));
+            r.turns.push_back(Turn{a0, a1, hash(live)});
         }
         if (live.over && live.winner >= 0) ++decided;
         longest = std::max(longest, static_cast<int>(marks.size()));
@@ -431,7 +430,7 @@ void test_thousand_replays(const Dex& d) {
         Battle again = start;
         for (std::size_t t = 0; t < r.turns.size(); ++t) {
             if (again.over) break;
-            step(d, again, r.turns[t].first, r.turns[t].second);
+            step(d, again, r.turns[t].a0, r.turns[t].a1);
             if (hash(again) != marks[t]) {
                 if (++desyncs <= 3)
                     std::printf("FAIL battle %d desynced on turn %zu\n", n, t + 1);
@@ -441,6 +440,22 @@ void test_thousand_replays(const Dex& d) {
         if (hash(again) != hash(live)) ++desyncs;
         // `play()` is the shipped entry point; it must agree with the loop above.
         if (hash(play(d, r)) != hash(live)) ++desyncs;
+        // ...and so must the ROUND TRIP through text. This is the claim the file
+        // format exists to make: a battle written out, parsed back by something that
+        // never saw the original objects, and re-played, is the same battle.
+        std::string why;
+        const std::string text = write_replay(r, &why);
+        Replay back;
+        if (text.empty() || !read_replay(d, text, back, &why)) {
+            if (++desyncs <= 3) std::printf("FAIL battle %d: %s\n", n, why.c_str());
+        } else {
+            const Verdict v = verify(d, back);
+            if (!v.ok) {
+                if (++desyncs <= 3) std::printf("FAIL battle %d: %s\n", n, v.why.c_str());
+            } else if (hash(v.final) != hash(live)) {
+                ++desyncs;
+            }
+        }
     }
 
     CHECK(desyncs == 0);
@@ -871,6 +886,262 @@ void test_type_chart_survives_growth() {
 
 } // namespace
 
+
+// -----------------------------------------------------------------------------
+// The reference battle, as committed bytes.
+//
+// Every other determinism check in this file runs the sim twice in ONE process,
+// which proves it is a pure function of its inputs and nothing else. It cannot
+// prove that two different compilers targeting two different instruction sets
+// agree about what that function computes — and that is the claim battle.hpp
+// actually makes. This one can, because the bytes in the repo were produced on
+// macOS/arm64/clang and CI re-produces them on Linux/x86_64/gcc.
+//
+// A mismatch is not "regenerate the file". It is one of two things, and the test
+// says which to go and find out.
+// -----------------------------------------------------------------------------
+void test_the_reference_battle_is_bytes(const Dex& d) {
+    const Replay r = reference_battle(d);
+    CHECK(r.turns.size() >= 10);
+
+    // The script has to have actually reached the sim: a reference battle made of
+    // nothing but moves would leave three of the four action kinds untested, and
+    // the one that carries a NUMBER (a ball's bonus) is the one a format is most
+    // likely to lose.
+    int kinds[4] = {0, 0, 0, 0};
+    for (const Turn& t : r.turns) { ++kinds[static_cast<int>(t.a0.kind)];
+                                    ++kinds[static_cast<int>(t.a1.kind)]; }
+    CHECK(kinds[static_cast<int>(Action::Kind::Move)]   > 0);
+    CHECK(kinds[static_cast<int>(Action::Kind::Switch)] > 0);
+    CHECK(kinds[static_cast<int>(Action::Kind::Ball)]   > 0);
+
+    std::string why;
+    const std::string built = write_replay(r, &why);
+    CHECK(!built.empty());
+
+    const auto ondisk = assets::load_file(kReferencePath);
+    CHECK(ondisk.has_value());
+    if (!ondisk) return;
+    const std::string committed(ondisk->begin(), ondisk->end());
+
+    if (committed != built) {
+        std::printf("FAIL %s differs from what this machine computes.\n", kReferencePath);
+        std::printf("     Either the tables moved (then re-bake:\n");
+        std::printf("       ./build/demo --cmd creature.record %s )\n", kReferencePath);
+        std::printf("     or this machine disagrees with the one that recorded it,\n");
+        std::printf("     which is the bug this file exists to catch.\n");
+        ++g_failures;
+    }
+
+    // ...and it must still verify, which is a different question from byte equality:
+    // a file could match and the verifier still be broken.
+    Replay back;
+    CHECK(read_replay(d, committed, back, &why));
+    const Verdict v = verify(d, back);
+    CHECK(v.ok);
+    CHECK(v.fault == Verdict::Fault::None);
+}
+
+// -----------------------------------------------------------------------------
+// What the format REFUSES. Every branch here is a file that would otherwise be
+// read into a battle nobody played.
+// -----------------------------------------------------------------------------
+void test_the_format_refuses(const Dex& d) {
+    const Replay r = reference_battle(d);
+    std::string why;
+    const std::string good = write_replay(r, &why);
+    CHECK(!good.empty());
+
+    Replay back;
+    CHECK(read_replay(d, good, back, &why));
+    CHECK(back.rules == r.rules);
+    CHECK(back.turns.size() == r.turns.size());
+    // Round trip, twice: writing what was read must produce the same bytes, or the
+    // reader is quietly dropping something the writer puts back by luck.
+    CHECK(write_replay(back, &why) == good);
+
+    struct Case { const char* what; std::string text; };
+    const std::string future = "crep" + std::to_string(kReplayVersion + 1) + good.substr(5);
+    std::vector<Case> bad = {
+        {"empty",            ""},
+        {"a version from the future", future},
+        {"no magic",         good.substr(6)},
+        {"an unknown record", good + "colour blue\n"},
+        {"a side declared twice", good + "side 0 3 0\n"},
+        {"a move slot out of range",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"
+                     "t 0 9 0 0 0000000000000000\n")},
+        {"a species nobody declared",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 999 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n")},
+        {"an active outside the party",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 3\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n")},
+        {"a side that never arrived",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n")},
+        {"a truncated hash",
+         std::string("crep1\nrules 0000000000000000\nseed 1\nside 0 1 0\n"
+                     "c 1 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\nside 1 1 0\n"
+                     "c 4 5 0 20 0 0 0 35 -1 0 -1 0 -1 0\n"
+                     "t 0 0 0 0 abc\n")},
+    };
+    for (const Case& c : bad) {
+        Replay out;
+        if (read_replay(d, c.text, out, &why)) {
+            std::printf("FAIL the format accepted %s\n", c.what);
+            ++g_failures;
+        }
+    }
+
+    // ...and the writer's own refusal, which has to be checked in BOTH directions:
+    // a guard that never lets anything through is not a guard (chapter 127).
+    Replay midway = r;
+    midway.start.turn = 4;
+    CHECK(write_replay(midway, &why).empty());
+    Replay over = r;
+    over.start.over = true;
+    CHECK(write_replay(over, &why).empty());
+    Replay illegal = r;
+    illegal.turns[0].a0 = Action{Action::Kind::Move, 9};
+    CHECK(write_replay(illegal, &why).empty());
+    CHECK(!write_replay(r, &why).empty());          // the same object, still fine
+}
+
+// -----------------------------------------------------------------------------
+// The two verdicts a verifier can return, and why they are not the same verdict.
+// -----------------------------------------------------------------------------
+void test_the_verifier_tells_the_two_faults_apart(const Dex& d) {
+    const Replay r = reference_battle(d);
+    CHECK(verify(d, r).ok);
+
+    // Somebody re-tuned a move: the rules hash moves, and the verifier must say so
+    // rather than shout DESYNC at a perfectly honest machine.
+    Replay rebalanced = r;
+    rebalanced.rules ^= 1;
+    const Verdict a = verify(d, rebalanced);
+    CHECK(!a.ok);
+    CHECK(a.fault == Verdict::Fault::Rules);
+    CHECK(a.turn == 0);
+
+    // A machine that computed a different state: same rules, wrong hash, and the
+    // TURN it first went wrong is the answer — not the last turn, where everything
+    // differs and nothing is diagnosable.
+    Replay wrong = r;
+    wrong.turns[3].after ^= 0x40;
+    const Verdict b = verify(d, wrong);
+    CHECK(!b.ok);
+    CHECK(b.fault == Verdict::Fault::Desync);
+    CHECK(b.turn == 4);
+    CHECK(b.got == r.turns[3].after);
+
+    // The rules hash covers what `step` reads and nothing else. Moving a creature to
+    // a different patch of grass must not invalidate a recording of a fight.
+    Dex moved = d;
+    if (!moved.tables.empty()) {
+        moved.tables[0].entries.push_back(EncounterEntry{2, 5, 2, 3});
+        CHECK(rules_hash(moved) == rules_hash(d));
+        CHECK(verify(moved, r).ok);
+    }
+    // ...but re-tuning a move IS in it.
+    Dex tuned = d;
+    CHECK(!tuned.moves.empty());
+    tuned.moves[0].power += 1;
+    CHECK(rules_hash(tuned) != rules_hash(d));
+}
+
+// -----------------------------------------------------------------------------
+// Two doors into one calculation. `try_catch` measures the catch odds without a
+// battle happening around it; `step` throws the ball as a turn. They must agree
+// exactly, or the odds a test measures are not the odds a player faces.
+// -----------------------------------------------------------------------------
+void test_the_two_catch_doors_agree(const Dex& d) {
+    int through_step = 0, through_call = 0;
+    for (int seed = 1; seed <= 400; ++seed) {
+        Battle a;
+        a.side[0] = make_party(d, {{1, 12}});
+        a.side[1] = make_party(d, {{4, 10}});
+        a.rng     = static_cast<std::uint64_t>(seed) * 2654435761ull + 7;
+        Battle b  = a;
+
+        const bool by_call = try_catch(d, a, 1);
+        // Through the turn: the ball is thrown first (priority 6), so the roll is the
+        // first thing drawn from the same state.
+        step(d, b, Action{Action::Kind::Ball, 100}, Action{Action::Kind::Move, 0});
+
+        if (by_call != b.caught) {
+            std::printf("FAIL the two catch doors disagreed at seed %d\n", seed);
+            ++g_failures;
+            break;
+        }
+        through_call += by_call ? 1 : 0;
+        through_step += b.caught ? 1 : 0;
+    }
+    CHECK(through_call == through_step);
+    // Both actually caught something and both actually failed, or the agreement above
+    // is the agreement of two functions that always say no.
+    CHECK(through_call > 20);
+    CHECK(through_call < 380);
+}
+
+// -----------------------------------------------------------------------------
+// A ball is a turn. It costs the throw whether or not it lands, and the wild side
+// keeps its move when it does not — which used to be arranged by telling `step` to
+// switch to the slot already active, a lie that could not be recorded.
+// -----------------------------------------------------------------------------
+void test_a_ball_is_a_turn(const Dex& d) {
+    int stuck = 0, freed = 0, wild_acted = 0;
+    for (int seed = 1; seed <= 300 && (stuck < 5 || freed < 5); ++seed) {
+        Battle b;
+        b.side[0] = make_party(d, {{1, 20}});
+        b.side[1] = make_party(d, {{4, 5}});
+        b.rng     = static_cast<std::uint64_t>(seed) * 6364136223846793005ull + 1;
+        const int turn_before = b.turn;
+
+        std::vector<Event> log;
+        step(d, b, Action{Action::Kind::Ball, 100}, Action{Action::Kind::Move, 0}, &log);
+        CHECK(b.turn == turn_before + 1);
+
+        bool saw_ball = false, saw_used = false;
+        for (const Event& e : log) {
+            if (e.kind == Event::Kind::Ball) { saw_ball = true; CHECK(e.side == 0); }
+            if (e.kind == Event::Kind::Used && e.side == 1) saw_used = true;
+        }
+        CHECK(saw_ball);
+        if (b.caught) {
+            ++stuck;
+            CHECK(b.over);
+            CHECK(b.winner == 0);
+            CHECK(!saw_used);          // it never got to move: the fight was over
+        } else {
+            ++freed;
+            CHECK(!b.over || !b.side[0].any_alive());
+            if (saw_used) ++wild_acted;
+        }
+    }
+    CHECK(stuck > 0);
+    CHECK(freed > 0);
+    CHECK(wild_acted > 0);
+    // A bigger ball is a better ball, and that has to be true of the number the
+    // FORMAT carries, not just of a constant in the code.
+    int weak = 0, strong = 0;
+    for (int seed = 1; seed <= 400; ++seed) {
+        Battle a, b;
+        a.side[0] = b.side[0] = make_party(d, {{1, 20}});
+        a.side[1] = b.side[1] = make_party(d, {{4, 5}});
+        a.rng = b.rng = static_cast<std::uint64_t>(seed) * 2246822519ull + 3;
+        step(d, a, Action{Action::Kind::Ball, 50},  Action{Action::Kind::Move, 0});
+        step(d, b, Action{Action::Kind::Ball, 400}, Action{Action::Kind::Move, 0});
+        weak   += a.caught ? 1 : 0;
+        strong += b.caught ? 1 : 0;
+    }
+    CHECK(strong > weak);
+}
+
 int main() {
     assets::set_base_path(ASSET_ROOT "/assets");
 
@@ -894,6 +1165,11 @@ int main() {
     test_every_species_wears_a_sprite(d);
     test_evolution_is_one_more_part(d);
     test_thousand_replays(d);
+    test_a_ball_is_a_turn(d);
+    test_the_two_catch_doors_agree(d);
+    test_the_format_refuses(d);
+    test_the_verifier_tells_the_two_faults_apart(d);
+    test_the_reference_battle_is_bytes(d);
 
     if (g_failures == 0) std::printf("test_creature: all checks passed\n");
     else                 std::printf("test_creature: %d FAILURES\n", g_failures);

@@ -26,6 +26,7 @@
 #include "engine/renderer2d.hpp"
 #include "engine/text/font.hpp"
 #include "games/creatures/creatures_scene.hpp"
+#include "games/creatures/replay.hpp"
 
 #ifndef ASSET_ROOT
 #define ASSET_ROOT "."
@@ -150,6 +151,9 @@ int main() {
     // A save from a previous run would make every "a new game starts at home" check
     // depend on the last test that ran.
     clear_file("saves/creatures/slot1.sav");
+    // ...and a recording from a previous run would let section 5b pass without the
+    // game having written anything at all.
+    clear_file("saves/creatures/last_battle.crep");
 
     creature::CreaturesScene scene;
     CHECK(scene.ready());
@@ -336,6 +340,36 @@ int main() {
               scene.world().phase == creature::Phase::Blackout);
         std::printf("  battle ended after %d taps, phase %d\n", guard,
                     static_cast<int>(scene.world().phase));
+    }
+
+    // ---- 5b. the fight left a file behind, and a stranger can check it ----------
+    // The strongest claim this project makes about the creature sim is that the same
+    // actions produce the same battle on any machine. Everything that checks it lives
+    // inside a test process that also produced the battle. This is the other half:
+    // the GAME, played through the pointer, writes a recording, and something that
+    // never saw the battle re-plays it and agrees turn by turn.
+    {
+        const auto raw = assets::load_file("saves/creatures/last_battle.crep");
+        CHECK(raw.has_value());
+        if (raw) {
+            creature::Replay r;
+            std::string why;
+            const bool read_ok =
+                creature::read_replay(scene.dex(), std::string(raw->begin(), raw->end()),
+                                      r, &why);
+            if (!read_ok) std::printf("      %s\n", why.c_str());
+            CHECK(read_ok);
+            CHECK(r.turns.size() >= 1);
+            CHECK(r.rules == creature::rules_hash(scene.dex()));
+            const creature::Verdict v = creature::verify(scene.dex(), r);
+            if (!v.ok) std::printf("      %s\n", v.why.c_str());
+            CHECK(v.ok);
+            // ...and it is a recording of THIS fight, not of a battle left over from
+            // some previous run of the test: the state it replays to is the state the
+            // scene is holding.
+            CHECK(creature::hash(v.final) == creature::hash(scene.world().battle));
+            std::printf("  the fight wrote %zu turns to last_battle.crep\n", r.turns.size());
+        }
     }
 
     // ---- 6. the end-of-battle screen has exactly one button ---------------------

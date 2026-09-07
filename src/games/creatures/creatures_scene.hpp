@@ -56,6 +56,8 @@ public:
     [[nodiscard]] int origin_x() const { return org_x_; }
     [[nodiscard]] int origin_y() const { return org_y_; }
 
+    void update_world(double dt, const platform::InputState& input);
+    void write_tape();
     bool save_game();
     bool load_game();
 

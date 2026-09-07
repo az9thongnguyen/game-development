@@ -80,6 +80,29 @@ jobs:
           ./build/demo --project-package projects/farm.gameproject | grep -q '^packagehash '
           ./build/demo --hub projects/farm.gameproject
 
+      - name: Cross-toolchain determinism (re-play a battle recorded on another machine)
+        run: |
+          # assets/creatures/reference.crep was written by macOS/arm64/clang. This job
+          # is Linux/x86_64/gcc on one runner and macOS on the other, and both re-play
+          # it and check the hash after EVERY turn. Until chapter 138 the sim's
+          # determinism was only ever checked inside one process, which proves it is a
+          # pure function and says nothing about two toolchains agreeing on the result.
+          ./build/demo --cmd creature.verify creatures/reference.crep
+          # A verifier that answered OK to everything would pass that line, so it is
+          # also pointed at a file that must FAIL. One flipped hex digit in one turn
+          # hash: same rules, different arithmetic — the exact shape of the bug this
+          # whole format exists to catch.
+          sed '12s/^t \(.*\)0$/t \11/; 12s/^t \(.*\)[1-9a-f]$/t \10/' \
+            assets/creatures/reference.crep > assets/creatures/ci_tampered.crep
+          ! cmp -s assets/creatures/reference.crep assets/creatures/ci_tampered.crep
+          if ./build/demo --cmd creature.verify creatures/ci_tampered.crep; then
+            echo "the verifier accepted a tampered replay"; exit 1
+          fi
+          rm assets/creatures/ci_tampered.crep
+          # The BYTES are checked by `ctest -R creature`, which re-bakes the reference
+          # on this machine and compares it to the committed file — the same standard
+          # a .recipe is held to, and the stronger of the two claims.
+
       - name: Create-verb smoke (scaffold → inspect the scaffold)
         run: |
           # Every verb takes paths relative to the ASSET ROOT (assets/), never to the

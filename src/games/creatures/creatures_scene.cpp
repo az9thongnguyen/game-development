@@ -52,14 +52,17 @@ CreaturesScene::CreaturesScene() { load(); }
 
 void CreaturesScene::load() {
     problem_.clear();
-    for (const char* f : {"creatures/types.def", "creatures/moves.def",
-                          "creatures/species.def", "creatures/encounters.def"}) {
-        std::string why;
-        if (!parse_into(dex_, read_text(f), &why)) {
-            problem_ = std::string(f) + ": " + why;
-            return;
-        }
-    }
+    // The list of files lives in defs.hpp, not here. It was written out in three
+    // places until chapter 138, and the headless verifier would have been a fourth —
+    // four copies of "which files are the rules", one of which a person eventually
+    // forgets to update.
+    if (!load_dex(dex_, [](const char* f, std::string& out) {
+            const auto bytes = assets::load_file(f);
+            if (!bytes) return false;
+            out.assign(bytes->begin(), bytes->end());
+            return true;
+        }, &problem_))
+        return;
     if (const auto bad = validate(dex_); !bad.empty()) { problem_ = bad.front(); return; }
 
     const auto m = tilemap::load(read_text("maps/creature_route.map2"));
@@ -131,12 +134,24 @@ void CreaturesScene::say(std::string msg, double seconds) {
     message_t_ = seconds;
 }
 
-std::string save_path() { return "saves/creatures/slot1.sav"; }
+std::string save_path()  { return "saves/creatures/slot1.sav"; }
+std::string tape_path()  { return "saves/creatures/last_battle.crep"; }
 
 bool CreaturesScene::save_game() {
     const std::string text = to_text(world_);
     return assets::write_file(save_path(),
                               std::vector<std::uint8_t>(text.begin(), text.end()));
+}
+
+// Written the moment a battle ends, without being asked. A recording that a player
+// has to remember to make is a recording nobody has when it matters — and this file
+// is the ONLY thing this game produces that a different machine can check. Failure
+// is silent on purpose: a full disk must not eat the fight you just won.
+void CreaturesScene::write_tape() {
+    std::string why;
+    const std::string text = write_replay(world_.tape, &why);
+    if (text.empty()) return;
+    assets::write_file(tape_path(), std::vector<std::uint8_t>(text.begin(), text.end()));
 }
 
 bool CreaturesScene::load_game() {
@@ -210,8 +225,17 @@ void CreaturesScene::choose_cell(int cell) {
 
 // ---- update ---------------------------------------------------------------------
 
+// One place asks "did a fight just end", because the fight can end in four
+// different branches below (a knockout, a catch, a run, a blackout) and a write
+// placed in three of them is a recording that is missing exactly one outcome.
 void CreaturesScene::update(double dt, const platform::InputState& input) {
     if (!ready_) return;
+    const bool was_fighting = world_.phase == Phase::Battle;
+    update_world(dt, input);
+    if (was_fighting && world_.phase != Phase::Battle) write_tape();
+}
+
+void CreaturesScene::update_world(double dt, const platform::InputState& input) {
     if (message_t_ > 0) message_t_ -= dt;
     if (step_cool_ > 0) step_cool_ -= dt;
 
