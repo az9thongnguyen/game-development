@@ -41,10 +41,15 @@ Layout layout(int w, int h, Mode mode) {
         l.save = Box{w - kMargin - kBtn, pad.y, kBtn, kBtn};
         // ...and `online` a row above THAT, for the same reason twice over: starting a
         // rated match by mis-reaching for `act` would be the most annoying stray tap in
-        // the game. Only drawn when the screen is tall enough to hold it clear of the
-        // pad — an empty Box is hit by nothing, so there is no `bool has_online`.
-        const int oy = pad.y - kBtn - kGap;
-        if (oy >= kMargin) l.online = Box{w - kMargin - kBtn, oy, kBtn, kBtn};
+        // the game.
+        //
+        // This had an `if (oy >= kMargin)` guard for about an hour. It was DEAD: the
+        // d-pad only appears at all from ~360 px of height, and at that height this row
+        // is already 150 px down. A mutation that removed it survived, which is what
+        // dead code looks like from the outside. The check that would actually catch a
+        // regression lives in the test, sweeping heights and asserting the margin — a
+        // guard that silently places no button hides the bug the test would shout about.
+        l.online = Box{w - kMargin - kBtn, pad.y - kBtn - kGap, kBtn, kBtn};
         return l;
     }
 

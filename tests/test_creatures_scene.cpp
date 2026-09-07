@@ -523,9 +523,15 @@ int main() {
             // On a screen too short for another row, the online button is ABSENT rather
             // than placed off the top edge. An empty box is hit by nothing, which is why
             // there is no `bool has_online` beside it.
-            for (int h = 120; h <= 400; h += 3) {
+            // Heights where the pad ACTUALLY exists. The first version of this swept
+            // 120..400 and the pad does not appear below ~360, so almost every pass hit
+            // the `continue` and the loop asserted nothing at all — a sweep that never
+            // reaches its body is decoration.
+            int swept = 0;
+            for (int h = 300; h <= 900; h += 3) {
                 const creature::Layout t = creature::layout(480, h, creature::Mode::Overworld);
                 if (t.online.empty()) continue;
+                ++swept;
                 // Inside the screen, off the margin, and clear of both neighbours. `>= 0`
                 // alone is not the claim: a button one pixel from the top edge is inside
                 // the framebuffer and outside a thumb's reach, and it passed that check.
@@ -535,6 +541,7 @@ int main() {
                 CHECK(!t.online.overlaps(t.act));
                 CHECK(!t.online.overlaps(t.up));
             }
+            CHECK(swept > 50);   // ...and the loop above ran
 
             // The search screen has no creature rects: there is nothing to draw yet, and
             // a renderer that forgets to check must draw nothing rather than draw at 0,0.

@@ -42,7 +42,7 @@ void PvpClient::cancel() {
 }
 
 bool PvpClient::waiting_for_action() const {
-    return state_ == State::Playing && net_.phase() == NetPhase::MyTurn;
+    return state_ == State::Playing && !auto_play_ && net_.phase() == NetPhase::MyTurn;
 }
 
 bool PvpClient::act(Action a) {
