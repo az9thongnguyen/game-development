@@ -22,6 +22,7 @@
 #include "engine/scene.hpp"
 #include "engine/ui/ui.hpp"
 #include "games/hub/hub_panel.hpp"
+#include "games/studio_shell/layout.hpp"
 #include "games/studio_shell/map_workspace.hpp"
 #include "engine/asset/provenance.hpp"
 #include "engine/project/inspect.hpp"
@@ -45,6 +46,9 @@ public:
     StudioShellScene(std::string project_path, std::vector<std::string> known_entries);
     void update(double dt, const platform::InputState& input) override;
     void render(const engine::Context& ctx) override;
+    [[nodiscard]] ui::CursorHint cursor_hint() const override {
+        return ui_.cursor_hint();
+    }
 
     // Clipboard access is INJECTED rather than called. The scene must stay linkable
     // without the SDL backend — that is what lets test_shell_golden drive the whole
@@ -71,6 +75,10 @@ public:
     [[nodiscard]] const PixelWorkspace& pixel_workspace() const { return pixels_; }
     [[nodiscard]] PixelWorkspace&       pixel_workspace() { return pixels_; }
     [[nodiscard]] int open_workspace() const { return ws_; }
+    // Where the divider was drawn last frame. A test must reach a control by name and
+    // not by arithmetic on somebody else's rect — the arithmetic is a guess about what
+    // else lives beside it, and it was wrong the first time something else did.
+    [[nodiscard]] ui::Rect split_handle() const { return split_rect_; }
     // How many tabs the Edit section has. Exposed because a test that hard-codes it
     // is a test that breaks the day a workspace is added — which has now happened
     // twice, and the second time the comment beside the literal had already predicted
@@ -133,6 +141,13 @@ private:
     // ponytail: the set is fixed at construction, so no allocation and no ownership
     // question; it becomes unique_ptrs the day a workspace can be opened and closed.
     std::vector<Workspace*>        workspaces_;
+    // The divider's saved position, per workspace. Read once on construction and
+    // written back when a drag ends — not every frame it moves, which would be one
+    // file write per mouse sample.
+    Layout                         layout_{};
+    ui::Rect                       split_rect_{};   // last frame's divider, for tests
+    bool                           layout_dirty_ = false;
+
     int                            ws_ = 0;          // the open tab
     int                            ws_click_ = -1;   // a tab clicked during the last draw
     Workspace*                     recovering_ = nullptr;   // whose autosave is being offered

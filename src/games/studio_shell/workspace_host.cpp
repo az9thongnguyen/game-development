@@ -3,6 +3,7 @@
 // =============================================================================
 #include "games/studio_shell/workspace_host.hpp"
 
+#include <algorithm>
 #include <utility>
 
 #include "engine/renderer2d.hpp"
@@ -14,12 +15,17 @@ namespace studioshell {
 namespace th = ui::theme;
 
 WorkspaceHost::WorkspaceHost(std::unique_ptr<Workspace> ws) : ws_(std::move(ws)) {
+    layout_ = read_layout();
     ws_->register_commands();
     recovery_ = ws_->recovery_pending();
 }
 
 void WorkspaceHost::update(double dt, const platform::InputState& in) {
     if (flash_t_ > 0) flash_t_ -= dt;
+    if (layout_dirty_ && !in.down(platform::MouseButton::Left)) {
+        layout_dirty_ = false;
+        write_layout(layout_);
+    }
     // A modal owns the input: the workspace still ticks (its autosave timer must not
     // stop while a dialog is up) but a click behind the card must not edit anything.
     ws_->update(dt, in, /*interactive*/ !recovery_);
@@ -42,19 +48,27 @@ void WorkspaceHost::render(const engine::Context& ctx) {
 
     const int pad = th::space_lg;
     const int status_h = th::sz_caption + th::space_md;
-    int insp_w = ws_->inspector_width();
-    if (insp_w > (w - pad * 2) / 2) insp_w = (w - pad * 2) / 2;
-
     const ui::Rect body{pad, pad, w - pad * 2, h - pad * 2 - status_h};
-    ws_->draw_canvas(ui_, g, ui::Rect{body.x, body.y, body.w - insp_w - th::space_md, body.h});
+
+    const int stored = layout_.width_for(ws_->name(), ws_->inspector_width());
+    const int insp_w = fit_inspector(stored, body.w);
+    const int handle = th::space_md;
+    const int hx     = body.x + body.w - insp_w - handle;
+    int       pos    = hx;
+    const int most  = body.w / 2;
+    const int least = std::min(kMinInspector, most);
+    if (ui_.splitter("wssplit", ui::Rect{hx, body.y, handle, body.h}, pos,
+                     body.x + body.w - most - handle,
+                     body.x + body.w - least - handle)) {
+        layout_.set(ws_->name(), body.x + body.w - pos - handle);
+        layout_dirty_ = true;
+    }
+
+    ws_->draw_canvas(ui_, g, ui::Rect{body.x, body.y, body.w - insp_w - handle, body.h});
     ws_->draw_inspector(ui_, g, ui::Rect{body.x + body.w - insp_w, body.y, insp_w, body.h});
 
-    g.set_font_size(th::sz_caption);
-    const int sy = h - pad + th::space_xs;
-    const std::string left = ws_->status();
-    g.draw_text(pad, sy, left.c_str(), ws_->dirty() ? th::warn : th::text_muted);
-    const char* hint = ws_->hint();
-    g.draw_text(w - pad - g.text_width(hint), sy, hint, th::text_muted);
+    ui_.status_bar(ui::Rect{pad, h - pad - th::space_xs, body.w, status_h},
+                   ws_->status(), ws_->hint());
 
     if (recovery_) {
         const ui::Confirm c = ui_.confirm(

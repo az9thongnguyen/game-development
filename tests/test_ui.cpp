@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <vector>
 #include <string>
 
 static int g_failures = 0;
@@ -802,6 +803,79 @@ static void test_confirm_reason() {
     CHECK(res == ui::Confirm::No);
 }
 
+// ---- the divider (chapter 144) ---------------------------------------------
+// Everything here is a guard tested in BOTH directions: a limit that never binds and
+// a limit that never lifts look identical from the side that only tries one of them.
+static void test_splitter() {
+    ui::Context ui;
+    int pos = 100;
+    const auto frame = [&](const ui::Input& in) {
+        ui.begin(nullptr, in);
+        const bool moved = ui.splitter("split", ui::Rect{pos, 0, 10, 200}, pos, 20, 180);
+        ui.end();
+        return moved;
+    };
+
+    // Hovering asks for the cursor and moves nothing.
+    CHECK(!frame(idle(105, 50)));
+    CHECK(pos == 100);
+    CHECK(ui.cursor_hint() == ui::CursorHint::ResizeH);
+    // ...and the hint is per FRAME: away from the handle it is gone again. A cursor
+    // that only ever turns on is a cursor stuck as a resize arrow over the canvas.
+    frame(idle(5, 5));
+    CHECK(ui.cursor_hint() == ui::CursorHint::Default);
+
+    // Pressing beside the handle does not grab it.
+    frame(press(5, 50));
+    frame(hold(60, 50));
+    CHECK(pos == 100);
+
+    // Grabbed 5px into the handle and dragged to 125 → 120, not 125. Without the
+    // remembered offset the divider jumps by up to its own width before you move.
+    frame(idle(-1, -1));
+    frame(press(105, 50));
+    CHECK(pos == 100);          // the press alone must not move it
+    CHECK(frame(hold(125, 50)));
+    CHECK(pos == 120);
+
+    // A drag that lands where it already is is not a change.
+    CHECK(!frame(hold(125, 50)));
+
+    // Both ends of the clamp, and both are reached BY DRAGGING past them.
+    frame(hold(9000, 50));
+    CHECK(pos == 180);
+    frame(hold(-9000, 50));
+    CHECK(pos == 20);
+    // ...and the clamp LIFTS: dragging back inside the range works again.
+    frame(hold(305, 50));
+    CHECK(pos == 180);          // 305 - the 5px grab offset = 300, still over the limit
+    frame(hold(105, 50));
+    CHECK(pos == 100);
+
+    // Release ends the drag: moving the mouse afterwards moves nothing.
+    frame(release(105, 50));
+    frame(hold(300, 50));
+    CHECK(pos == 100);
+
+    // Inert (a modal is up): the handle is neither grabbable nor a cursor request.
+    ui.begin(nullptr, press(105, 50));
+    ui.begin_inert();
+    ui.splitter("split", ui::Rect{pos, 0, 10, 200}, pos, 20, 180);
+    ui.end();
+    CHECK(pos == 100);
+    CHECK(ui.cursor_hint() == ui::CursorHint::Default);
+}
+
+static void test_status_cells_join_one_way() {
+    // The whole point of the type: a caller cannot punctuate it, and an empty cell is
+    // not a separator with nothing on either side of it.
+    const std::vector<ui::Seg> segs{{"level.map2"}, {""}, {"unsaved", ui::Tone::Warning},
+                                    {"tile 3, 4"}};
+    CHECK(ui::joined(segs) == "level.map2   unsaved   tile 3, 4");
+    CHECK(ui::joined({}).empty());
+    CHECK(ui::joined({{""}}).empty());
+}
+
 int main() {
     test_button_click();
     test_checkbox();
@@ -818,6 +892,8 @@ int main() {
     test_scroll_clips_hit_testing();
     test_tabs_and_list();
     test_confirm_reason();
+    test_splitter();
+    test_status_cells_join_one_way();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;

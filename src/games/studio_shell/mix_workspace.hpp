@@ -49,7 +49,7 @@ public:
     [[nodiscard]] const std::string& path() const override { return path_; }
     [[nodiscard]] const std::string& problem() const override { return problem_; }
     [[nodiscard]] bool               dirty() const override { return stack_.dirty(); }
-    [[nodiscard]] std::string        status() const override;
+    [[nodiscard]] std::vector<ui::Seg>   status() const override;
     [[nodiscard]] const char*        hint() const override;
     [[nodiscard]] int inspector_width() const override { return 280; }
 

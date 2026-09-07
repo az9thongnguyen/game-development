@@ -806,14 +806,14 @@ void test_inspector_clipped() {
     Driver tall(PW, PH);
     tall.panel(ws, ui::Input{});
     CHECK(!ws.inspector_clipped());
-    CHECK(ws.status().find("clipped") == std::string::npos);
+    CHECK(ui::joined(ws.status()).find("clipped") == std::string::npos);
 
     Driver squat(PW, 240);
     squat.panel(ws, ui::Input{});
     CHECK(ws.inspector_clipped());
     // Said on the status line, which is OUTSIDE the panel — when the panel is too
     // short there is by definition no room inside it to say so.
-    CHECK(ws.status().find("clipped") != std::string::npos);
+    CHECK(ui::joined(ws.status()).find("clipped") != std::string::npos);
 
     // A screenshot of the whole panel, for a human: the sliders, the preview and the
     // field are geometry a passing assertion cannot see.

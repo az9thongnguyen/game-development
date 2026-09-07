@@ -476,7 +476,7 @@ static void test_entity_tool() {
         squeezed.panel(ws);
         squeezed.panel(ws);
         CHECK(ws.inspector_clipped());
-        CHECK(ws.status().find("clipped") != std::string::npos);
+        CHECK(ui::joined(ws.status()).find("clipped") != std::string::npos);
     }
 
     // ---- and it survives the file ----

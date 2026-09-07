@@ -44,7 +44,7 @@ public:
     [[nodiscard]] const std::string& path() const override { return path_; }
     [[nodiscard]] const std::string& problem() const override { return problem_; }
     [[nodiscard]] bool               dirty() const override { return stack_.dirty(); }
-    [[nodiscard]] std::string        status() const override;
+    [[nodiscard]] std::vector<ui::Seg>   status() const override;
     [[nodiscard]] const char*        hint() const override;
     // Wider than the map's 260: this inspector carries sliders, and a slider in a
     // narrow column has too little travel to set a value with.
@@ -68,6 +68,9 @@ public:
     // ---- exposed for the host scene and for tests ---------------------------
     [[nodiscard]] const sandbox::World& world() const { return world_; }
     [[nodiscard]] bool playing() const { return playing_; }
+    // The snap grid in world units, 0 = off. Exposed because "where a click lands" is
+    // the only thing this setting does, and a test has to be able to ask.
+    [[nodiscard]] int  grid() const { return grid_; }
     [[nodiscard]] int  selected() const { return sel_; }   // index, -1 = nothing
     [[nodiscard]] std::size_t actor_count() const { return world_.alive(); }
     void toggle_play();
@@ -123,6 +126,11 @@ private:
     int   armed_ = -1;        // palette index armed for placing; -1 = select/move
     int   sel_   = -1;        // selection by INDEX, not by handle: a snapshot restore
                               // builds new entities, and a stale handle would dangle
+    // 0 = off, otherwise the world-unit spacing a placed or dragged actor lands on.
+    // Not persisted: it is a way of working, not a property of the document, and a
+    // scene that remembered someone else's grid would move actors on open.
+    int   grid_ = 0;
+    bool  want_grid_ = false;
     bool  dragging_ = false;
     float drag_dx_ = 0, drag_dy_ = 0;
     std::string drag_before_;  // the scene as it was when the drag started

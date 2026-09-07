@@ -193,14 +193,19 @@ void MapWorkspace::note(bool ok, std::string msg) {
 // The status line, moved off the shell. It used to be assembled there, which meant
 // the shell knew this document had tiles — the one fact a second workspace made
 // impossible to keep.
-std::string MapWorkspace::status() const {
-    if (!loaded_) return problem_.empty() ? std::string("no map") : problem_;
-    std::string s = path_ + (dirty() ? "  *  unsaved" : "  saved");
+std::vector<ui::Seg> MapWorkspace::status() const {
+    if (!loaded_)
+        return {{problem_.empty() ? std::string("no map") : problem_, ui::Tone::Warning}};
+    std::vector<ui::Seg> s;
+    s.push_back({path_});
+    s.push_back(dirty() ? ui::Seg{"unsaved", ui::Tone::Warning}
+                        : ui::Seg{"saved", ui::Tone::Success});
     if (hover_x_ >= 0)
-        s += "   tile " + std::to_string(hover_x_) + ", " + std::to_string(hover_y_);
+        s.push_back({"tile " + std::to_string(hover_x_) + ", " + std::to_string(hover_y_)});
     // A control that was clipped away is invisible AND unclickable, so the only place
     // it can announce itself is here.
-    if (inspector_clipped_) s += "   [panel clipped — make the window taller]";
+    if (inspector_clipped_)
+        s.push_back({"panel clipped - make the window taller", ui::Tone::Warning});
     return s;
 }
 

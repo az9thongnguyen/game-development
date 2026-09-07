@@ -86,7 +86,7 @@ public:
     // somewhere it cannot be pressed, but not drawn at all. Reported in status().
     [[nodiscard]] bool inspector_clipped() const { return inspector_clipped_; }
 
-    [[nodiscard]] std::string status() const override;
+    [[nodiscard]] std::vector<ui::Seg> status() const override;
     [[nodiscard]] const char* hint() const override;
     [[nodiscard]] int         inspector_width() const override { return 280; }
 

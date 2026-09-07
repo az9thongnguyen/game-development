@@ -16,6 +16,7 @@
 #pragma once
 
 #include "engine/renderer2d.hpp"
+#include "engine/ui/ui.hpp"
 
 namespace engine {
 
@@ -42,6 +43,14 @@ public:
 
     // Draw one frame. Required.
     virtual void render(const Context& ctx) = 0;
+
+    // What the pointer should look like after this frame. A Scene REPORTS rather than
+    // calling platform::set_cursor itself: most scenes compile into headless tests that
+    // link no backend at all, so a direct call would be an undefined symbol in half the
+    // test targets. App applies it, on the one side of the seam that has a window.
+    [[nodiscard]] virtual ui::CursorHint cursor_hint() const {
+        return ui::CursorHint::Default;
+    }
 };
 
 } // namespace engine

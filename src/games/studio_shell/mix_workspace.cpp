@@ -278,14 +278,19 @@ void MixWorkspace::register_commands() {
     commands_registered_ = true;
 }
 
-std::string MixWorkspace::status() const {
-    if (!loaded_) return problem_.empty() ? "no mix open" : problem_;
-    char buf[192];
-    std::snprintf(buf, sizeof buf, "%s   %zu part(s)   %zu swap(s)   %dx%d%s",
-                  path_.c_str(), mix_.parts.size(), mix_.swaps.size(), mix_.w, mix_.h,
-                  dirty() ? "   *" : "");
-    std::string s = buf;
-    if (!problem_.empty()) s += "   [" + problem_ + "]";
+std::vector<ui::Seg> MixWorkspace::status() const {
+    if (!loaded_)
+        return {{problem_.empty() ? std::string("no mix open") : problem_, ui::Tone::Warning}};
+    std::vector<ui::Seg> s;
+    s.push_back({path_});
+    s.push_back(dirty() ? ui::Seg{"unsaved", ui::Tone::Warning}
+                        : ui::Seg{"saved", ui::Tone::Success});
+    s.push_back({std::to_string(mix_.parts.size()) + " part(s)"});
+    s.push_back({std::to_string(mix_.swaps.size()) + " swap(s)"});
+    s.push_back({std::to_string(mix_.w) + "x" + std::to_string(mix_.h)});
+    // A problem on a LOADED mix is a bake that failed, not a missing file — it used to
+    // arrive in brackets at the end of the same sentence as the size.
+    if (!problem_.empty()) s.push_back({problem_, ui::Tone::Danger});
     return s;
 }
 
