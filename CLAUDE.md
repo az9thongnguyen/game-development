@@ -140,8 +140,9 @@ Twelve one-per-scene flags used to sit here; chapter 120 folded them.
 #   texture  Texture Lab: procedural noise -> .hrt + re-editable .recipe, sheet export
 #   editor   immediate-mode GUI + physics sandbox
 #   3d viz3d                software-rasterized 3D core / interactive sandbox
-#   iso      M4 isometric farm sim (F5/F9 save/load)
-#   colony   engine-core integration game (also the BaaS/SDK client)
+# (`iso` and `colony` used to be here. They are GAMES — chapter 145 gave them
+#  manifests, so they launch with --project like every other game. `--lab iso`
+#  now says where it went rather than "unknown lab".)
 
 ./build/demo --shell [proj]     # the Studio (1280x720, resizable)
                                 # Edit section: TABS of workspaces (Map | Scene | Pixels | Mixer),
@@ -206,6 +207,8 @@ them working). Paths are relative to the asset root — see `assets::` below:
                                               # with the farm in engine/ui/touch.hpp, the LAYOUTS are
                                               # not — one screen laid out for the other's neighbours
                                               # is exactly the bug sharing them would buy
+./build/demo --project projects/iso.gameproject                      # ...the isometric farm sim
+./build/demo --project projects/colony.gameproject                   # ...the colony (ECS + jobs + UI)
 ./build/demo --project projects/farm.gameproject                     # ...the farm game (entry `farm`)
                                               # `season` is a RULE, not a label (ch.143):
                                               # four seasons of SEVEN days, a seed refused
@@ -251,7 +254,17 @@ them working). Paths are relative to the asset root — see `assets::` below:
                                               # between two processes; that is how the 500-turn
                                               # stalemate was found that every in-process test
                                               # passed through. Seeded project: pk_demo_creatures
-./build/demo --bench-ui [frames] [proj]       # Studio frame cost, ss=1 vs ss=2 (no window)
+./build/demo --bench-ui [frames] [all|<entry>|<manifest>]   # frame cost, no window.
+                                              # `all` (the default) does the Studio at
+                                              # ss=1 and ss=2 AND every game in `entries()`
+                                              # at the size its manifest launches it at.
+                                              # RENDER only — no update(), so this is the
+                                              # rasterization cost and not the simulation's.
+                                              # The arithmetic is `bench_core`, not this
+                                              # flag (ch.145): it lived inline for 36
+                                              # chapters and `--bench-ui 0` segfaulted the
+                                              # whole time, because asking the percentile
+                                              # code a question meant rendering the Studio
 ./build/demo --cmd [id] [args...]              # run any registered command; no id lists them
 ```
 
@@ -323,8 +336,8 @@ builds the image, asserts the container is still RUNNING, then probes it.
 
 BaaS backend (separate process, **guarded on Drogon** — the engine build never
 depends on it; when Drogon is absent its targets vanish from `ctest`, which is
-**34 of the 93 tests**: `ctest` here reports 93, a build configured without Drogon
-reports 59. Since chapter 129 CI has a `baas-test` job in the
+**34 of the 94 tests**: `ctest` here reports 94, a build configured without Drogon
+reports 60. Since chapter 129 CI has a `baas-test` job in the
 `drogonframework/drogon` image that runs 27 of them — `sdk_realtime_live` needs
 libcurl ≥ 7.86 and Ubuntu 22.04 ships 7.81, so it is skipped with a message rather
 than silently. `cmake --build <dir> --target baas_tests` builds exactly that
@@ -510,6 +523,13 @@ is the thing most likely to be broken by a careless edit:
    hard-refuses to launch with a missing dependency.
 3. **Package** (`resource_core::build_package`) — resources sorted by path + a combined
    `packagehash`: order-independent, content-sensitive. This hash *is* the release id.
+3b. **The release id names the RELEASE, not only its bytes** (chapter 145). `package_hash`
+   covers `project`, `schema` and `entry` as well as the sorted resources — `build_package`
+   writes ONE canonical body and the id is the hash of it, so stripping the last line of a
+   `package.txt` and hashing what is left gives the id back. It covered only the resources
+   until two asset-less games both hashed to the FNV offset basis and the store refused to
+   publish the second; the general case is two projects sharing their art and differing
+   only in `entry`, which were one release.
 4. **Release store** (`release_core`, `release_ops_core`) — `releases/<hash>/` is
    immutable and content-addressed; the channels `development → preview → production`
    are pointers moved by promote/rollback. Publishes are **atomic** (stage `.tmp` →
