@@ -117,6 +117,18 @@ public:
 
     bool checkbox(Rect r, const char* label, bool& value);     // true if toggled
     bool slider(Rect r, const char* label, float& value, float lo, float hi);  // true if changed
+
+    // A two-axis pad: the pointer's position inside `r`, normalised to 0..1 and clamped.
+    // `y` runs DOWNWARD like the framebuffer does, so a caller cannot flip it by
+    // accident. Returns true on a frame that moved it. The caller draws what is inside;
+    // this owns the pointer and the arrow keys.
+    //
+    // A dragging control needs press-hold-release bookkeeping that `interact()` does not
+    // do — `interact` fires on release-over-the-rect, which is a CLICK. `slider` and
+    // `splitter` each carried their own copy of that loop; `drag_in` is now the one copy
+    // and this is its third caller, which is the point at which extracting it stopped
+    // being speculation.
+    bool xy_pad(const char* id, Rect r, float& x, float& y);
     void label(int x, int y, const char* text, gfx::Color color = gfx::colors::white);
 
     // ---- layout ------------------------------------------------------------
@@ -245,6 +257,9 @@ public:
 private:
     Id   id_of(const char* s) const;      // hashes the label, mixed with the id stack
     bool point_in(Rect r) const;
+    // Press-hold-release: true while `id` owns the pointer. Registers hot/active/focus.
+    // The shape `slider`, `splitter` and `xy_pad` share.
+    bool drag_in(Id id, Rect r, bool focusable);
     // Register `id` at this point in the declaration order and handle the shared
     // hover/press/focus bookkeeping. Returns true if the widget was activated.
     bool interact(Id id, Rect r, bool enabled);

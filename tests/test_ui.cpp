@@ -876,6 +876,85 @@ static void test_status_cells_join_one_way() {
     CHECK(ui::joined({{""}}).empty());
 }
 
+// ---- the two-axis pad (chapter 147) ----------------------------------------
+static void test_xy_pad() {
+    ui::Context ui;
+    float x = 0.5f, y = 0.5f;
+    const ui::Rect r{100, 100, 100, 100};
+    const auto frame = [&](const ui::Input& in) {
+        ui.begin(nullptr, in);
+        const bool moved = ui.xy_pad("sv", r, x, y);
+        ui.end();
+        return moved;
+    };
+
+    // Hovering moves nothing.
+    CHECK(!frame(idle(150, 150)));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // Pressing outside does not grab it, and a drag afterwards does nothing.
+    frame(press(10, 10));
+    frame(hold(150, 130));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // Grab it and drag. `y` runs DOWNWARD, like the framebuffer — a pad that reported
+    // it upward would put the flip inside the widget, where a caller cannot see it.
+    frame(idle(-1, -1));
+    frame(press(150, 150));
+    CHECK(frame(hold(125, 175)));
+    CHECK(x == 0.25f);
+    CHECK(y == 0.75f);
+
+    // Both axes clamp, at both ends, and BOTH clamps lift again.
+    frame(hold(-500, -500));
+    CHECK(x == 0.0f && y == 0.0f);
+    frame(hold(9000, 9000));
+    CHECK(x == 1.0f && y == 1.0f);
+    frame(hold(150, 150));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // A drag that lands where it already is is not a change.
+    CHECK(!frame(hold(150, 150)));
+
+    // Release ends it: moving afterwards moves nothing.
+    frame(release(150, 150));
+    frame(hold(110, 110));
+    CHECK(x == 0.5f && y == 0.5f);
+
+    // The keyboard reaches it, on both axes and in both directions — a control only a
+    // mouse can use is what this project keeps having to go back and fix.
+    frame(press(150, 150));
+    frame(release(150, 150));
+    const auto near = [](float a, float b) { return std::fabs(a - b) < 1e-4f; };
+    ui::Keys k;      k.right = true;
+    CHECK(frame(keys(k)));  CHECK(x > 0.5f);
+    ui::Keys l;      l.left = true;
+    CHECK(frame(keys(l)));  CHECK(near(x, 0.5f));
+    ui::Keys dn;     dn.down = true;
+    CHECK(frame(keys(dn))); CHECK(y > 0.5f);
+    ui::Keys up;     up.up = true;
+    CHECK(frame(keys(up))); CHECK(near(y, 0.5f));
+    // ...and it stops at the edges rather than running off them.
+    for (int i = 0; i < 200; ++i) frame(keys(l));
+    CHECK(x == 0.0f);
+    CHECK(!frame(keys(l)));      // already there: not a change
+    for (int i = 0; i < 200; ++i) frame(keys(up));
+    CHECK(y == 0.0f);
+
+    // Inert (a modal is up): neither the pointer nor the keyboard reaches it.
+    const float kx = x, ky = y;
+    ui.begin(nullptr, press(120, 120));
+    ui.begin_inert();
+    ui.xy_pad("sv", r, x, y);
+    ui.end();
+    CHECK(x == kx && y == ky);
+    ui.begin(nullptr, keys(k));
+    ui.begin_inert();
+    ui.xy_pad("sv", r, x, y);
+    ui.end();
+    CHECK(x == kx && y == ky);
+}
+
 int main() {
     test_button_click();
     test_checkbox();
@@ -894,6 +973,7 @@ int main() {
     test_confirm_reason();
     test_splitter();
     test_status_cells_join_one_way();
+    test_xy_pad();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;

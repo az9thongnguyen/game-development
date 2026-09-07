@@ -310,6 +310,13 @@ void PixelWorkspace::update(double dt, const platform::InputState& in, bool inte
     // A slider moved: the coordinates are the truth and the colour is derived from
     // them — NOT adopt(), which would run the lossy way round and snap the hue to 0
     // the moment value reached the bottom.
+    if (want_add_) {
+        want_add_ = false;
+        if (std::find(palette_.begin(), palette_.end(), colour_) == palette_.end()) {
+            palette_.push_back(colour_);
+            note(true, "kept " + paint::to_hex(colour_) + " in the palette");
+        }
+    }
     if (want_mix_) {
         mix_    = *want_mix_;
         colour_ = paint::from_hsv(mix_, mix_a_);
@@ -637,8 +644,46 @@ void PixelWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
             if (ui.slider(mix_rect_[i], label, v, 0.0f, hi)) moved = true;
         };
         row(0, "hue", m.h, 360.0f);
-        row(1, "sat", m.s, 1.0f);
-        row(2, "val", m.v, 1.0f);
+
+        // Saturation and value used to be two more sliders. They are ONE square,
+        // because they are one choice: a colour is a place, and picking it as two
+        // numbers means finding the same shade twice. It waited for a widget that
+        // reports a position while the pointer is held — which is what chapter 144's
+        // splitter turned out to need too, and `ui::xy_pad` is the third caller of that
+        // shape. `mix_rect_[1]` and `[2]` are deliberately left empty: an empty rect is
+        // hit by nothing, so a test that still reaches for the old sliders fails loudly
+        // instead of clicking somewhere the screen has moved on from.
+        {
+            // As WIDE as the panel and 64 tall — 64 being what the two sliders it
+            // replaced cost, because this panel already announces when it runs out of
+            // room and a new control that pushed Save off the bottom would be a feature
+            // that broke a verb. It was a 64x64 square for one screenshot, and the
+            // screenshot is why it is not: left-aligned with a hand's width of empty
+            // panel beside it, it read as unfinished. The two axes are not equally
+            // sensitive now, which is true of every colour picker anyone has used.
+            const int tall = 64;
+            const ui::Rect slot = ui.slot(tall);
+            sv_rect_ = ui::Rect{slot.x, slot.y, inner.w, tall};
+            // The gradient is the CALLER's: `xy_pad` draws a crosshair and owns the
+            // pointer, and a widget that painted a colour ramp would be a colour picker
+            // pretending to be a primitive.
+            for (int py = 0; py < sv_rect_.h; ++py) {
+                const float v =
+                    1.0f - static_cast<float>(py) / static_cast<float>(sv_rect_.h - 1);
+                for (int px = 0; px < sv_rect_.w; ++px) {
+                    const float sat =
+                        static_cast<float>(px) / static_cast<float>(sv_rect_.w - 1);
+                    g.fill_rect(sv_rect_.x + px, sv_rect_.y + py, 1, 1,
+                                paint::from_hsv(paint::Hsv{m.h, sat, v}));
+                }
+            }
+            float nx = m.s, ny = 1.0f - m.v;
+            if (ui.xy_pad("sv", sv_rect_, nx, ny)) {
+                m.s   = nx;
+                m.v   = 1.0f - ny;
+                moved = true;
+            }
+        }
         // Resolved in update() like every other control here, so nothing edits state
         // during a draw.
         if (moved) want_mix_ = m;
@@ -655,8 +700,25 @@ void PixelWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
         g.fill_rect_blend(sw.x, sw.y, sw.w, sw.h, colour_);
         g.draw_round_rect(sw.x, sw.y, sw.w, sw.h, th::radius_sm, th::border_strong);
 
+        // A colour you mixed had nowhere to live: it was the brush and nothing else, so
+        // getting it back after wandering off meant painting a pixel and eyedroppering
+        // it. This is the home, and it sits on the hex row rather than on one of its own
+        // — the panel already announces when it runs out of height, and a new control
+        // that pushed Save off the bottom would be a feature that broke a verb.
+        //
+        // It is not a second palette: it appends to the one above, which is rebuilt from
+        // the IMAGE on open. So a mixed colour survives a reload exactly when you
+        // actually used it, which is the rule nobody has to be told.
+        constexpr int kKeepW = 52;
+        add_rect_ = ui::Rect{row.x + row.w - kKeepW, row.y, kKeepW, row.h};
+        const bool have = std::find(palette_.begin(), palette_.end(), colour_) != palette_.end();
+        if (ui.button(add_rect_, "Keep", /*primary*/ false, /*enabled*/ !have))
+            want_add_ = true;
+        ui.tooltip(add_rect_, have ? "this colour is already a swatch"
+                                   : "add this colour to the palette");
+
         hex_rect_ = ui::Rect{row.x + sw.w + th::space_xs, row.y,
-                             row.w - sw.w - th::space_xs, row.h};
+                             row.w - sw.w - kKeepW - th::space_xs * 2, row.h};
         if (ui.text_input("hex", hex_rect_, hex_field_, "#AARRGGBB")) {
             // Only when it PARSES. Half a code must leave the brush where it is.
             if (auto c = paint::parse_hex(hex_field_)) want_colour_ = *c;

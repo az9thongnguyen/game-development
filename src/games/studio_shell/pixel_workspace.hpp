@@ -110,6 +110,9 @@ public:
     [[nodiscard]] ui::Rect mix_slider(int i) const {
         return (i >= 0 && i < 3) ? mix_rect_[i] : ui::Rect{};
     }
+    // The saturation/value square, and the button that gives a mixed colour a home.
+    [[nodiscard]] ui::Rect sv_rect()  const { return sv_rect_; }
+    [[nodiscard]] ui::Rect add_rect() const { return add_rect_; }
     [[nodiscard]] ui::Rect hex_rect() const { return hex_rect_; }
     [[nodiscard]] int      hover_x() const { return hover_x_; }
     [[nodiscard]] int      hover_y() const { return hover_y_; }
@@ -189,6 +192,7 @@ private:
     bool        hex_focused_ = false;
     bool        inspector_clipped_ = false;
     ui::Rect    mix_rect_[3]{};
+    ui::Rect    sv_rect_{}, add_rect_{};
     ui::Rect    hex_rect_{};
 
     // The name being typed for a new sheet, and where its two controls are.
@@ -227,6 +231,7 @@ private:
     int  want_index_ = -1;
     std::optional<paint::Hsv>  want_mix_;      // a slider moved
     std::optional<gfx::Color>  want_colour_;   // a code was typed
+    bool                       want_add_ = false;   // "keep this colour" was pressed
     bool want_undo_ = false, want_redo_ = false, want_save_ = false;
     bool want_new_  = false;
 };
