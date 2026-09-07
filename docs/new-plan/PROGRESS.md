@@ -1517,6 +1517,90 @@ stage, không item, không thời tiết, không multi-hit · **ngủ mất luô
 bắt được thì kết thúc trận và không gì khác (chưa có box, chưa nhập party) · 18 con
 **không animation, không sprite lưng** · `encounters.def`/trainer/gym **chưa tồn tại**.
 
+### S27b — Creatures: game thứ hai, chơi được ✅ 2026-09-07 · chương 137
+
+Merge `feat/s27b-creatures-game`. `--project projects/creatures.gameproject`: một
+route có cabin, cỏ cao phục kích, màn battle điều khiển bằng ngón cái, party lên cấp
+và tiến hoá, và một file save. Nhưng thứ đáng nói hơn là **game thứ hai đã làm gì với
+code đã có**.
+
+**Lời hứa đến hạn.** `CLAUDE.md` và file này đều ghi cùng một câu: *"điều khiển màn
+hình mới chỉ có ở farm; nếu game thứ hai cần thì `farm/controls.hpp` sẽ phải tách —
+nhưng chưa có người dùng thứ hai, nên chưa tách."* Chương này **là** người dùng thứ
+hai, nên hai thứ tách ra:
+
+- **`engine/ui/touch.hpp`** lấy phần là *sự thật về một BÀN TAY*: `kBtn` = 44 px (ngón
+  tay ~9 mm; nhỏ hơn thì d-pad thành trò chơi ngắm), luật **tỉ lệ** (điều khiển chiếm
+  tối đa nửa chiều rộng, d-pad tối đa hai phần năm chiều cao), phép tính 3×3 của pad,
+  và `Box`/`Pointer`.
+- **Cái KHÔNG tách là LAYOUT**, và đó mới là luận điểm. Pad của farm nằm trên một
+  hotbar bốn ô; pad của game này nằm trên không có gì, còn một phần ba dưới màn hình
+  thuộc về menu battle mà farm không có. Chia sẻ những hình chữ nhật đó nghĩa là **một
+  màn hình được bố cục theo hàng xóm của màn hình kia**. Luật cả hai game tuân theo —
+  *MỘT hàm layout, renderer VÀ hit test cùng đọc* — là một **kỷ luật, không phải một
+  hình dạng**.
+- **`farm::Theme` → `tilemap::Theme`.** "Ô id này mặc bức ảnh nào" chưa bao giờ là sự
+  thật về nghề nông.
+
+**Hai sự thật nữa thuộc về MAP** (luật ch.134, áp dụng thêm hai lần): ô nào **phục
+kích** là `ground` id 3; **bảng nào được roll** là một **mask layer** `far` — không
+phải `x > 20` viết trong `world.cpp`, cũng không phải một ground id thứ hai, nên hai
+vạt cỏ **trông giống hệt nhau** và người chơi phát hiện bằng cách bước vào. Chỗ bắt
+đầu là `entity home`, và test khẳng định ô dưới nó đi được — không thì blackout đặt
+người chơi vào trong tường và không gì khác nhận ra.
+
+**MỘT dòng ngẫu nhiên.** Roll phục kích của overworld và roll sát thương của trận đánh
+ra từ cùng `World::rng`. Hai dòng nghĩa là một save khôi phục trận đánh nhưng không
+khôi phục quãng đường dẫn tới nó.
+
+**Lớn lên mà không được chữa lành.** Lên cấp **regrow** chỉ số và **giữ nguyên vết
+thương**; tiến hoá cũng vậy. Một cấp mà hồi đầy máu sẽ kết thúc mọi trận đánh ngay khi
+có ai đó lên cấp. `Growth` báo loài **đầu tiên và cuối cùng** của cả lần thưởng, vì
+"blazehound thành pyrewolf" không phải câu để nói với người chưa từng có blazehound.
+**Save không lưu chỉ số** — chúng là hàm thuần của loài và cấp, lưu lại sẽ khiến một
+save mâu thuẫn với bảng nó được cân bằng theo.
+
+| Commit | Việc |
+|---|---|
+| `08546a7` | `engine/ui/touch.hpp` + `tilemap::Theme` — lời hứa đến hạn |
+| `a380f28` | `world.cpp` + route + theme + controls + scene + manifest + entry |
+| `e4b16b0` | Mười hai lỗ test do mutation lộ ra, ba trong đó **pass vì lý do sai** |
+| `a827b75` | Bài kiểm trình duyệt cho game thứ hai — và phát hiện bằng chứng của farm **không chuyển sang được** |
+
+**Ba thứ chỉ ảnh render thấy.** (1) **Mọi nút battle là chữ gần đen trên nền gần đen** —
+có mặt, đúng chỗ, không đọc được; `ink() > 0` bảo ổn. (2) **`Back` vẽ đè lên sinh vật
+của người chơi** — hai hình chữ nhật quyết định ở hai nơi thì cuối cùng sẽ chồng nhau;
+cả hai rect sinh vật giờ nằm trong `Layout`, và test kiểm **mọi CẶP** hình chữ nhật ở
+mọi mode. (3) **Chính thước đo tương phản phải làm hai lần** — ngưỡng 1% báo 0 cho mọi
+nhãn, vì một chữ khử răng cưa trải trên hàng chục màu gần nhau và không màu nào đạt 1%.
+
+**Một khẳng định về cân bằng, có test:** starter cấp 5 phải **thắng phần lớn** những
+gì vạt cỏ gần ném ra. Cả ba starter đạt 75–87%, có thua thật. Một route mà lần gặp đầu
+tiên thường kết thúc ván chơi là route không ai đi qua, và không gì khác nói được điều đó.
+
+**Bằng chứng của farm KHÔNG chuyển sang được, và tìm ra điều đó mới là mục đích.** Ở
+farm: giữ hướng đông rồi bấm Save. Ở đây: giữ hướng đông là đi vào cỏ cao, có thứ nhảy
+ra, và **nút Save biến mất** — đang đánh nhau thì màn hình là một cái menu. Bốn lần
+giữ, `pos 4 6` mỗi lần; một probe cuối cùng in ra đúng chuyện đang xảy ra:
+`phase=Battle`, `pos=8,6`. Nên game này được chứng minh bằng cách **hoàn thành cái nó
+bắt đầu**: đi tới khi màn battle tự khai báo, **Run**, xác nhận, rồi mới save. Đó là
+khẳng định *mạnh hơn* của farm.
+
+**✅ Đã chạy:** `ctest` **83/83** (81 → 83: `creature_world`, `creatures_scene`) ·
+**38/38 mutation** sau khi vá mười hai, baseline sau restore GREEN · ASan+UBSan sạch ·
+golden path xanh trên `creatures.gameproject` (publish `e0d8f431296632cd`, verify exit
+0, 0 rò `.tmp`) · web build xanh · **ba bài kiểm trình duyệt PASS**: farm, creatures
+(mới), và collection page giờ liệt kê **3 game** · **bốn khung đã render và đã nhìn**
+(route, battle, moves, ack) — ba lỗi ở trên đều từ đó.
+
+**⚠️ Chưa xác minh:** **một route** (SPEC muốn 3 town + 2 route + 1 gym) — không
+trainer, không gym, không PC box, không item, không shop · **không NPC, không thoại** ·
+**battle không animation** — không tween thanh máu, không typewriter · một lượt là một
+tap và một câu · **đổi party chưa test với băng ghế thật** (cảnh chưa bao giờ có hơn hai
+con) · **tất định vẫn chỉ chứng minh trên một máy** — bản web giờ *chơi* một trận nhưng
+**không so hash** · **không cloud save, không BaaS** (đó là S28) · camera không có
+chuyển cảnh vào trận · `--bench-ui` vẫn chỉ đo Studio.
+
 ## Việc kế tiếp
 
 **Lộ trình đã chốt 2026-09-06** — xem `PLAN-v2-CORRECTIONS.md` để biết vì sao thứ tự này
@@ -1534,7 +1618,7 @@ làm chín T6).
 | ~~S25~~ | ~~IntGrid + rule autotile trong Map workspace~~ — **XONG**, chương 134 (rule vào map, `farm::line_piece` bị xoá) | L |
 | ~~S26~~ | ~~Mixer workspace (cửa **thứ tư** vào `.hrt`)~~ — **XONG**, chương 135; số cửa 3 → 4 đã đổi có chủ ý | L |
 | ~~S27a~~ | ~~`creature_core` + 18 loài dựng từ Mixer~~ — **XONG**, chương 136 | L |
-| S27b | **Creatures** — game (overworld, battle screen, manifest, controls) | L |
+| ~~S27b~~ | ~~Creatures — game (overworld, battle, manifest, controls)~~ — **XONG**, chương 137 | L |
 | S28 | Replay + PvP realtime + ELO — consumer thật đầu tiên của realtime | L |
 | S29 | OPS còn lại: Postgres **cùng slice** với TOCTOU `FOR UPDATE`, OpenAPI, healthz | M |
 | S30 | Dọn nợ nhỏ: `splitter` + lưu layout, status bar segment, Scene grid/snap, farm `season` (đang là **field chết**), `docs/adr/` chỉ mục | M |
