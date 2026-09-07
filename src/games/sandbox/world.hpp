@@ -110,4 +110,19 @@ inline int sprite_frame(const Sprite& s) {
     return anim::Flipbook{s.frames, s.fps, s.loop, s.t}.frame();
 }
 
+// Snap a world coordinate to the nearest multiple of `step`; `step <= 0` means the
+// grid is off and the value passes through. Rounding is away from zero at the halfway
+// point in BOTH directions, so a scene laid out around the origin snaps symmetrically
+// — `std::round`'s halfway rule would bias one side of it by a whole step.
+//
+// Here rather than in the workspace because it is arithmetic, and the workspace is the
+// trigger: placing an actor and dragging one are two call sites of the same question,
+// and the drag is the one that would have got it slightly different.
+inline float snap_to(float v, int step) {
+    if (step <= 0) return v;
+    const float s = static_cast<float>(step);
+    return (v >= 0.0f ? static_cast<float>(static_cast<long long>(v / s + 0.5f))
+                      : -static_cast<float>(static_cast<long long>(-v / s + 0.5f))) * s;
+}
+
 } // namespace sandbox

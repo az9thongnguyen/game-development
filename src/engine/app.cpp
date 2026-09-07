@@ -37,6 +37,13 @@ void App::frame(double dt) {
     gfx::Renderer2D renderer(platform::framebuffer(), platform::supersample());
     Context ctx{ renderer, platform::input(), dt, clock_.time(), clock_.alpha(), ui_font_.get() };
     scene_->render(ctx);
+
+    // The scene decided during render() (its widgets are what know what is under the
+    // mouse), so this is applied after. platform::set_cursor has existed since the seam
+    // was written and had no caller until the Studio grew a draggable divider.
+    platform::set_cursor(scene_->cursor_hint() == ui::CursorHint::ResizeH
+                             ? platform::Cursor::ResizeH
+                             : platform::Cursor::Arrow);
 }
 
 } // namespace engine

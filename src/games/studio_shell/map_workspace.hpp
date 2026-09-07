@@ -91,7 +91,7 @@ public:
 
     // The tile under the cursor belongs in the status line, and only this workspace
     // knows there are tiles at all — which is precisely why status() lives here.
-    [[nodiscard]] std::string status() const override;
+    [[nodiscard]] std::vector<ui::Seg> status() const override;
     [[nodiscard]] const char* hint() const override;
 
     // An autosave newer than the file was found on open. The shell owns the screen's

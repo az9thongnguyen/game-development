@@ -272,8 +272,10 @@ static void test_scrolled_body_does_not_eat_the_header() {
     CHECK(ws.control_rect("emitter").w == 0);        // the top of the body is off-screen
 
     CHECK(!ws.playing());
-    // The Play button, in the header the body is now scrolled behind.
-    click_at(d, ws, vp.x + vp.w / 2, vp.y - 30);
+    // The Play button, in the header the body is now scrolled behind — asked for by
+    // NAME, not by an offset from the viewport. An offset is a guess about what else
+    // lives in the header, and it was wrong the first time something else did.
+    CHECK(click_control(d, ws, "play"));
     CHECK(ws.playing());
 }
 

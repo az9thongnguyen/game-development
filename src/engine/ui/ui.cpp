@@ -86,6 +86,7 @@ void Context::begin(gfx::Renderer2D* r, const Input& in, int screen_w, int scree
     screen_w_ = screen_w > 0 ? screen_w : (r ? r->width()  : 0);
     screen_h_ = screen_h > 0 ? screen_h : (r ? r->height() : 0);
     inert_    = false;
+    cursor_   = CursorHint::Default;   // whichever widget is under the mouse re-asks
     overlays_.clear();
     hot_      = 0;          // recompute hovered widget each frame
     hovering_ = false;
@@ -715,6 +716,90 @@ void Context::end_scroll() {
 }
 
 // ---- tabs -------------------------------------------------------------------
+std::string joined(const std::vector<Seg>& segs) {
+    std::string out;
+    for (const Seg& g : segs) {
+        if (g.text.empty()) continue;
+        if (!out.empty()) out += "   ";
+        out += g.text;
+    }
+    return out;
+}
+
+// A draggable divider. Like slider() it drags rather than clicks, so it does not go
+// through interact(): it stays active while the button is HELD. Unlike slider() it has
+// no keyboard path — there is nothing to focus here that Tab should stop on, and a
+// divider you can only reach with a mouse is still a divider whose two panels are both
+// fully usable without one.
+bool Context::splitter(const char* id_str, Rect r, int& pos, int lo, int hi) {
+    const Id   id   = id_of(id_str);
+    const bool over = point_in(r) && !inert_;
+    if (over) { hot_ = id; hovering_ = true; }
+
+    if (active_ == id) {
+        if (!in_.down) active_ = 0;
+    } else if (over && in_.pressed) {
+        active_      = id;
+        // Where inside the handle it was grabbed. Without this the divider jumps so
+        // that its left edge lands under the cursor the instant you press — a jolt of
+        // up to the handle's width before you have moved at all.
+        drag_anchor_ = in_.mx - pos;
+    }
+
+    bool moved = false;
+    if (active_ == id && in_.down) {
+        int want = in_.mx - drag_anchor_;
+        if (want < lo) want = lo;
+        if (want > hi) want = hi;
+        if (want != pos) { pos = want; moved = true; }
+    }
+    // The pointer says what will happen BEFORE the press — that is the whole job of a
+    // cursor shape, and it is why a hit zone wider than the drawn line is not a cheat:
+    // the line is 2px because it should be quiet, the zone is a finger wide because it
+    // should be catchable.
+    if (over || active_ == id) cursor_ = CursorHint::ResizeH;
+
+    if (r_) {
+        const bool lit = (active_ == id) || over;
+        r_->fill_rect(r.x + r.w / 2 - 1, r.y, 2, r.h, lit ? th::accent : th::border);
+        // The grip: three dots at the middle, so a divider that has never been dragged
+        // still looks like something you may drag.
+        const int cy = r.y + r.h / 2;
+        for (int k = -1; k <= 1; ++k)
+            r_->fill_rect(r.x + r.w / 2 - 2, cy + k * 6 - 1, 4, 2,
+                          lit ? th::accent : th::text_muted);
+    }
+    return moved;
+}
+
+void Context::status_bar(Rect r, const std::vector<Seg>& left, const char* right) {
+    if (!r_) return;
+    r_->set_font_size(th::sz_caption);
+    const int ty = r.y + (r.h - th::sz_caption) / 2;
+    int x = r.x;
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        if (left[i].text.empty()) continue;
+        if (i > 0 && x > r.x) {
+            // The separator is DRAWN, not typed. It used to be two spaces in one
+            // workspace, three in another and a bracket in a third, which is what a
+            // shared strip looks like when every caller punctuates it itself.
+            r_->fill_rect(x + th::space_sm, ty + th::sz_caption / 2 - 1, 2, 2, th::text_muted);
+            x += th::space_sm * 2 + 2;
+        }
+        const char* t = left[i].text.c_str();
+        r_->draw_text(x, ty, t, tone_colour(left[i].tone));
+        x += r_->text_width(t);
+    }
+    if (right && *right) {
+        const int rw = r_->text_width(right);
+        // The hint is drawn only when it fits beside the cells: overlapping text is
+        // less readable than absent text, and what is open matters more than what the
+        // keys do.
+        if (r.x + r.w - rw > x + th::space_lg)
+            r_->draw_text(r.x + r.w - rw, ty, right, th::text_muted);
+    }
+}
+
 int Context::tabs(const char* id_str, Rect r, const char* const* labels, int count, int current) {
     if (count <= 0) return current;
     push_id(id_str);

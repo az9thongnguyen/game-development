@@ -67,7 +67,14 @@ public:
 
     // The two halves of the status strip: what is open on the left, what the keys do
     // on the right. Owned here because the shell must not know which document it has.
-    [[nodiscard]] virtual std::string status() const = 0;
+    //
+    // A LIST of cells since chapter 144, not a sentence. It was a sentence for four
+    // implementations, and all four punctuated it differently — but the reason to
+    // change it is not tidiness: the shell coloured the returned string `warn` when the
+    // document was dirty, so "unsaved" made the tile coordinates beside it look like a
+    // warning too. A tone per cell is the only way one part of a line can mean
+    // something the rest of it does not.
+    [[nodiscard]] virtual std::vector<ui::Seg> status() const = 0;
     [[nodiscard]] virtual const char* hint() const = 0;
 
     virtual engine::OpResult save() = 0;

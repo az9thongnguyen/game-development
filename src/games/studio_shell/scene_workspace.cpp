@@ -40,6 +40,11 @@ constexpr double kAutosaveSeconds = 10.0;
 // can drag rather than on an explanation. Same bounds as the farm's framebuffer.
 const char* const kEmptyScene = "sandbox1\nbounds 640 360\n";
 
+// off -> 8 -> 16 -> 32 -> off. A cycle rather than a number field: four values is not
+// a setting worth a text box, and the one the author actually wants is "the one my
+// tiles are", which is 16 in every sheet this project has.
+int next_grid(int g) { return g <= 0 ? 8 : g >= 32 ? 0 : g * 2; }
+
 }  // namespace
 
 SceneWorkspace::SceneWorkspace(std::string scene_path) : path_(std::move(scene_path)) {
@@ -71,7 +76,8 @@ SceneWorkspace::SceneWorkspace(std::string scene_path) : path_(std::move(scene_p
 
 SceneWorkspace::~SceneWorkspace() {
     if (!commands_registered_) return;
-    for (const char* id : {"scene.save", "scene.undo", "scene.redo", "scene.reload", "scene.play"})
+    for (const char* id : {"scene.save", "scene.undo", "scene.redo", "scene.reload",
+                           "scene.play", "scene.grid"})
         cmd::unregister(id);
 }
 
@@ -272,12 +278,19 @@ std::optional<engine::OpResult> SceneWorkspace::take_message() {
     return m;
 }
 
-std::string SceneWorkspace::status() const {
-    if (!loaded_ && !problem_.empty()) return problem_;
-    std::string s = (path_.empty() ? std::string("(unsaved scene)") : path_) +
-                    (dirty() ? "  *  unsaved" : "  saved");
-    s += "   " + std::to_string(world_.alive()) + " actor" + (world_.alive() == 1 ? "" : "s");
-    if (playing_) s += "   PLAYING";
+std::vector<ui::Seg> SceneWorkspace::status() const {
+    if (!loaded_ && !problem_.empty()) return {{problem_, ui::Tone::Warning}};
+    std::vector<ui::Seg> s;
+    s.push_back({path_.empty() ? std::string("(unsaved scene)") : path_});
+    s.push_back(dirty() ? ui::Seg{"unsaved", ui::Tone::Warning}
+                        : ui::Seg{"saved", ui::Tone::Success});
+    s.push_back({std::to_string(world_.alive()) + " actor" +
+                 (world_.alive() == 1 ? "" : "s")});
+    // The grid is a MODE, and a mode that changes where a click lands has to be visible
+    // when it is on: "I dropped it here and it moved" is otherwise a bug report.
+    if (grid_ > 0)
+        s.push_back({"grid " + std::to_string(grid_), ui::Tone::Info});
+    if (playing_) s.push_back({"PLAYING", ui::Tone::Accent});
     return s;
 }
 
@@ -301,6 +314,14 @@ void SceneWorkspace::register_commands() {
                           });
     cmd::register_command(cmd::Info{"scene.reload", "Scene: reload from disk", "", ""},
                           [this](const std::vector<std::string>&) { return reload(); });
+    cmd::register_command(cmd::Info{"scene.grid", "Scene: cycle the snap grid", "", ""},
+                          [this](const std::vector<std::string>&) {
+                              if (playing_) return engine::OpResult{false, "stop the scene first"};
+                              grid_ = next_grid(grid_);
+                              return engine::OpResult{
+                                  true, grid_ > 0 ? "grid " + std::to_string(grid_)
+                                                  : std::string("grid off")};
+                          });
     cmd::register_command(cmd::Info{"scene.play", "Scene: play / stop", "Space", ""},
                           [this](const std::vector<std::string>&) {
                               toggle_play();
@@ -424,6 +445,11 @@ void SceneWorkspace::update(double dt, const platform::InputState& in, bool inte
     }
 
 
+    if (want_grid_) {
+        want_grid_ = false;
+        if (!playing_) grid_ = next_grid(grid_);
+    }
+
     // ---- canvas pointer ----------------------------------------------------
     // Only inside the canvas rect the last draw reported, and only in world units:
     // the shell's pixels and the scene's coordinates are different spaces, and the
@@ -436,8 +462,13 @@ void SceneWorkspace::update(double dt, const platform::InputState& in, bool inte
     if (!playing_ && inside && in.pressed(MouseButton::Left)) {
         if (armed_ >= 0) {
             const std::string before = sandbox::to_scene(world_);
-            place(armed_, wx, wy);
-            sel_ = index_at(wx, wy);
+            // Placed AND selected at the snapped point. Looking up the selection at the
+            // raw cursor instead would select nothing whenever the grid moved the actor
+            // further than its own half-width — you would place a coin and it would not
+            // be the thing selected.
+            const float px = sandbox::snap_to(wx, grid_), py = sandbox::snap_to(wy, grid_);
+            place(armed_, px, py);
+            sel_ = index_at(px, py);
             commit(before, std::string("place ") + palette_[static_cast<std::size_t>(armed_)].label);
         } else {
             const int hit = index_at(wx, wy);
@@ -457,8 +488,12 @@ void SceneWorkspace::update(double dt, const platform::InputState& in, bool inte
         ecs::Entity e{};
         if (entity_at(sel_, e))
             if (Transform2D* t = world_.reg.get<Transform2D>(e)) {
-                t->x = wx - drag_dx_;
-                t->y = wy - drag_dy_;
+                // Snapped AFTER the grab offset is removed, so it is the actor's centre
+                // that lands on the grid and not the point of the sprite you happened to
+                // grab. Snapping `wx` first would put the actor a fraction of a cell off
+                // by exactly however far from its middle you clicked.
+                t->x = sandbox::snap_to(wx - drag_dx_, grid_);
+                t->y = sandbox::snap_to(wy - drag_dy_, grid_);
             }
     }
     if (dragging_ && !in.down(MouseButton::Left)) {
@@ -508,6 +543,18 @@ void SceneWorkspace::draw_canvas(ui::Context& ui, gfx::Renderer2D& g, ui::Rect a
 
     const auto sx = [&](float x) { return view_x_ + static_cast<int>(x * view_scale_); };
     const auto sy = [&](float y) { return view_y_ + static_cast<int>(y * view_scale_); };
+
+    // The grid, drawn in WORLD units through the same projection as everything else —
+    // a grid spaced in screen pixels would not be the grid the snap uses, and the two
+    // would disagree the moment the panel beside it changed width.
+    if (grid_ > 0) {
+        for (float gx = static_cast<float>(grid_); gx < world_.bounds_w;
+             gx += static_cast<float>(grid_))
+            g.fill_rect(sx(gx), view_y_, 1, dh, th::border);
+        for (float gy = static_cast<float>(grid_); gy < world_.bounds_h;
+             gy += static_cast<float>(grid_))
+            g.fill_rect(view_x_, sy(gy), dw, 1, th::border);
+    }
 
     int i = 0;
     world_.reg.view<Transform2D, Body, Sprite>(
@@ -637,9 +684,31 @@ void SceneWorkspace::draw_inspector(ui::Context& ui, gfx::Renderer2D& g, ui::Rec
     }
     y += th::sz_caption + th::space_md;
 
-    if (ui.button(ui::Rect{x, y, w, 30}, playing_ ? "Stop" : "Play", /*primary*/ true))
-        want_play_ = true;
-    y += 30 + th::space_md;
+    {
+        const ui::Rect r{x, y, w, 30};
+        if (ui.button(r, playing_ ? "Stop" : "Play", /*primary*/ true)) want_play_ = true;
+        // Recorded like the grid below it, and for the same reason a test should never
+        // reach a control by arithmetic on someone else's rect: the first control added
+        // between the header and the body silently moved what "30px above the viewport"
+        // meant, and the test that did that still passed for the wrong control.
+        controls_["play"] = r;
+        y += 30 + th::space_md;
+    }
+
+    // The grid, ABOVE the scrolling body rather than inside it. It changes where every
+    // click on the canvas lands, so it must not be a control you have to scroll a panel
+    // to find — and unlike everything below, it is never clipped away.
+    {
+        char label[32];
+        if (grid_ > 0) std::snprintf(label, sizeof label, "Grid %d", grid_);
+        else           std::snprintf(label, sizeof label, "Grid off");
+        const ui::Rect r{x, y, w, 26};
+        if (ui.button(r, label, /*primary*/ false, /*enabled*/ !playing_)) want_grid_ = true;
+        // Recorded directly, not through mark(): mark clips to the scrolling viewport,
+        // and a control that lives outside it has nothing to be clipped against.
+        controls_["grid"] = r;
+        y += 26 + th::space_md;
+    }
 
     // ---- the footer's geometry, decided BEFORE the body is drawn -----------
     // Undo/Redo/Save are pinned to the bottom so they do not move as the selection

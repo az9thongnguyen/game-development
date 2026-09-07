@@ -258,20 +258,27 @@ void PixelWorkspace::adopt(gfx::Color c) {
     if (!hex_focused_) hex_field_ = paint::to_hex(c);
 }
 
-std::string PixelWorkspace::status() const {
-    if (!loaded_) return problem_.empty() ? std::string("no texture") : problem_;
-    std::string s = path_ + (dirty() ? "  *  unsaved" : "  saved");
+std::vector<ui::Seg> PixelWorkspace::status() const {
+    if (!loaded_)
+        return {{problem_.empty() ? std::string("no texture") : problem_, ui::Tone::Warning}};
+    std::vector<ui::Seg> s;
+    s.push_back({path_});
+    s.push_back(dirty() ? ui::Seg{"unsaved", ui::Tone::Warning}
+                        : ui::Seg{"saved", ui::Tone::Success});
     if (hover_x_ >= 0) {
-        s += "   " + std::to_string(hover_x_) + ", " + std::to_string(hover_y_);
+        s.push_back({std::to_string(hover_x_) + ", " + std::to_string(hover_y_)});
         // The colour UNDER the cursor, not the selected one: matching a neighbour is
-        // most of the work, and reading it off the status bar beats guessing.
-        s += "   " + paint::to_hex(img_.pixels[static_cast<std::size_t>(hover_y_) *
-                                                  static_cast<std::size_t>(img_.w) +
-                                              static_cast<std::size_t>(hover_x_)]);
+        // most of the work, and reading it off the status bar beats guessing. This is
+        // the cell chapter 144 is about: it used to be drawn in the warning colour
+        // whenever the file was unsaved, which is a lie about a hex code.
+        s.push_back({paint::to_hex(img_.pixels[static_cast<std::size_t>(hover_y_) *
+                                                   static_cast<std::size_t>(img_.w) +
+                                               static_cast<std::size_t>(hover_x_)])});
     }
     // Outside the panel, because when the panel is too short there is by definition
     // no room inside it to say so.
-    if (inspector_clipped_) s += "   inspector clipped - make the window taller";
+    if (inspector_clipped_)
+        s.push_back({"inspector clipped - make the window taller", ui::Tone::Warning});
     return s;
 }
 

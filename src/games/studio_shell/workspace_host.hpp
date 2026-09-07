@@ -18,6 +18,7 @@
 
 #include "engine/scene.hpp"
 #include "engine/ui/ui.hpp"
+#include "games/studio_shell/layout.hpp"
 #include "games/studio_shell/sound_bank.hpp"
 #include "games/studio_shell/workspace.hpp"
 
@@ -29,12 +30,19 @@ public:
 
     void update(double dt, const platform::InputState& input) override;
     void render(const engine::Context& ctx) override;
+    [[nodiscard]] ui::CursorHint cursor_hint() const override {
+        return ui_.cursor_hint();
+    }
 
     [[nodiscard]] Workspace& workspace() { return *ws_; }
 
 private:
     std::unique_ptr<Workspace> ws_;
     ui::Context                ui_;
+    // The SAME file the Studio's Edit tab reads. A divider dragged in the lab and
+    // forgotten in the tab would be exactly the drift this class exists to prevent.
+    Layout                     layout_{};
+    bool                       layout_dirty_ = false;
     SoundBank                  sound_;
     bool                       recovery_ = false;
     std::string                flash_;

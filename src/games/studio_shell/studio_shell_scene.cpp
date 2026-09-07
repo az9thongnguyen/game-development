@@ -123,6 +123,7 @@ StudioShellScene::StudioShellScene(std::string project_path,
       // SOURCES beside those artefacts, which is the sibling rule provenance_core
       // already uses to call an asset `mixed`. One rule, two readers.
       mixer_(assets_of(project_path_, known_entries_, "texture")) {
+    layout_ = read_layout();
     rebuild();
     workspaces_ = {&map_, &scene_, &pixels_, &mixer_};
     // Each workspace binds its own ids here, so the palette lists exactly what THIS
@@ -195,6 +196,13 @@ void StudioShellScene::run(hubui::Op op) {
 
 void StudioShellScene::update(double dt, const platform::InputState& in) {
     if (flash_t_ > 0) flash_t_ -= dt;
+
+    // Written when the drag ENDS, not while it moves: a file write per mouse sample is
+    // sixty writes a second to say the same thing sixty times.
+    if (layout_dirty_ && !in.down(platform::MouseButton::Left)) {
+        layout_dirty_ = false;
+        write_layout(layout_);
+    }
 
     if (nav_click_ >= 0) { section_ = nav_click_; nav_click_ = -1; }
 
@@ -312,9 +320,15 @@ void StudioShellScene::update(double dt, const platform::InputState& in) {
     }
 }
 
-// The Map section: canvas on the left, inspector on the right, status strip under
-// both. The split is fixed — a draggable one needs a cursor shape, a hit zone and a
-// persisted position, and no second author has asked for it yet.
+// The Edit section: canvas on the left, inspector on the right, a DRAGGABLE divider
+// between them and a status strip under both.
+//
+// Chapter 112 left the note that explains the shape of this: "The split is fixed — a
+// draggable one needs a cursor shape, a hit zone and a persisted position, and no
+// second author has asked for it yet." All three exist now (ui::CursorHint, the
+// handle's rect, studioshell::Layout), and the third is the one with a design in it:
+// what is STORED is what the author dragged to, what is DRAWN is what today's window
+// can give — see fit_inspector.
 void StudioShellScene::draw_edit_section(gfx::Renderer2D& g, ui::Rect area) {
     Workspace& ws = *workspaces_[static_cast<std::size_t>(ws_)];
 
@@ -335,25 +349,35 @@ void StudioShellScene::draw_edit_section(gfx::Renderer2D& g, ui::Rect area) {
     }
     const int tabs_h = 30 + th::space_md;
 
-    // The workspace asks for an inspector width; the shell decides. A narrow window
-    // must not leave a canvas thinner than the panel beside it.
-    int insp_w = ws.inspector_width();
-    if (insp_w > area.w / 2) insp_w = area.w / 2;
-
     const int status_h = th::sz_caption + th::space_md;
     const ui::Rect body{area.x, area.y + tabs_h, area.w,
                         area.h - tabs_h - status_h - th::space_sm};
 
-    ws.draw_canvas(ui_, g, ui::Rect{body.x, body.y,
-                                    body.w - insp_w - th::space_md, body.h});
+    // The workspace asks for a width, the author's saved drag overrides it, and the
+    // window has the last word. Only the last step clamps, and only for this frame.
+    const int stored = layout_.width_for(ws.name(), ws.inspector_width());
+    const int insp_w = fit_inspector(stored, body.w);
+
+    const int handle = th::space_md;
+    const int hx     = body.x + body.w - insp_w - handle;
+    int       pos    = hx;
+    // The drag's limits are exactly fit_inspector's, expressed as handle positions, so
+    // dragging is what you get: a width you can reach is a width that will be drawn.
+    // Only a window RESIZE can make the stored number differ from the shown one.
+    const int most  = body.w / 2;
+    const int least = std::min(kMinInspector, most);
+    if (ui_.splitter("wssplit", ui::Rect{hx, body.y, handle, body.h}, pos,
+                     body.x + body.w - most - handle,
+                     body.x + body.w - least - handle)) {
+        layout_.set(ws.name(), body.x + body.w - pos - handle);
+        layout_dirty_ = true;
+    }
+
+    ws.draw_canvas(ui_, g, ui::Rect{body.x, body.y, body.w - insp_w - handle, body.h});
     ws.draw_inspector(ui_, g, ui::Rect{body.x + body.w - insp_w, body.y, insp_w, body.h});
 
-    g.set_font_size(th::sz_caption);
-    const int sy = area.y + area.h - th::sz_caption;
-    const std::string left = ws.status();
-    g.draw_text(area.x, sy, left.c_str(), ws.dirty() ? th::warn : th::text_muted);
-    const char* hint = ws.hint();
-    g.draw_text(area.x + area.w - g.text_width(hint), sy, hint, th::text_muted);
+    ui_.status_bar(ui::Rect{area.x, area.y + area.h - status_h, area.w, status_h},
+                   ws.status(), ws.hint());
 }
 
 // The Play section: a toolbar, the game letterboxed under it, and a status line that

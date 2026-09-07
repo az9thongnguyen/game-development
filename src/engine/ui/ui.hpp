@@ -60,6 +60,24 @@ using Id = std::uint32_t;
 // never picks a colour and the palette can change in one place.
 enum class Tone { Neutral, Info, Success, Warning, Danger, Accent };
 
+// One cell of a status strip. A strip is a LIST, not a sentence: four workspaces
+// each built theirs by concatenation and each spelled the separator differently,
+// and the shell then coloured the WHOLE line `warn` when the document was dirty —
+// so the pixel editor announced the colour under the cursor in the colour of a
+// warning. A cell carries its own tone, which is the only way "unsaved" can be the
+// warning without the coordinates beside it becoming one too (chapter 144).
+struct Seg { std::string text; Tone tone = Tone::Neutral; };
+
+// The cells as one line, for a log or a test — the ONE place a strip is flattened, so
+// two readers cannot disagree about the separator either.
+[[nodiscard]] std::string joined(const std::vector<Seg>& segs);
+
+// What the pointer should look like over whatever is under it. The UI layer must not
+// name an SDL cursor, so it reports an INTENT and the host maps it — the same shape
+// as `ui::Input` taking intents rather than keys. `platform::set_cursor` has existed
+// since the seam was written and had no caller at all until the splitter.
+enum class CursorHint { Default, ResizeH };
+
 // The answer to a confirmation. Pending means the user has not decided yet, so the
 // caller keeps asking each frame.
 enum class Confirm { Pending, Yes, No };
@@ -182,10 +200,29 @@ public:
     // A row of tabs. Returns the selected index (which may differ from `current`).
     int tabs(const char* id, Rect r, const char* const* labels, int count, int current);
 
+    // A draggable divider. `pos` is the handle's LEFT edge in screen x and is written
+    // back while dragged, clamped to [lo, hi]; the caller derives its panel widths from
+    // it. Returns true on a frame that moved it. The grab offset is remembered so the
+    // handle does not jump to the cursor on mouse-down.
+    //
+    // Nothing is clamped except the live value: a persisted width narrowed to fit a
+    // small window must not be SAVED narrow, or a window you shrank once has taken
+    // your layout away for good (see studioshell::fit_inspector).
+    bool splitter(const char* id, Rect r, int& pos, int lo, int hi);
+
+    // The status strip: a list of cells on the left, one hint on the right. Cells are
+    // separated by a drawn dot, so `left` never contains its own punctuation and two
+    // workspaces cannot disagree about how many spaces a separator is.
+    void status_bar(Rect r, const std::vector<Seg>& left, const char* right);
+
     // A selectable row: label on the left, optional secondary text and badge right.
     bool list_item(Rect r, const char* label, bool selected,
                    const char* secondary = nullptr, const char* badge_text = nullptr,
                    Tone badge_tone = Tone::Neutral);
+
+    // What the pointer should be this frame, set by whichever widget is under it or
+    // dragging. Read after the widgets; the host calls platform::set_cursor with it.
+    [[nodiscard]] CursorHint cursor_hint() const { return cursor_; }
 
     // True if the mouse is over any widget/panel this frame (so the game can ignore
     // a click that the UI consumed). Query it AFTER the widgets, BEFORE or after end().
@@ -237,6 +274,8 @@ private:
 
     int  screen_w_ = 0, screen_h_ = 0;
     bool inert_ = false;               // set by begin_inert(), cleared at end()
+    CursorHint cursor_ = CursorHint::Default;   // reset each begin()
+    int  drag_anchor_ = 0;             // splitter: cursor-to-handle offset at grab
 
     // Overlays, replayed in declaration order at end(). Deliberately data, not
     // closures: the set is small and fixed, and data is easier to reason about than
