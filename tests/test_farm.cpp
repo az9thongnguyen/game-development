@@ -108,6 +108,143 @@ static void test_defs() {
     CHECK(base.crop("parsnip")->sell == 99);
 }
 
+// ---------------------------------------------------------------------------
+//  The calendar (chapter 143)
+// ---------------------------------------------------------------------------
+//  `CropDef::season` was parsed from the first version of defs.cpp and read by
+//  NOBODY for eighteen chapters. It is a rule now, in two places — a seed refused
+//  out of season, and anything left in the ground when the season turns — and both
+//  go through `grows_in`, so this file checks that ONE function and then the two
+//  moments that call it.
+static void test_the_calendar() {
+    // Four seasons of seven days, and then it comes round again. Day 28 is the last
+    // day of winter and day 29 is spring, which is the only boundary that also wraps
+    // the year.
+    CHECK(season_of(1)  == Season::Spring);
+    CHECK(season_of(7)  == Season::Spring);
+    CHECK(season_of(8)  == Season::Summer);
+    CHECK(season_of(14) == Season::Summer);
+    CHECK(season_of(15) == Season::Autumn);
+    CHECK(season_of(21) == Season::Autumn);
+    CHECK(season_of(22) == Season::Winter);
+    CHECK(season_of(28) == Season::Winter);
+    CHECK(season_of(29) == Season::Spring);
+    CHECK(season_of(57) == Season::Spring);   // two full years on
+
+    CHECK(day_of_season(1) == 1);
+    CHECK(day_of_season(7) == kDaysPerSeason);
+    CHECK(day_of_season(8) == 1);
+    CHECK(day_of_season(29) == 1);
+
+    // A save file can say anything. Day 0 and a negative day still land on a real
+    // season rather than reading off the end of the enum.
+    CHECK(season_of(0)   == Season::Winter);
+    CHECK(day_of_season(0) == kDaysPerSeason);
+    CHECK(season_of(-1)  == Season::Winter);
+    CHECK(static_cast<int>(season_of(-40)) >= 0);
+    CHECK(static_cast<int>(season_of(-40)) < kSeasonsPerYear);
+
+    // `all` is a legal WORD and is not a season: the two questions are separate and
+    // answering them with one function is how `season=any` becomes loadable and
+    // unplantable.
+    CHECK(season_from_string("spring") == Season::Spring);
+    CHECK(season_from_string("winter") == Season::Winter);
+    CHECK(!season_from_string("all").has_value());
+    CHECK(!season_from_string("sprnig").has_value());
+    CHECK(valid_season_word("all"));
+    CHECK(valid_season_word("any"));
+    CHECK(valid_season_word("autumn"));
+    CHECK(!valid_season_word("sprnig"));
+    CHECK(!valid_season_word(""));
+    CHECK(std::string(season_name(Season::Autumn)) == "autumn");
+
+    // ...and a file that writes a season nobody has heard of is REFUSED, like
+    // `days=four`. A crop that can never be planted, with no message saying why, is
+    // worse than a file that will not load.
+    CHECK(!parse_defs("crop bad season=sprnig days=2 stages=2\n").has_value());
+    CHECK(parse_defs("crop ok season=all days=2 stages=2\n").has_value());
+    CHECK(parse_defs("crop ok season=winter days=2 stages=2\n").has_value());
+
+    // grows_in: the one question, asked of both kinds of crop.
+    const auto d = parse_defs(
+        "crop sp season=spring days=2 stages=2\n"
+        "crop ever season=all days=2 stages=2\n");
+    CHECK(d.has_value());
+    if (!d) return;
+    CHECK(grows_in(*d->crop("sp"), Season::Spring));
+    CHECK(!grows_in(*d->crop("sp"), Season::Summer));
+    CHECK(!grows_in(*d->crop("sp"), Season::Winter));
+    for (int i = 0; i < kSeasonsPerYear; ++i)
+        CHECK(grows_in(*d->crop("ever"), static_cast<Season>(i)));
+}
+
+// The two moments the rule is enforced, with a real world under them.
+static void test_seasons_refuse_and_wither() {
+    const auto parsed = parse_defs(
+        "crop sp season=spring days=9 stages=3\n"
+        "crop su season=summer days=9 stages=3\n"
+        "crop ever season=all days=9 stages=3\n");
+    CHECK(parsed.has_value());
+    if (!parsed) return;
+    const Defs defs = *parsed;
+    const tilemap::Map map = field();
+
+    World w;
+    w.seed = 7;
+    w.day  = 1;                       // spring
+    w.inventory[seed_item("sp")]   = 9;
+    w.inventory[seed_item("su")]   = 9;
+    w.inventory[seed_item("ever")] = 9;
+
+    CHECK(use_tool(w, defs, map, Tool::Hoe, 1, 1).ok);
+    // Out of season is refused, and the message says WHICH season it is — a refusal
+    // that does not name the reason is a bug report waiting to happen.
+    const ActionResult wrong = use_tool(w, defs, map, Tool::Seed, 1, 1, "su");
+    CHECK(!wrong.ok);
+    CHECK(wrong.message.find("summer") == std::string::npos);   // it is not summer...
+    CHECK(wrong.message.find("spring") != std::string::npos);   // ...it is spring
+    CHECK(w.at(1, 1) && w.at(1, 1)->crop < 0);                  // and nothing was planted
+    CHECK(w.inventory[seed_item("su")] == 9);                   // and no seed was spent
+
+    // In season is allowed, and so is `all`.
+    CHECK(use_tool(w, defs, map, Tool::Seed, 1, 1, "sp").ok);
+    CHECK(use_tool(w, defs, map, Tool::Hoe, 2, 1).ok);
+    CHECK(use_tool(w, defs, map, Tool::Seed, 2, 1, "ever").ok);
+
+    // Six sleeps: days 1->7, all inside spring. Nothing withers.
+    for (int i = 0; i < kDaysPerSeason - 1; ++i) {
+        const DayReport mid = end_day(w, defs);
+        CHECK(!mid.season_changed);
+        CHECK(mid.crops_withered == 0);
+    }
+    CHECK(w.day == kDaysPerSeason);
+    CHECK(w.at(1, 1)->crop >= 0);
+
+    // The seventh sleep crosses into summer. The spring crop goes; the year-round one
+    // stays; the SOIL survives both, because withering is not un-tilling.
+    const DayReport turn = end_day(w, defs);
+    CHECK(turn.season_changed);
+    CHECK(turn.crops_withered == 1);
+    CHECK(season_of(w.day) == Season::Summer);
+    CHECK(w.at(1, 1) && w.at(1, 1)->crop < 0);
+    CHECK(w.at(1, 1)->tilled);
+    CHECK(w.at(1, 1)->stage == 0 && w.at(1, 1)->days_grown == 0);
+    CHECK(w.at(2, 1) && w.at(2, 1)->crop >= 0);   // `all` survives the boundary
+    CHECK(w.at(2, 1)->tilled);
+
+    // ...and now the refusal points the other way, which is the direction a guard is
+    // usually missing: summer plants, spring does not.
+    CHECK(use_tool(w, defs, map, Tool::Seed, 1, 1, "su").ok);
+    CHECK(use_tool(w, defs, map, Tool::Hoe, 3, 1).ok);
+    CHECK(!use_tool(w, defs, map, Tool::Seed, 3, 1, "sp").ok);
+
+    // A day that changes nothing reports nothing: `season_changed` is not "the day
+    // advanced".
+    const DayReport quiet = end_day(w, defs);
+    CHECK(!quiet.season_changed);
+    CHECK(quiet.crops_withered == 0);
+}
+
 static void test_a_day_of_farming() {
     const Defs defs = load_defs();
     const tilemap::Map map = field();
@@ -1185,6 +1322,8 @@ int main() {
     test_the_crop_owns_the_price();
     test_overrides();
     test_sync_decision();
+    test_the_calendar();
+    test_seasons_refuse_and_wither();
     test_a_day_of_farming();
     test_crops_ripen_on_schedule();
     test_clock_and_collapse();

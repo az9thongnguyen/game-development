@@ -105,6 +105,15 @@ ActionResult use_tool(World& w, const Defs& defs, const tilemap::Map& map, Tool 
             if (s.crop >= 0) return fail("something is already planted");
             const int idx = defs.crop_index(seed_item_id);
             if (idx < 0) return fail("no such seed: " + seed_item_id);
+            // The season is a RULE now, not a stored string (chapter 143). Refused
+            // here and enforced again at the boundary in `end_day`, both through
+            // `grows_in`, so the two moments cannot disagree about the same crop.
+            {
+                const Season now = season_of(w.day);
+                const CropDef& want = defs.crops[static_cast<std::size_t>(idx)];
+                if (!grows_in(want, now))
+                    return fail(want.name + " does not grow in " + season_name(now));
+            }
             const std::string seed_name = seed_item(seed_item_id);
             auto have = w.inventory.find(seed_name);
             if (have == w.inventory.end() || have->second <= 0)
@@ -191,7 +200,30 @@ DayReport end_day(World& w, const Defs& defs, bool collapsed) {
         s.watered = false;      // yesterday's water does not count for today
     }
 
+    const Season was = season_of(w.day);
     w.day += 1;
+    const Season now = season_of(w.day);
+
+    // The season turned. Everything in the ground that does not belong to the new one
+    // goes — ripe or not, which is the whole pressure: a six-day pumpkin planted on
+    // the fifth day of autumn is a loss, and `day_of_season` on the HUD is how a
+    // player is told that before they spend the seed.
+    //
+    // The SOIL survives. Withering is not un-tilling: the plot is still a plot, and
+    // making the player hoe the whole field again every seventh day would be a chore,
+    // not a decision.
+    r.season_changed = now != was;
+    if (r.season_changed) {
+        for (auto& [key, s] : w.soil) {
+            if (s.crop < 0) continue;
+            if (grows_in(defs.crops[static_cast<std::size_t>(s.crop)], now)) continue;
+            s.crop       = -1;
+            s.stage      = 0;
+            s.days_grown = 0;
+            ++r.crops_withered;
+        }
+    }
+
     w.minute = kDayStartMin;
     w.clock_accum = 0.0;
     w.energy = collapsed ? kCollapseEnergy : kMaxEnergy;

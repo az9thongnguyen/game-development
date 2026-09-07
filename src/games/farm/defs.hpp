@@ -24,6 +24,43 @@
 
 namespace farm {
 
+// ---- the calendar --------------------------------------------------------------
+//
+// `season` was parsed into CropDef from the very first version of this file and then
+// read by NOBODY: `defs.cpp` wrote it, `world.cpp` never looked. A field that is
+// stored and never read is not data, it is a claim — and this one claimed the game
+// had seasons for eighteen chapters (chapter 143).
+//
+// A year is four seasons of `kDaysPerSeason` days. Seven, not twenty-eight: a day is
+// twelve real minutes, so a Stardew-length season is five and a half hours and a
+// player would never once see one turn. Seven makes a year about six hours and a
+// season about ninety minutes, which is long enough to plan inside and short enough
+// to meet.
+enum class Season { Spring = 0, Summer, Autumn, Winter };
+
+inline constexpr int kSeasonsPerYear = 4;
+inline constexpr int kDaysPerSeason  = 7;
+
+// `day` is 1-based, as `World::day` is.
+[[nodiscard]] Season season_of(int day);
+
+// Which day of its season this is, 1..kDaysPerSeason. The HUD shows it because the
+// rule below has teeth: a crop planted too late dies, and a player who cannot count
+// the days left is being punished for something the screen never told them.
+[[nodiscard]] int day_of_season(int day);
+
+[[nodiscard]] const char* season_name(Season s);
+
+// One of the four, or nullopt. `all` is NOT one of the four — it is all of them, so
+// it answers nullopt here and true from `valid_season_word`.
+[[nodiscard]] std::optional<Season> season_from_string(const std::string& s);
+
+// May a `.def` file write this word? The four names plus `all`/`any`. `parse_defs`
+// REFUSES anything else — the same standard `days=four` is held to, and for the same
+// reason: a crop nobody can ever plant, with no message saying why, is worse than a
+// file that will not load.
+[[nodiscard]] bool valid_season_word(const std::string& s);
+
 struct CropDef {
     std::string name;
     std::string season = "spring";
@@ -48,6 +85,12 @@ struct Defs {
     [[nodiscard]] const CropDef* crop(const std::string& name) const;
     [[nodiscard]] const ItemDef* item(const std::string& name) const;
 };
+
+// Can this crop be in the ground during `s`? True for every season when the crop's
+// own season is `all`. ONE function, because the planting refusal and the withering
+// at the season boundary are the same question asked at two moments, and two copies
+// of it is how a crop becomes plantable and then immediately dies.
+[[nodiscard]] bool grows_in(const CropDef& c, Season s);
 
 // Parse one definitions file. Both `crop` and `item` lines may appear in either file,
 // so a small game can keep everything in one and a larger one can split them.
