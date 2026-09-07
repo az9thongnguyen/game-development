@@ -2548,31 +2548,35 @@ làm chín T6).
 Điểm dừng show được **đã đạt** sau S21: mở một link trên điện thoại, thấy danh sách game,
 chọn một cái, chơi. Điểm tiếp theo là **sau S28** (hai game + PvP).
 
-Sau đó (chưa xếp thứ tự):
+Sau đó (chưa xếp thứ tự) — **soát lại 2026-09-07 sau S32**:
 
-- **Manifest cho `iso` và `colony`** → chuyển từ `labs()` sang `entries()`. `colony` cũng
-  là client BaaS, nên nó là bài kiểm tra thứ hai cho đường manifest → scene.
-- **Điều khiển màn hình mới chỉ có ở farm.** Nếu game thứ hai cần, `farm/controls.hpp` sẽ
-  phải tách ra — nhưng **chưa có người dùng thứ hai**, nên chưa tách (đúng luật §10b).
+- ~~**Manifest cho `iso` và `colony`**~~ — **XONG** ở S30c (ch.145). Cả hai chuyển sang
+  `entries()`, và việc đó lộ ra `package_hash` không phủ identity.
+- ~~**Điều khiển màn hình mới chỉ có ở farm**~~ — **đã có người dùng thứ hai** (creatures,
+  ch.137). Tách đúng như luật §10b dự đoán: phần là *sự thật về một BÀN TAY* vào
+  `engine/ui/touch.hpp`, còn LAYOUT thì mỗi game giữ riêng.
+- ~~**Đo chi phí frame của farm**~~ — **XONG** ở S30c: `--bench-ui all` đo Studio và mọi
+  game trong `entries()`. Release: farm 2.20 ms, creatures 3.27 ms (640×360 ss=2).
 - **Nước động**: `studio::make_sheet` làm được miễn phí; farm chưa biết gì về frame.
+  *(Còn mở.)*
 - **Vật liệu autotile thứ hai** — hiện chỉ con đường; chưa có gì dùng chung giữa hai bộ.
-- **Đo chi phí frame của farm** — `--bench-ui` vẫn chỉ chạy Studio.
+  *(Còn mở.)*
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
-- **Pan/zoom, multi-select, copy/paste, grid/snap** trong Scene canvas.
+- **Pan/zoom, multi-select, copy/paste** trong Scene canvas. *(grid/snap: **XONG** ch.144.)*
 - **Inspector cho Spawner/OnOverlap** — round-trip được, không sửa được trong UI.
 - Filter/paging cho audit log · cache hash theo mtime/size trong `inspect()`.
 - **`.recipe` không nằm trong manifest** — nó là *source*, giống PNG import.
-- **Chưa đo chi phí frame** của farm; `--bench-ui` vẫn không chạy farm.
+- ~~**Chưa đo chi phí frame** của farm~~ — **XONG** ch.145.
 - **Pixel workspace**: một layer, không selection/move/copy, không đổi kích thước
-  canvas, **không tạo file mới**, guide cố định 16px. *(Chọn màu ngoài ảnh: đã mở ở
-  ch.127.)* Mixer: **không có ô vuông S/V 2D** (ba slider, vì `ui::hit` báo click chứ
-  không báo drag); **màu đã pha không có nhà** — không nối vào palette, muốn lấy lại thì
-  eyedropper sau khi đã tô; **inspector không cuộn**, chỉ báo khi bị cắt.
+  canvas, guide cố định 16px, **palette không có thứ tự và không xoá được swatch**.
+  *(Chọn màu ngoài ảnh: mở ở ch.127. Tạo sheet mới: mở ở ch.131 — mục NEW SHEET.
+  Ô S/V 2D và **màu đã pha có nhà**: **XONG** ch.147.)* **Inspector vẫn không cuộn**,
+  chỉ báo khi bị cắt — nên mọi control mới phải vừa trong chiều cao đang có.
 - **`.pix` và `.hrt` có thể lệch nhau** — giống `.recipe`: test bắt được, không chặn được.
 - **`autotile_index` (47-blob) vẫn không có art** — Tiny Town chỉ có mảng 9 mảnh.
-- **Điều khiển màn hình**: chỉ farm có; luôn hiện, không tự ẩn trên desktop; **một ngón**
+- **Điều khiển màn hình**: farm và creatures đều có; luôn hiện, không tự ẩn trên desktop; **một ngón**
   (SDL dựng chuột từ chạm, nên không giữ hướng + bấm hành động cùng lúc).
 - **Không có nút `F9`** (load) — load vứt bỏ ngày đang chơi và farm không có modal để hỏi
   lại; động từ phá huỷ ở lại sau một phím phải cố ý bấm.
