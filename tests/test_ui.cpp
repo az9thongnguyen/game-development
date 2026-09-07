@@ -921,6 +921,16 @@ static void test_xy_pad() {
     frame(hold(110, 110));
     CHECK(x == 0.5f && y == 0.5f);
 
+    // ...and a press somewhere ELSE afterwards does not wake it up. `active_` is cleared
+    // once a frame in end(); without that the last control dragged follows the next
+    // press anywhere on the screen, which is the one thing that clear is for.
+    frame(press(150, 150));
+    frame(release(150, 150));
+    const float ax = x, ay = y;
+    frame(press(10, 10));
+    frame(hold(120, 120));
+    CHECK(x == ax && y == ay);
+
     // The keyboard reaches it, on both axes and in both directions — a control only a
     // mouse can use is what this project keeps having to go back and fix.
     frame(press(150, 150));
@@ -941,14 +951,26 @@ static void test_xy_pad() {
     for (int i = 0; i < 200; ++i) frame(keys(up));
     CHECK(y == 0.0f);
 
-    // Inert (a modal is up): neither the pointer nor the keyboard reaches it.
+    // Inert (a modal is up): neither the pointer nor the keyboard reaches it. The pad
+    // is FOCUSED first — a press that lands on nothing takes the keyboard back, and the
+    // check above did exactly that, so without this the keyboard half of the assertion
+    // is about a control that was not listening anyway.
+    frame(press(150, 150));
+    frame(release(150, 150));
+    CHECK(ui.focused() == ui.id_for("sv"));
+    // The key DOES move it, first — so the assertion below is about `inert_` and not
+    // about a key nobody was listening for.
+    CHECK(frame(keys(k)));
     const float kx = x, ky = y;
-    ui.begin(nullptr, press(120, 120));
+    // The KEYBOARD half before the pointer half, deliberately: a press that lands on
+    // nothing takes the keyboard back, so testing the pointer first would leave the pad
+    // unfocused and the keyboard check vacuous.
+    ui.begin(nullptr, keys(k));
     ui.begin_inert();
     ui.xy_pad("sv", r, x, y);
     ui.end();
     CHECK(x == kx && y == ky);
-    ui.begin(nullptr, keys(k));
+    ui.begin(nullptr, press(120, 120));
     ui.begin_inert();
     ui.xy_pad("sv", r, x, y);
     ui.end();

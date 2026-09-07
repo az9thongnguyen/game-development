@@ -223,9 +223,13 @@ bool Context::drag_in(Id id, Rect r, bool focusable) {
     if (focusable && !inert_) tab_order_.push_back(id);
     if (over) { hot_ = id; hovering_ = true; }
 
-    if (active_ == id) {
-        if (!in_.down) active_ = 0;
-    } else if (over && in_.pressed) {
+    // No `if (!in_.down) active_ = 0;` here. It was, and a mutation that deleted it
+    // survived: `end()` already clears `active_` once a frame with the button up, and
+    // the `&& in_.down` below already makes this return false. Two guards covering each
+    // other are two guards no test can tell apart — and the one that MATTERS is end()'s,
+    // because without it the last control dragged follows the next press anywhere on
+    // the screen. That one has a test now.
+    if (active_ != id && over && in_.pressed) {
         active_ = id;
         if (focusable) focused_ = id;
     }
