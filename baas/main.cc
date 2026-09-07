@@ -105,6 +105,11 @@ int main(int argc, char** argv) {
             const std::string pk = web::db::seed(db);
             std::printf("seeded. project public_key = %s   secret_key = sk_demo_colony\n",
                         pk.c_str());
+            // FLUSH. stdout is block-buffered when it is a pipe, and `docker logs` is a
+            // pipe — so the one line an operator needs (the demo project's key) sat in
+            // the buffer for as long as the server ran, which is forever. Verified by
+            // running the image: the container answered requests and logged nothing.
+            std::fflush(stdout);
             // ...and then KEEP GOING, unless the caller asked for the one-shot. The
             // Dockerfile's CMD has carried `--seed` since chapter 107 and this line used
             // to be `return 0`, so the container seeded and exited — with

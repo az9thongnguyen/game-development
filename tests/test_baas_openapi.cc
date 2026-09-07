@@ -75,6 +75,21 @@ int main() {
         CHECK(!entry["operationId"].asString().empty());
     }
     CHECK(ops == static_cast<int>(web::openapi::spec().size()));
+
+    // Every operationId is UNIQUE. OpenAPI requires it, and it is the property that
+    // fails first if the id stops being derived from BOTH the method and the path —
+    // `/v1/saves/{slot}` alone carries three operations.
+    std::vector<std::string> ids;
+    for (const auto& path : doc["paths"].getMemberNames())
+        for (const auto& method : doc["paths"][path].getMemberNames())
+            ids.push_back(doc["paths"][path][method]["operationId"].asString());
+    std::sort(ids.begin(), ids.end());
+    const auto dup = std::adjacent_find(ids.begin(), ids.end());
+    if (dup != ids.end()) {
+        std::printf("FAIL duplicate operationId: %s\n", dup->c_str());
+        ++g_failures;
+    }
+    CHECK(ids.size() == web::openapi::spec().size());
     std::printf("  %d operations, %u paths\n", ops, doc["paths"].size());
 
     // A path parameter is DERIVED from the path, never listed twice.
