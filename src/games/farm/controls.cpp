@@ -25,6 +25,8 @@ constexpr int kSlotW   = 62;
 constexpr int kSlotH   = 24;
 constexpr int kSlotPad = 8;
 constexpr int kSlotGap = 4;
+constexpr int kHudTopH = 34;
+constexpr int kHintMinW = 160;
 
 // The pad must clear the hotbar, and the hotbar is tall exactly when the pad is
 // shown — so the gate depends on the height and the height depends on the gate. The
@@ -47,6 +49,7 @@ int hud_height(int w, int h) { return pad_fits(w, h) ? kBtn : kSlotH; }
 
 Layout layout(int w, int h, bool conflict) {
     Layout l;
+    if (w > 0 && h >= kHudTopH) l.hud = Box{0, 0, w, kHudTopH};
 
     // ---- the hotbar, on every screen -------------------------------------------
     const bool big    = pad_fits(w, h);
@@ -56,6 +59,8 @@ Layout layout(int w, int h, bool conflict) {
         const int y = h - slot_h - kSlotPad;
         for (int i = 0; i < 4; ++i)
             l.tool[i] = Box{kSlotPad + i * (kSlotW + kSlotGap), y, kSlotW, slot_h};
+        const int hx = l.tool[3].x + l.tool[3].w + 12;
+        if (w - hx >= kHintMinW) l.hint = Box{hx, y, w - hx, slot_h};
     }
     // Below that the hotbar is left empty and the renderer draws no hotbar, for the
     // same reason the pad disappears: four slots running off the edge of the screen
@@ -130,6 +135,26 @@ Action read(const Layout& l, const Pointer& p) {
             if (l.tool[i].contains(p.x, p.y)) a.tool = i;
     }
     return a;
+}
+
+Action read(const Layout& l, const Pointer* pointers, std::size_t count) {
+    Action out;
+    if (!pointers) return out;
+    int dx = 0, dy = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const Action one = read(l, pointers[i]);
+        dx += one.dx; dy += one.dy;
+        out.use  = out.use  || one.use;
+        out.seed = out.seed || one.seed;
+        out.save = out.save || one.save;
+        out.keep = out.keep || one.keep;
+        out.take = out.take || one.take;
+        out.consumed = out.consumed || one.consumed;
+        if (out.tool < 0 && one.tool >= 0) out.tool = one.tool;
+    }
+    out.dx = dx < 0 ? -1 : (dx > 0 ? 1 : 0);
+    out.dy = dy < 0 ? -1 : (dy > 0 ? 1 : 0);
+    return out;
 }
 
 // -----------------------------------------------------------------------------

@@ -439,6 +439,29 @@ int main() {
         // be hoeable. What must not happen is thirty.)
         CHECK(spent <= farm::kMaxEnergy / 4);
 
+        // Two real contacts survive the platform snapshot independently: one thumb
+        // can hold a direction while the other taps a verb. The synthesized-mouse
+        // path above can never prove this because it has only one pointer.
+        {
+            const int seed_before = scene.seed_index();
+            platform::InputState two{};
+            CHECK(two.begin_touch(11, pad.right.x + pad.right.w / 2,
+                                       pad.right.y + pad.right.h / 2));
+            CHECK(two.begin_touch(22, pad.seed.x + pad.seed.w / 2,
+                                       pad.seed.y + pad.seed.h / 2));
+            scene.update(1.0 / 60.0, two);
+            CHECK(scene.facing_x() == 1 && scene.facing_y() == 0);
+            CHECK(scene.seed_index() != seed_before);
+            // Leave the long-running scene in the state the later visual checks
+            // expect; this block proves routing, not a permanent inventory choice.
+            for (int guard = 0; scene.seed_index() != seed_before && guard < 16; ++guard) {
+                platform::InputState q{};
+                q.key_pressed[static_cast<int>(platform::Key::Q)] = true;
+                scene.update(1.0 / 60.0, q);
+            }
+            CHECK(scene.seed_index() == seed_before);
+        }
+
         // Nothing is drawn for a control that was not laid out. `keep` and `take` are
         // empty here, and an empty Box is {0,0,0,0} — so a renderer that draws one anyway
         // puts its label in the top-left corner of the screen, for ever, for no reason.

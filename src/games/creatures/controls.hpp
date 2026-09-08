@@ -24,6 +24,8 @@
 // =============================================================================
 #pragma once
 
+#include <cstddef>
+
 #include "engine/ui/touch.hpp"
 
 namespace creature {
@@ -86,5 +88,6 @@ struct Press {
 };
 
 Press read(const Layout& l, Mode mode, const Pointer& p);
+Press read(const Layout& l, Mode mode, const Pointer* pointers, std::size_t count);
 
 } // namespace creature

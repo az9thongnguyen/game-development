@@ -124,6 +124,7 @@ private:
     double step_cool_ = 0;      // grid movement: one tile, then a wait
     int    fb_w_ = 640, fb_h_ = 360;
     int    org_x_ = 0, org_y_ = 0;
+    platform::InputState in_{};  // current contacts, for pressed-state rendering
     bool   prev_keys_[8] = {};
 };
 

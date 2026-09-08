@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace platform {
 
@@ -38,6 +39,14 @@ enum class Key {
 };
 
 enum class MouseButton { Left = 0, Right, Middle, Count };
+enum class InputDevice { KeyboardMouse = 0, Touch };
+
+struct TouchContact {
+    std::int64_t id = 0;
+    int x = -1, y = -1;
+    bool down = false, pressed = false, released = false;
+    bool used = false;
+};
 
 // Modifier state, sampled once per frame. Modifiers are not Keys: nothing wants to
 // know that Shift was "pressed this frame", only whether it is held while something
@@ -63,6 +72,13 @@ struct InputState {
     bool mouse_down[static_cast<int>(MouseButton::Count)]     = {};
     bool mouse_pressed[static_cast<int>(MouseButton::Count)]  = {};
     bool mouse_released[static_cast<int>(MouseButton::Count)] = {};
+
+    // Independent contacts in framebuffer coordinates. A fixed array keeps the
+    // snapshot trivially copyable and covers the practical maximum SDL exposes on a
+    // phone/tablet without allocating in the platform loop.
+    static constexpr std::size_t kTouchMax = 10;
+    TouchContact touches[kTouchMax] = {};
+    InputDevice  device = InputDevice::KeyboardMouse;
 
     // Wheel ticks accumulated this frame (+y = away from the user, +x = right).
     int wheel_x = 0, wheel_y = 0;
@@ -98,6 +114,62 @@ struct InputState {
     bool down(MouseButton b)     const { return mouse_down[static_cast<int>(b)]; }
     bool pressed(MouseButton b)  const { return mouse_pressed[static_cast<int>(b)]; }
     bool released(MouseButton b) const { return mouse_released[static_cast<int>(b)]; }
+
+    void begin_touch_frame() {
+        for (TouchContact& c : touches) {
+            if (!c.used) continue;
+            if (!c.down) c = TouchContact{};
+            else { c.pressed = false; c.released = false; }
+        }
+    }
+
+    TouchContact* touch(std::int64_t id) {
+        for (TouchContact& c : touches) if (c.used && c.id == id) return &c;
+        return nullptr;
+    }
+    const TouchContact* touch(std::int64_t id) const {
+        for (const TouchContact& c : touches) if (c.used && c.id == id) return &c;
+        return nullptr;
+    }
+
+    bool begin_touch(std::int64_t id, int x, int y) {
+        device = InputDevice::Touch;
+        if (TouchContact* c = touch(id)) {
+            c->x = x; c->y = y;
+            if (!c->down) { c->down = true; c->pressed = true; c->released = false; }
+            return true;
+        }
+        for (TouchContact& c : touches) {
+            if (c.used) continue;
+            c.id = id; c.x = x; c.y = y;
+            c.down = true; c.pressed = true; c.released = false; c.used = true;
+            return true;
+        }
+        return false;
+    }
+
+    bool move_touch(std::int64_t id, int x, int y) {
+        device = InputDevice::Touch;
+        TouchContact* c = touch(id);
+        if (!c || !c->down) return false;
+        c->x = x; c->y = y;
+        return true;
+    }
+
+    bool end_touch(std::int64_t id, int x, int y) {
+        device = InputDevice::Touch;
+        TouchContact* c = touch(id);
+        if (!c || !c->down) return false;
+        c->x = x; c->y = y; c->down = false; c->released = true;
+        return true;
+    }
+
+    [[nodiscard]] std::size_t touch_count() const {
+        std::size_t n = 0;
+        for (const TouchContact& c : touches) if (c.used) ++n;
+        return n;
+    }
+    [[nodiscard]] bool has_touch() const { return touch_count() != 0; }
 };
 
 } // namespace platform

@@ -17,6 +17,7 @@
 #include "engine/renderer2d.hpp"
 #include "engine/tilemap/autotile.hpp"
 #include "engine/ui/theme.hpp"
+#include "engine/ui/touch_input.hpp"
 
 namespace farm {
 
@@ -580,13 +581,13 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     if (message_t_ > 0) message_t_ -= dt;
     if (step_cooldown_ > 0) step_cooldown_ -= dt;
 
-    // Where the pointer is, built once. The dialogue reads it too — it has to, because
+    // Where the pointers are, built once. The dialogue reads the primary too — it has
+    // to, because
     // this branch RETURNS, and for five chapters that meant a phone player who opened
     // the dialogue box could not answer it, walk away or save. A hard lock, not a
     // missing convenience.
-    const Pointer ptr{in.mouse_x, in.mouse_y,
-                      in.down(platform::MouseButton::Left),
-                      in.pressed(platform::MouseButton::Left)};
+    const touch::PointerSet pointers = touch::pointers(in);
+    const Pointer& ptr = pointers.primary();
 
     // ---- dialogue owns the input while it is up ----
     if (talking_) {
@@ -635,11 +636,10 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     if (advance(world_, dt)) sleep_now(/*collapsed*/ true);
 
     // ---- the on-screen pad ----
-    // Read before movement so a thumb and the arrow keys reach the same code. It uses
-    // the POINTER, because SDL synthesizes a mouse from a finger — one implementation
-    // for a tap, a click and a trackpad, and no new event type at the platform seam.
+    // Read before movement so two thumbs and the arrow keys reach the same code. Real
+    // contacts remain independent; mouse and trackpad still arrive as one pointer.
     const Layout pad = layout(screen_w_, screen_h_, conflict_);
-    const Action act = read(pad, ptr);
+    const Action act = read(pad, pointers.data, pointers.count);
 
     // ---- movement ----
     int dx = 0, dy = 0;
@@ -671,15 +671,15 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     // `act.consumed` is the veto. Without it a tap on the d-pad ALSO tills the tile
     // underneath it, which is the exact bug that makes an on-screen pad feel broken
     // rather than absent.
-    if (in.mouse_x >= 0 && !act.consumed) {
+    if (ptr.x >= 0 && !act.consumed) {
         const tilemap::Vec2f o = cam_.origin();
-        const int tx = static_cast<int>(std::floor((in.mouse_x + o.x) / kTile));
-        const int ty = static_cast<int>(std::floor((in.mouse_y + o.y) / kTile));
+        const int tx = static_cast<int>(std::floor((ptr.x + o.x) / kTile));
+        const int ty = static_cast<int>(std::floor((ptr.y + o.y) / kTile));
         const int dx = tx - world_.px, dy = ty - world_.py;
         if (std::abs(dx) + std::abs(dy) == 1) {
             face_x_ = dx;
             face_y_ = dy;
-            if (in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)]) interact();
+            if (ptr.pressed) interact();
         }
     }
 
@@ -789,8 +789,9 @@ void FarmScene::render(const engine::Context& ctx) {
         g.fill_rect_blend(0, 0, W, H, gfx::rgba(6, 10, 40, a));
 
     // ---- HUD ----
-    const int hud_h = 34;
-    g.fill_rect_blend(0, 0, W, hud_h, 0xE0121420);
+    const Layout pad = layout(W, H, conflict_);
+    const Box& hud = pad.hud;
+    g.fill_rect_blend(hud.x, hud.y, hud.w, hud.h, 0xE0121420);
     g.set_font_size(th::sz_body);
     // The season is on the HUD because it is a RULE with teeth (chapter 143): a crop
     // planted too late dies, so "which day of which season is it" has to be readable
@@ -841,7 +842,6 @@ void FarmScene::render(const engine::Context& ctx) {
     // local constants here — which was fine while the hotbar was a picture, and became
     // the exact "drawn in one place, hit in another" bug the moment it answered a tap.
     static const char* kToolNames[] = {"Hoe", "Water", "Seed", "Harvest"};
-    const Layout pad = layout(W, H, conflict_);
 
     // One line, once per process, to stderr — the same weight and the same reason as
     // the platform seam's "renderer 'opengl' (accelerated)". A tap that did nothing and
@@ -882,12 +882,12 @@ void FarmScene::render(const engine::Context& ctx) {
     // so; neither a test nor the compiler had an opinion.
     const int toast_top = hud_top;
     int       chip_y    = pad.visible() ? pad.up.y : hud_top;
+    const touch::PointerSet render_pointers = touch::pointers(in_);
     if (!pad.tool[0].empty()) {
         for (int i = 0; i < 4; ++i) {
             const Box& b   = pad.tool[i];
             const bool on  = i == static_cast<int>(tool_);
-            const bool hot = in_.mouse_x >= 0 && b.contains(in_.mouse_x, in_.mouse_y) &&
-                             in_.down(platform::MouseButton::Left);
+            const bool hot = render_pointers.down_in(b);
             g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_sm,
                               on ? 0xF02A3040 : (hot ? 0xD0242C3C : 0xC0161A24));
             if (on) g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_sm, th::accent);
@@ -916,12 +916,12 @@ void FarmScene::render(const engine::Context& ctx) {
                             !sowable ? th::text_muted : (on ? th::accent : th::text_dim));
             }
         }
-        const Box& last = pad.tool[3];
-        const int  hx   = last.x + last.w + th::space_md;
-        const int  hy   = last.y + (last.h - 20) / 2;
-        g.set_font_size(th::sz_caption);
-        g.draw_text(hx, hy,      "WASD move   Z use   Q seed", th::text_muted);
-        g.draw_text(hx, hy + 10, "F5/F9 save/load", th::text_muted);
+        if (!pad.hint.empty()) {
+            const int hy = pad.hint.y + (pad.hint.h - 20) / 2;
+            g.set_font_size(th::sz_caption);
+            g.draw_text(pad.hint.x, hy,      "WASD move   Z use   Q seed", th::text_muted);
+            g.draw_text(pad.hint.x, hy + 10, "F5/F9 save/load", th::text_muted);
+        }
     }
     // An operator's typo in remote config has to be visible to whoever is playing
     // the build, or the only symptom is a price that quietly did not change.
@@ -952,14 +952,12 @@ void FarmScene::render(const engine::Context& ctx) {
     // and a control that is drawn and does nothing is the precise bug this whole file
     // is arranged to prevent, just arrived from the other direction.
     if (pad.visible() && !talking_) {
-        const bool over = in_.mouse_x >= 0;
         const auto button = [&](const Box& b, const char* glyph) {
             // An empty box is a control that is not there this frame — `save` during a
             // conflict, `keep`/`take` outside one. Skipping it here is the same rule
             // read() follows by construction, said once.
             if (b.empty()) return;
-            const bool hot = over && b.contains(in_.mouse_x, in_.mouse_y) &&
-                             in_.down(platform::MouseButton::Left);
+            const bool hot = render_pointers.down_in(b);
             g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
                               hot ? 0xB03A4560 : 0x60202838);
             g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
@@ -1019,7 +1017,7 @@ void FarmScene::render(const engine::Context& ctx) {
             for (int i = 0; i < tk.count; ++i) {
                 const Box  r   = tk.choice(i);
                 const bool sel = static_cast<std::size_t>(i) == choice_;
-                const bool hot = in_.mouse_x >= 0 && r.contains(in_.mouse_x, in_.mouse_y);
+                const bool hot = render_pointers.over(r);
                 // The ROW lights up, because the row is what you press. An arrow in
                 // front of the text says "a key moved a cursor here" and says nothing
                 // at all about where to put a thumb.
