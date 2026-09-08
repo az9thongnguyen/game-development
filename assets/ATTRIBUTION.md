@@ -41,8 +41,8 @@ Reproduce it with:
 |---|---|
 | **Source** | this repository, the Studio's Texture Lab (`--lab texture`) |
 | **Licence** | same as the rest of the repository |
-| **In this repo** | `assets/textures/farm_water.recipe` — the twelve generator parameters, plus why they are those |
-| **Derived** | `assets/textures/farm_water.hrt` — 16×16, one tile, two shades of blue |
+| **In this repo** | `assets/textures/farm_water.recipe` — twelve generator parameters, four frames, plus why they are those |
+| **Derived** | `assets/textures/farm_water.hrt` — 16×64, four vertically stacked frames, two shades of blue |
 
 Tiny Town has no water tile, so the farm's pond stayed a flat rectangle for a chapter
 while everything around it had art. This is that tile. It is generated, not painted:
@@ -58,6 +58,23 @@ Reproduce it with:
 
 ```sh
 ./build/demo --cmd asset.texture textures/farm_water.recipe textures/farm_water.hrt
+```
+
+## Ours — the Creatures long grass, forty-seven pieces
+
+| | |
+|---|---|
+| **Source** | this repository, `assets/textures/creature_grass.pix` — canonical blob pieces written as text |
+| **Licence** | same as the rest of the repository |
+| **Derived** | `assets/textures/creature_grass.hrt` — 752×16, 47 × 1 grid of 16 px tiles |
+
+The long-grass regions use the engine's eight-neighbour `blob` rule. Every canonical
+shape has a slot, including inside corners that do not appear until a patch is edited.
+The `.pix` source keeps those relationships reviewable, and `test_commands` re-bakes it
+and compares the committed bytes.
+
+```sh
+./build/demo --cmd asset.pixels textures/creature_grass.pix textures/creature_grass.hrt
 ```
 
 ## Ours — the farm path, sixteen pieces
@@ -178,6 +195,7 @@ Re-bake it with:
 | `textures/creature_16.hrt` | mixed | `textures/creature_16.mix` | this repository |
 | `textures/creature_17.hrt` | mixed | `textures/creature_17.mix` | this repository |
 | `textures/creature_18.hrt` | mixed | `textures/creature_18.mix` | this repository |
+| `textures/creature_grass.hrt` | drawn | `textures/creature_grass.pix` | this repository |
 | `textures/creatures_cover.hrt` | mixed | `textures/creatures_cover.mix` | this repository |
 | `textures/farm_anna.hrt` | mixed | `textures/farm_anna.mix` | this repository |
 | `textures/farm_path.hrt` | drawn | `textures/farm_path.pix` | this repository |
@@ -194,7 +212,7 @@ Re-bake it with:
 | `textures/wall_2.hrt` | declared | `ours.pack` | this repository |
 | `textures/wall_3.hrt` | declared | `ours.pack` | this repository |
 
-48 raster assets, 0 unrecorded.
+49 raster assets, 0 unrecorded.
 
 <!-- END LEDGER (generated) -->
 
