@@ -1,0 +1,48 @@
+# Farm cover — sunrise, barn, field rows and pond in the game's own palette.
+# Re-bake: ./build/demo --cmd asset.pixels textures/farm_cover.pix textures/farm_cover.hrt
+size 32
+grid 1 1
+
+palette s 82b8eaff
+palette o f6d36fff
+palette g 6da85aff
+palette G 4e7a3cff
+palette r c96f4aff
+palette b 754637ff
+palette t 8a5a3cff
+palette y f1c453ff
+palette w 3f86a6ff
+
+tile 0
+ssssssssssssssssssssssssssssssss
+ssssssssssssssssssssssssssssssss
+ssssssssssssssssssssssssooosssss
+ssssssssssssssssssssssooooosssss
+ssssssssssssssssssssssooooosssss
+ssssssssssssssssssssssssooosssss
+ssssssssssssssssssssssssssssssss
+ssssssssssssssssssssssssssssssss
+gggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggg
+ggggggggrrrrrrrrrrrrrrrrgggggggg
+ggggggggrrrrrrrrrrrrrrrrgggggggg
+ggggggggrrrrrrrrrrrrrrrrgggggggg
+ggggggggrrrbbbbbbbbbbrrrgggggggg
+ggggggggrrrbbbbbbbbbbrrrgggggggg
+ggggggggrrrbbbbbbbbbbrrrgggggggg
+ggggggggrrrbbbbbbbbbbrrrgggggggg
+ggggggggrrrbbbbbbbbbbrrrgggggggg
+ggggggggttttttttttttttttgggggggg
+ggggggggtytytytytytytytygggggggg
+ggggggggttttttttttttttttgggggggg
+ggggggggtytytytytytytytygggggggg
+ggggggggttttttttttttttttgggggggg
+ggggggggtytytytytytytytygggggggg
+GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+GGGGGGGGGGGGGGGGGGGGGGGGwwwwwwww
+GGGGGGGGGGGGGGGGGGGGGGGGwwwwwwww
+GGGGGGGGGGGGGGGGGGGGGGGGwwwwwwww
+GGGGGGGGGGGGGGGGGGGGGGGGwwwwwwww
+GGGGGGGGGGGGGGGGGGGGGGGGwwwwwwww
+GGGGGGGGGGGGGGGGGGGGGGGGwwwwwwww
+GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG

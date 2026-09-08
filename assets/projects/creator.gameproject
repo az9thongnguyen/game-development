@@ -3,9 +3,10 @@ name Creator Demo (FPS + Labs)
 schema 1
 entry fps
 summary A hand-written raycaster walking a level this project drew.
-cover textures/wall_1.hrt
+cover textures/creator_cover.hrt
 asset map maps/level_00.map2
 asset texture textures/wall_1.hrt
 asset texture textures/wall_2.hrt
 asset texture textures/wall_3.hrt
+asset texture textures/creator_cover.hrt
 asset scene scenes/demo.scene

@@ -16,9 +16,9 @@
       "name": "Creator Demo (FPS + Labs)",
       "summary": "A hand-written raycaster walking a level this project drew.",
       "entry": "fps",
-      "cover": "textures/wall_1.hrt",
+      "cover": "textures/creator_cover.hrt",
       "readme": "",
-      "package": "cf26af95337927fa",
+      "package": "a1cbe62406743d66",
       "playable": true,
       "problems": []
     },
@@ -38,9 +38,9 @@
       "name": "Farm",
       "summary": "Plant, water, sell, sleep — a day at a time, and it remembers.",
       "entry": "farm",
-      "cover": "textures/town.hrt",
+      "cover": "textures/farm_cover.hrt",
       "readme": "projects/farm.md",
-      "package": "6d29b06560f34ff5",
+      "package": "1cb403dce4d4b57a",
       "playable": true,
       "problems": []
     },
