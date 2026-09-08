@@ -25,6 +25,7 @@
 #include "engine/tilemap/map2.hpp"
 #include "engine/tilemap/theme.hpp"
 #include "games/studio/recipe.hpp"
+#include "games/studio/sheet.hpp"
 #include "games/studio/texture_gen.hpp"
 #include "engine/assets.hpp"
 #include "engine/image.hpp"
@@ -966,15 +967,16 @@ static void test_water_provenance() {
     if (!recipe || !baked) return;
 
     int applied = 0;
-    const studio::TextureParams p =
-        studio::from_recipe(std::string(recipe->begin(), recipe->end()), &applied);
-    CHECK(applied == 12);            // every key the format has, so nothing defaulted silently
-    CHECK(p.size == 16);             // one tile, the size the theme cuts at
+    const studio::TextureRecipe spec =
+        studio::parse_recipe(std::string(recipe->begin(), recipe->end()), &applied);
+    CHECK(applied == 13);            // every key the format has, so nothing defaulted silently
+    CHECK(spec.texture.size == 16);  // one tile per frame, the size the theme cuts at
+    CHECK(spec.frames == 4);
 
     // Byte-for-byte. The generator is documented as deterministic and pure; if that
     // ever stops being true this is where it is found, and a texture that cannot be
     // regenerated is a texture that cannot be edited.
-    CHECK(gfx::encode_hrt(studio::generate(p)) == *baked);
+    CHECK(gfx::encode_hrt(studio::make_sheet(spec.texture, spec.frames)) == *baked);
 
     // Two colours and no more. Kenney's tiles are FLAT colour, and a smooth gradient
     // beside them looked like a different game — the threshold is the whole reason
@@ -984,7 +986,7 @@ static void test_water_provenance() {
     if (!img) return;
     std::set<gfx::Color> shades(img->pixels.begin(), img->pixels.end());
     CHECK(shades.size() == 2);
-    CHECK(img->w == 16 && img->h == 16);
+    CHECK(img->w == 16 && img->h == 64);
 }
 
 

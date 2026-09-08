@@ -106,6 +106,9 @@ public:
     [[nodiscard]] std::size_t tile_count(const std::string& sheet) const {
         return sheet_of(sheet).count();
     }
+    [[nodiscard]] int tile_frame(const std::string& sheet) const {
+        return sheet_of(sheet).frame();
+    }
     [[nodiscard]] int   seed_index() const { return seed_; }
     // Which of the four tools is held. Exposed for the same reason `seed_index` is:
     // the hotbar has answered a tap since chapter 126, and a test that could only see
@@ -144,7 +147,7 @@ private:
     void        load_game();
     void        say(std::string msg, double seconds = 3.0);
     void        facing(int& x, int& y) const;
-    [[nodiscard]] const tilemap::Tileset& sheet_of(const std::string& name) const;
+    [[nodiscard]] const tilemap::AnimatedTileset& sheet_of(const std::string& name) const;
     // One moving thing, at a pixel position. false = no art, draw the circle.
     bool        draw_actor(gfx::Renderer2D& g, const std::string& name, int px, int py) const;
     bool        draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id, int x, int y,
@@ -168,7 +171,7 @@ private:
     int                                       screen_w_ = 0, screen_h_ = 0;
     platform::InputState                      in_{};   // the last one update() saw
     tilemap::Theme                            theme_;
-    std::map<std::string, tilemap::Tileset>   tiles_;   // sheet name -> cut tiles
+    std::map<std::string, tilemap::AnimatedTileset> tiles_; // sheet name -> cut frames
     Defs         defs_;
     World        world_;
     std::vector<Schedule> schedules_;

@@ -246,10 +246,16 @@ target_link_libraries(test_ecs PRIVATE ecs_core engine_flags)
 add_test(NAME ecs COMMAND test_ecs)
 
 # ---- Job system (subsystem C): thread pool on desktop, synchronous on web ---------
-find_package(Threads REQUIRED)
 add_library(jobs_core STATIC src/engine/jobs/job_system.cpp)
 target_include_directories(jobs_core PUBLIC src)
-target_link_libraries(jobs_core PUBLIC Threads::Threads PRIVATE engine_flags)
+if(EMSCRIPTEN)
+  # job_system.cpp is deliberately synchronous on web; asking FindThreads to prove a
+  # pthread toolchain here rejects valid single-threaded Emscripten builds.
+  target_link_libraries(jobs_core PRIVATE engine_flags)
+else()
+  find_package(Threads REQUIRED)
+  target_link_libraries(jobs_core PUBLIC Threads::Threads PRIVATE engine_flags)
+endif()
 
 add_executable(test_jobs tests/test_jobs.cpp)
 target_include_directories(test_jobs PRIVATE src)
@@ -467,6 +473,7 @@ add_test(NAME paint COMMAND test_paint)
 # grids (fps::Map, iso::TileMap) with one format that has layers, collision, entities
 # and triggers — the things a second 2D game cannot be authored without.
 add_library(tilemap_core STATIC
+  src/engine/anim/flipbook.cpp
   src/engine/tilemap/tileset.cpp
   src/engine/tilemap/map2.cpp
   src/engine/tilemap/camera2d.cpp

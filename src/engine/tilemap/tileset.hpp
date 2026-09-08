@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <vector>
 
+#include "engine/anim/flipbook.hpp"
 #include "engine/image.hpp"
 #include "engine/renderer2d.hpp"
 
@@ -44,6 +45,27 @@ private:
     std::vector<gfx::Image> tiles_;
     int                     tile_ = 0;
     int                     cols_ = 0;
+};
+
+// A runtime view over a Tileset that also understands the project's vertically
+// stacked square-frame convention. Static atlases keep their existing indexing;
+// animated sheets expose only the tiles in one frame and add the current frame's
+// offset internally.
+class AnimatedTileset {
+public:
+    static AnimatedTileset cut(const gfx::Image& sheet, int tile, float fps = 4.0f);
+
+    void update(float dt) { playback_.update(dt); }
+
+    [[nodiscard]] std::size_t count() const { return tiles_per_frame_; }
+    [[nodiscard]] int frames() const { return playback_.frames; }
+    [[nodiscard]] int frame() const { return playback_.frame(); }
+    [[nodiscard]] gfx::Sprite sprite(std::size_t index) const;
+
+private:
+    Tileset       tiles_;
+    anim::Flipbook playback_;
+    std::size_t   tiles_per_frame_ = 0;
 };
 
 } // namespace tilemap

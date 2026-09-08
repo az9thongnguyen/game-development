@@ -56,6 +56,9 @@ public:
     // Where the camera put the world, so a test can turn a tile into a screen point.
     [[nodiscard]] int origin_x() const { return org_x_; }
     [[nodiscard]] int origin_y() const { return org_y_; }
+    [[nodiscard]] int tile_frame(const std::string& sheet) const {
+        return sheet_of(sheet).frame();
+    }
 
     // ---- the rated match (chapter 146) --------------------------------------
     // Begin looking for an opponent. Refused while a session is already running, and
@@ -84,7 +87,7 @@ public:
 
 private:
     void load();
-    [[nodiscard]] const tilemap::Tileset& sheet_of(const std::string& name) const;
+    [[nodiscard]] const tilemap::AnimatedTileset& sheet_of(const std::string& name) const;
     [[nodiscard]] const gfx::Image* creature_image(int species) const;
     bool draw_tile(gfx::Renderer2D& g, const char* layer, std::int32_t id,
                    int x, int y, int px, int py) const;
@@ -99,7 +102,7 @@ private:
     Dex             dex_;
     tilemap::Map    map_;
     tilemap::Theme  theme_;
-    std::map<std::string, tilemap::Tileset> tiles_;
+    std::map<std::string, tilemap::AnimatedTileset> tiles_;
     mutable std::map<int, gfx::Image>       sprites_;   // species id -> its .hrt
     tilemap::Camera2D cam_;
     World           world_;

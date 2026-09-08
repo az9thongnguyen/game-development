@@ -104,6 +104,30 @@ static void test_recipe_roundtrip() {
     CHECK(generate(from_recipe(once)).pixels == generate(p).pixels);
 }
 
+static void test_animated_recipe_roundtrip() {
+    TextureRecipe recipe;
+    recipe.texture.seed = 17;
+    recipe.texture.size = 16;
+    recipe.frames = 4;
+
+    const std::string text = to_recipe(recipe);
+    CHECK(text.find("frames=4\n") != std::string::npos);
+
+    int applied = 0;
+    const TextureRecipe parsed = parse_recipe(text, &applied);
+    CHECK(applied == 13);
+    CHECK(parsed.frames == 4);
+    CHECK(parsed.texture.seed == 17);
+    CHECK(parsed.texture.size == 16);
+
+    CHECK(parse_recipe("frames=0\n").frames == 1);
+    CHECK(parse_recipe("frames=100\n").frames == 64);
+    CHECK(parse_recipe("frames=oops\n").frames == 1);
+    int unknown = -1;
+    CHECK(parse_recipe("colour=2\n", &unknown).frames == 1);
+    CHECK(unknown == 0);
+}
+
 // ---- animated sheet export ------------------------------------------------
 
 static void test_make_sheet() {
@@ -141,6 +165,7 @@ int main() {
     test_texture_size_clamp();
     test_hrt_roundtrip();
     test_recipe_roundtrip();
+    test_animated_recipe_roundtrip();
     test_make_sheet();
     if (g_failures == 0) std::printf("studio: all tests passed\n");
     else                 std::printf("studio: %d FAILURE(S)\n", g_failures);

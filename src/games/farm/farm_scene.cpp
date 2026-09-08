@@ -138,8 +138,9 @@ void FarmScene::load() {
         // sheet that is empty are the same thing by construction, not by a second
         // branch that only one of them takes.
         for (const auto& [name, sh] : theme_.sheets) {
-            tilemap::Tileset& into = tiles_[name];
-            if (const auto img = gfx::load_image(sh.path)) into = tilemap::Tileset::cut(*img, sh.tile);
+            tilemap::AnimatedTileset& into = tiles_[name];
+            if (const auto img = gfx::load_image(sh.path))
+                into = tilemap::AnimatedTileset::cut(*img, sh.tile);
             if (into.count() == 0)
                 problem_art_ += (problem_art_.empty() ? "" : "; ") + std::string("could not load ") + sh.path;
         }
@@ -181,8 +182,8 @@ void FarmScene::load() {
 // A sheet that was never declared and a sheet whose image would not load look the
 // same on purpose: both are a tileset with no tiles. Collapsing them here is what
 // lets draw_tile below keep exactly two guards instead of three.
-const tilemap::Tileset& FarmScene::sheet_of(const std::string& name) const {
-    static const tilemap::Tileset kNone;
+const tilemap::AnimatedTileset& FarmScene::sheet_of(const std::string& name) const {
+    static const tilemap::AnimatedTileset kNone;
     const auto it = tiles_.find(name);
     return it == tiles_.end() ? kNone : it->second;
 }
@@ -572,6 +573,10 @@ void FarmScene::update(double dt, const platform::InputState& in) {
     // failed to load still has a connection to answer for.
     client_.update();
     if (!ready_) return;
+    for (auto& [name, sheet] : tiles_) {
+        (void)name;
+        sheet.update(static_cast<float>(dt));
+    }
     if (message_t_ > 0) message_t_ -= dt;
     if (step_cooldown_ > 0) step_cooldown_ -= dt;
 

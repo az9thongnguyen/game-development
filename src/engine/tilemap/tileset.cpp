@@ -40,4 +40,20 @@ gfx::Sprite Tileset::sprite(std::size_t index) const {
     return gfx::Sprite{t.pixels.data(), t.w, t.h};
 }
 
+AnimatedTileset AnimatedTileset::cut(const gfx::Image& sheet, int tile, float fps) {
+    AnimatedTileset out;
+    out.tiles_ = Tileset::cut(sheet, tile);
+    out.playback_.frames = anim::frames_in_sheet(sheet.w, sheet.h);
+    out.playback_.fps = fps;
+    const std::size_t frames = static_cast<std::size_t>(out.playback_.frames);
+    out.tiles_per_frame_ = frames > 0 ? out.tiles_.count() / frames : 0;
+    return out;
+}
+
+gfx::Sprite AnimatedTileset::sprite(std::size_t index) const {
+    if (index >= tiles_per_frame_) return gfx::Sprite{nullptr, 0, 0};
+    const std::size_t frame = static_cast<std::size_t>(playback_.frame());
+    return tiles_.sprite(frame * tiles_per_frame_ + index);
+}
+
 } // namespace tilemap

@@ -16,6 +16,7 @@
 #include "engine/project/project.hpp"
 #include "engine/tilemap/map2.hpp"
 #include "games/studio/recipe.hpp"
+#include "games/studio/sheet.hpp"
 #include "games/studio/texture_gen.hpp"
 
 namespace cmd {
@@ -102,12 +103,12 @@ void register_asset_commands() {
             // command that WRITES: an empty file would happily bake the default
             // texture over the destination. Recognising nothing means it is not one.
             int applied = 0;
-            const studio::TextureParams p =
-                studio::from_recipe(std::string(bytes->begin(), bytes->end()), &applied);
+            const studio::TextureRecipe recipe =
+                studio::parse_recipe(std::string(bytes->begin(), bytes->end()), &applied);
             if (applied == 0)
                 return {false, src + ": no recipe keys recognised (is this a .recipe?)"};
 
-            const gfx::Image img = studio::generate(p);
+            const gfx::Image img = studio::make_sheet(recipe.texture, recipe.frames);
             if (!assets::write_file(dst, gfx::encode_hrt(img)))
                 return {false, "cannot write " + dst};
 

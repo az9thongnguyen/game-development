@@ -255,6 +255,10 @@ int main() {
     platform::Framebuffer fb{buf.data(), PW, PH, PW};
     const platform::InputState idle{};
 
+    CHECK(scene.tile_frame("water") == 0);
+    scene.update(0.25, idle);
+    CHECK(scene.tile_frame("water") == 1);
+
     // Takes the scene explicitly. It used to close over `scene`, which meant the
     // screenshots taken further down — of OTHER scenes — were all pictures of this
     // one, and the "it is on the screen" claims were pictures of the wrong screen.
