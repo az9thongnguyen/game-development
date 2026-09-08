@@ -12,11 +12,12 @@
 
 ---
 
-## ⏸ QUAY LẠI TỪ ĐÂY — S34 đã qua đủ gate, 2026-09-08
+## ⏸ QUAY LẠI TỪ ĐÂY — S35 đang làm dở, checkpoint 2026-09-09
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** `main` chứa merge S34 `2a25cc0`; cây sạch sau checkpoint.
+**Trạng thái:** dừng trên branch `feat/s35-product-front-door` tại `f63ca92`
+(`feat: redesign collection and player shell`). Chưa merge `main`; S35 chưa qua đủ gate.
 **150 chương** (`docs/book/00`–`149`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
 **66 dòng ADR**, 13 dòng `Superseded by`.
@@ -24,20 +25,35 @@
 **Lộ trình PLAN v2 (S19→S30c) đã ĐÓNG HẾT.** Sau đó làm thêm hai slice ngoài bảng:
 S31 (ch.146, PvP chơi được bằng tay) và S32 (ch.147, một màu là một chỗ).
 
-### Việc kế tiếp — S35, và vì sao là nó
+### S35 đã làm tới đâu
 
-**S35 — Collection + Play shell như một mặt tiền sản phẩm** (cỡ L).
+Commit `f63ca92` đã đổi Collection từ directory listing thành product front door: hero,
+hierarchy card, CTA 50 px, responsive một cột trên điện thoại, five distinct covers và
+Details có trạng thái accessible. Creator/Farm có cover `.pix` riêng, bake qua
+`asset.pixels`; manifest, `collection.json` và attribution ledger đều đã cập nhật.
+Player shell có tên game thay vì path manifest, status pill, nút quay lại Collection,
+focus ring và control 44 px.
 
-S34 đã đóng nền: mười contact độc lập đi từ SDL vào cùng `InputState`, Farm/Creatures
-đọc được hai ngón mà không đếm thêm synthesized mouse; layout biết cả HUD/hint bên cạnh;
-UI core có button semantic, card, meter và vector icon. Review frame xác nhận vocabulary
-mới rõ hơn, nhưng trang đầu tiên người chơi gặp vẫn là Collection cũ: năm card dùng asset
-sẵn có làm cover, hierarchy yếu, và Play page chưa mang identity của game được chọn.
+**Đã chạy và thấy:**
+- ✅ `commands`, `provenance`, `collection`: 3/3 xanh.
+- ✅ Emscripten 3.1.61 build xanh sau khi restore harness.
+- ✅ browser journey 390×844: 5 cover decode, không scroll ngang, CTA 50 px, README
+  render, Play vào Colony `running`, shell gọi đúng tên và control 44 px.
+- ✅ đã nhìn `/private/tmp/s35-collection.png` và `/private/tmp/s35-player.png`; không
+  overlap/crop/resample. Cover Creator và Farm có identity riêng.
+- ⚠️ mutation bị dừng theo yêu cầu sau 15 case: **14 killed, 1 survived**. Survivor là
+  `min-height:48→38` của CTA; target vẫn 47 px nhờ line-height + padding, nên đây là
+  equivalent/redundant mutation chứ không phải guard bị lọt. Case 16 đang chạy đã được
+  ngắt; `finally` đã restore source, không có `web/*.mutbak`, rồi web baseline build và
+  browser journey đã chạy xanh lại.
 
-Bước đầu tiên cụ thể: đọc `web/collection.html`, `web/shell.html`,
-`engine/project/collection.*` và `scripts/web_collection_check.mjs`; viết test đỏ cho
-hero/metadata/CTA responsive, rồi tạo năm cover có identity riêng qua một trong bốn cửa
-`.hrt` hiện có — không mở cửa bake thứ năm.
+**Làm tiếp đúng từ đây:**
+1. `git switch feat/s35-product-front-door`; xác nhận `git status --short --branch` sạch.
+2. Harness còn ở `/private/tmp/c150.py`. Đổi mutant #4 từ `38px` thành `28px`, chạy lại
+   toàn bộ; mục tiêu 19/19 killed. Không sửa source trong lúc nó chạy.
+3. Chạy 95 test **hai lần**, Release `--bench-ui`, golden path và kiểm zero `.tmp`.
+4. Viết chương 150 với mục *What is verified, and what is not*; cập nhật
+   `PROJECT-BRIEF.md` + block này; commit docs, merge `--no-ff` vào `main`, push.
 
 **Sau S35 theo kế hoạch đã duyệt:** S36 polish Farm/Creatures · S37 polish FPS/Iso/Colony
 và đóng hai nợ runtime asset/save path · S38a/b redesign Studio rồi thêm pan/zoom,
