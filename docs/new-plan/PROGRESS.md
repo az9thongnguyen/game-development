@@ -12,34 +12,39 @@
 
 ---
 
-## ⏸ QUAY LẠI TỪ ĐÂY — S33 đã qua đủ gate, 2026-09-08
+## ⏸ QUAY LẠI TỪ ĐÂY — S34 đã qua đủ gate, 2026-09-08
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** `main` chứa merge S33 `a5546e3`; cây sạch sau checkpoint.
-**149 chương** (`docs/book/00`–`148`) · **95 test xanh** (60 khi build không có Drogon) ·
+**Trạng thái:** nhánh `feat/s34-input-ui-foundation` có hai commit code
+`44818bc`/`f7d9a8f`, đã qua gate và sẵn sàng merge.
+**150 chương** (`docs/book/00`–`149`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
-**63 dòng ADR**, 13 dòng `Superseded by`.
+**66 dòng ADR**, 13 dòng `Superseded by`.
 
 **Lộ trình PLAN v2 (S19→S30c) đã ĐÓNG HẾT.** Sau đó làm thêm hai slice ngoài bảng:
 S31 (ch.146, PvP chơi được bằng tay) và S32 (ch.147, một màu là một chỗ).
 
-### Việc kế tiếp — S34, và vì sao là nó
+### Việc kế tiếp — S35, và vì sao là nó
 
-**S34 — input nhiều thiết bị + nền UI sản phẩm** (cỡ L).
+**S35 — Collection + Play shell như một mặt tiền sản phẩm** (cỡ L).
 
-S33 đã đóng cả hai nợ: `creature_grass.{pix,hrt}` là bộ blob 47 mảnh đầu tiên, và
-`farm_water.recipe` bake bốn frame được Farm lẫn Creatures chạy qua một
-`AnimatedTileset`. Review hình lại lộ đúng nút thắt kế tiếp: pad/actions của Farm chồng
-lên hotbar/help ở 640×360, cả Farm lẫn Creatures chỉ đọc một con trỏ chuột do SDL dựng
-từ touch, nên không thể giữ hướng và bấm hành động cùng lúc. Trước khi đổi năm màn hình,
-input và primitive UI phải nói được sự thật về bàn tay và hierarchy.
+S34 đã đóng nền: mười contact độc lập đi từ SDL vào cùng `InputState`, Farm/Creatures
+đọc được hai ngón mà không đếm thêm synthesized mouse; layout biết cả HUD/hint bên cạnh;
+UI core có button semantic, card, meter và vector icon. Review frame xác nhận vocabulary
+mới rõ hơn, nhưng trang đầu tiên người chơi gặp vẫn là Collection cũ: năm card dùng asset
+sẵn có làm cover, hierarchy yếu, và Play page chưa mang identity của game được chọn.
 
-Bước đầu tiên cụ thể: đọc `platform::InputState`, `backend_sdl.cpp` và
-`engine/ui/{ui,theme,touch}.*`; viết test đỏ cho hai touch contact độc lập và cho layout
-không để control che vùng nội dung/hotbar ở viewport nhỏ.
+Bước đầu tiên cụ thể: đọc `web/collection.html`, `web/shell.html`,
+`engine/project/collection.*` và `scripts/web_collection_check.mjs`; viết test đỏ cho
+hero/metadata/CTA responsive, rồi tạo năm cover có identity riêng qua một trong bốn cửa
+`.hrt` hiện có — không mở cửa bake thứ năm.
 
-**Sau S33 (chưa xếp thứ tự):**
+**Sau S35 theo kế hoạch đã duyệt:** S36 polish Farm/Creatures · S37 polish FPS/Iso/Colony
+và đóng hai nợ runtime asset/save path · S38a/b redesign Studio rồi thêm pan/zoom,
+multi-select, copy/paste và inspector Spawner/OnOverlap.
+
+**Sau chuỗi UI/UX (chưa xếp thứ tự):**
 - **Segments + experiments** trong BaaS — *vùng lớn nhất còn nguyên vẹn của Horizon 2*,
   chặn điều khoản 6 của cổng ra. ⚠️ **chưa có người tiêu thụ**: cần một game hỏi được câu
   hỏi đó trước, nếu không sẽ lại là hạ tầng không ai dùng.
@@ -2602,6 +2607,7 @@ làm chín T6).
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
 | ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
+| S34 | **Hai ngón + một hierarchy UI** — contact độc lập, semantic button/card/meter/icon, palette product — **XONG**, chương 149 |
 | S33 | **Vật liệu thứ hai + nước động** — long grass blob 47 mảnh, recipe 4 frame, một `AnimatedTileset` cho Farm/Creatures — **XONG**, chương 148 |
 | S32 | **Một màu là một chỗ** — `ui::xy_pad` trên `drag_in` dùng chung, và `Keep` cho màu đã pha một cái nhà — **XONG**, chương 147 |
 | S31 | **PvP chơi được bằng tay** — `Mode::Online`, `set_auto_play`, và test live lái chính `CreaturesScene` — **XONG**, chương 146 |
@@ -2637,8 +2643,9 @@ Sau đó (chưa xếp thứ tự) — **soát lại 2026-09-07 sau S32**:
 - **`.pix` và `.hrt` có thể lệch nhau** — giống `.recipe`: test bắt được, không chặn được.
 - **Blob 47 mảnh mới có một identity hình ảnh** — long grass; chưa có bộ blob nước/đá
   và chưa có một sheet vừa blob vừa animated.
-- **Điều khiển màn hình**: farm và creatures đều có; luôn hiện, không tự ẩn trên desktop; **một ngón**
-  (SDL dựng chuột từ chạm, nên không giữ hướng + bấm hành động cùng lúc).
+- **Điều khiển màn hình**: farm và creatures đều có; luôn hiện, không tự ẩn trên desktop.
+  ~~Một ngón~~ — **ĐÃ ĐÓNG ch.149**: contact độc lập, giữ hướng + bấm hành động cùng lúc.
+  `ui::Context` của Studio vẫn một pointer; gesture canvas thuộc S38.
 - **Không có nút `F9`** (load) — load vứt bỏ ngày đang chơi và farm không có modal để hỏi
   lại; động từ phá huỷ ở lại sau một phím phải cố ý bấm.
 - **Nhãn hạt trong ô hotbar có thể tràn** ô 62px với tên cây dài.
