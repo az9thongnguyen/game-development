@@ -16,7 +16,7 @@
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** `feat/s33-autotile-water`, sẵn sàng merge `--no-ff` vào `main`.
+**Trạng thái:** `main` chứa merge S33 `a5546e3`; cây sạch sau checkpoint.
 **149 chương** (`docs/book/00`–`148`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
 **63 dòng ADR**, 13 dòng `Superseded by`.
