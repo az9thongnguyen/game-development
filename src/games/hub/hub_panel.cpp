@@ -223,13 +223,19 @@ Op draw_hub_panel(ui::Context& ui, gfx::Renderer2D& g,
         const int avail = row.w - refresh_w - th::space_sm * 3;
         const int bw = avail / 3 < 120 ? 120 : (avail / 3 > 210 ? 210 : avail / 3);
         const bool ok = view->shippable;
+        const auto action = [&](bool primary) {
+            return ui::ButtonOptions{primary ? ui::ButtonKind::Primary : ui::ButtonKind::Neutral,
+                                     ok, ui::Icon::ChevronRight, nullptr};
+        };
         if (ui.button(ui.slot(bw), "Publish → development",
-                      next == engine::Next::Publish, ok)) op = Op::Publish;
+                      action(next == engine::Next::Publish))) op = Op::Publish;
         if (ui.button(ui.slot(bw), "Promote → preview",
-                      next == engine::Next::PromotePreview, ok)) op = Op::PromotePreview;
+                      action(next == engine::Next::PromotePreview))) op = Op::PromotePreview;
         if (ui.button(ui.slot(bw), "Promote → production",
-                      next == engine::Next::PromoteProduction, ok)) op = Op::PromoteProduction;
-        if (ui.button(ui.slot_end(refresh_w), "Refresh")) op = Op::Refresh;
+                      action(next == engine::Next::PromoteProduction))) op = Op::PromoteProduction;
+        if (ui.button(ui.slot_end(refresh_w), "Refresh",
+                      ui::ButtonOptions{ui::ButtonKind::Ghost, true,
+                                        ui::Icon::Refresh, nullptr})) op = Op::Refresh;
         ui.end_layout();
     }
 

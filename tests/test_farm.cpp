@@ -1051,6 +1051,19 @@ static void test_controls_geometry() {
                         CHECK(!overlaps(a, boxes[k]));
                 }
 
+                // Controls are not allowed to cover the HUD or its help copy. These
+                // neighbours come from the SAME layout the renderer reads; otherwise
+                // the test would merely prove a second set of arithmetic agrees with
+                // itself while the screen still overlaps at a small viewport.
+                CHECK(l.hud.x == 0 && l.hud.y == 0 && l.hud.w == w && l.hud.h == 34);
+                const farm::Box controls[] = {l.up, l.down, l.left, l.right,
+                                              l.use, l.seed, l.save, l.keep, l.take,
+                                              l.tool[0], l.tool[1], l.tool[2], l.tool[3]};
+                for (const farm::Box& b : controls) {
+                    CHECK(!overlaps(b, l.hud));
+                    CHECK(!overlaps(b, l.hint));
+                }
+
                 // The pad is all-or-nothing: `visible()` reads ONE box, so a layout
                 // that filled five of the six would look present and act broken.
                 if (l.visible()) {
@@ -1122,6 +1135,20 @@ static void test_controls() {
     CHECK(a.consumed);
     a = farm::read(l, at(l.up, true, true));
     CHECK(a.dy == -1 && a.dx == 0);
+
+    // Two contacts are read together: one thumb may hold a direction while the other
+    // fires an action. Reversing their order must not change the merged intent.
+    const farm::Pointer fingers[] = {at(l.right, true, false), at(l.use, true, true)};
+    a = farm::read(l, fingers, 2);
+    CHECK(a.dx == 1 && a.use && a.consumed);
+    const farm::Pointer reversed[] = {fingers[1], fingers[0]};
+    a = farm::read(l, reversed, 2);
+    CHECK(a.dx == 1 && a.use && a.consumed);
+    const farm::Pointer opposite[] = {at(l.left, true, false), at(l.right, true, false)};
+    CHECK(farm::read(l, opposite, 2).dx == 0);
+    const farm::Pointer duplicate[] = {at(l.right, true, false), at(l.right, true, false)};
+    CHECK(farm::read(l, duplicate, 2).dx == 1);
+    CHECK(farm::read(l, nullptr, 2).dx == 0);
 
     // The actions are EDGES. Holding `use` must not fire every frame — that would
     // hoe a tile sixty times a second and drain a day of energy in one press.

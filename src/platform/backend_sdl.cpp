@@ -124,6 +124,7 @@ void pump_events() {
     g_input.wheel_x        = 0;
     g_input.wheel_y        = 0;
     g_input.window_resized = false;
+    g_input.begin_touch_frame();
     for (bool& r : g_input.key_repeat) r = false;
 
     // Pump the OS queue (this also updates SDL's internal keyboard/mouse state, which
@@ -137,6 +138,7 @@ void pump_events() {
                 break;
 
             case SDL_TEXTINPUT: {
+                g_input.device = InputDevice::KeyboardMouse;
                 // What the OS decided the keystrokes MEAN — after dead keys, compose
                 // sequences, IME candidates and whatever layout the user actually has.
                 // A text field must read this rather than reconstruct characters from
@@ -148,6 +150,8 @@ void pump_events() {
             }
 
             case SDL_MOUSEWHEEL: {
+                if (e.wheel.which != SDL_TOUCH_MOUSEID)
+                    g_input.device = InputDevice::KeyboardMouse;
                 const int dir = (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) ? -1 : 1;
                 g_input.wheel_x += e.wheel.x * dir;
                 g_input.wheel_y += e.wheel.y * dir;
@@ -155,6 +159,7 @@ void pump_events() {
             }
 
             case SDL_KEYDOWN:
+                g_input.device = InputDevice::KeyboardMouse;
                 // Only the repeat flag comes from the event; the down/pressed/released
                 // edges below stay poll-derived so held keys behave identically to
                 // before this change.
@@ -163,6 +168,36 @@ void pump_events() {
                         if (m.sc == e.key.keysym.scancode) { g_input.key_repeat[int(m.k)] = true; break; }
                 }
                 break;
+
+            case SDL_MOUSEMOTION:
+                if (e.motion.which != SDL_TOUCH_MOUSEID)
+                    g_input.device = InputDevice::KeyboardMouse;
+                break;
+
+            case SDL_MOUSEBUTTONDOWN:
+            case SDL_MOUSEBUTTONUP:
+                if (e.button.which != SDL_TOUCH_MOUSEID)
+                    g_input.device = InputDevice::KeyboardMouse;
+                break;
+
+            case SDL_FINGERDOWN:
+            case SDL_FINGERMOTION:
+            case SDL_FINGERUP: {
+                // SDL touch coordinates are normalized to [0,1]. Clamp the endpoint:
+                // x==1 means the last framebuffer pixel, not one pixel past it.
+                const auto coord = [](float v, int extent) {
+                    if (extent <= 0) return 0;
+                    const int p = static_cast<int>(v * static_cast<float>(extent));
+                    return p < 0 ? 0 : (p >= extent ? extent - 1 : p);
+                };
+                const int x = coord(e.tfinger.x, g_log_w);
+                const int y = coord(e.tfinger.y, g_log_h);
+                const std::int64_t id = static_cast<std::int64_t>(e.tfinger.fingerId);
+                if (e.type == SDL_FINGERDOWN) g_input.begin_touch(id, x, y);
+                else if (e.type == SDL_FINGERMOTION) g_input.move_touch(id, x, y);
+                else g_input.end_touch(id, x, y);
+                break;
+            }
 
             case SDL_WINDOWEVENT:
                 if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) on_window_resized();

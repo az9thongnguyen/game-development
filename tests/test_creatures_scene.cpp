@@ -399,6 +399,20 @@ int main() {
         CHECK(!assets::load_file("saves/creatures/slot1.sav"));
         render(idle);
         const creature::Layout l = scene.controls();
+
+        // Two real fingers reach two different controls in the same frame. Save is
+        // checked from the file, while Act is checked from the later message it owns;
+        // together they prove neither contact was collapsed into synthesized mouse.
+        platform::InputState two{};
+        CHECK(two.begin_touch(31, l.save.x + l.save.w / 2,
+                                  l.save.y + l.save.h / 2));
+        CHECK(two.begin_touch(32, l.act.x + l.act.w / 2,
+                                  l.act.y + l.act.h / 2));
+        scene.update(1.0 / 60.0, two);
+        CHECK(assets::load_file("saves/creatures/slot1.sav").has_value());
+        CHECK(scene.message() == "Nothing here" || scene.message() == "Your party is rested");
+
+        clear_file("saves/creatures/slot1.sav");
         const auto [x, y] = centre(l.save);
         tap(x, y);
         const auto saved = assets::load_file("saves/creatures/slot1.sav");

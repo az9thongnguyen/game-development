@@ -5,12 +5,9 @@
 //  phone the whole time: every verb is a key. This is the other half — a d-pad and
 //  the action buttons, drawn over the world.
 //
-//  It reads the POINTER, not touch events. That is the whole reason it is small:
-//  SDL synthesizes a mouse from a finger by default, so one implementation serves a
-//  tap, a click and a trackpad, and the platform seam needs no new event type. The
-//  price is that only one finger is seen at a time — you cannot hold "walk east" and
-//  tap "use" together. For a grid game whose step is one tile per press that is a
-//  fair trade, and it is named in the chapter as the ceiling it is.
+//  It reads pure POINTER values, not platform events. A mouse supplies one; a touch
+//  screen supplies every active contact, so one thumb can hold "walk east" while the
+//  other taps "use" without putting SDL types in game logic.
 //
 //  ONE layout function, called by both the renderer and the hit test. A control that
 //  is drawn in one place and hit in another is the bug this shape exists to prevent,
@@ -33,6 +30,8 @@
 // =============================================================================
 #pragma once
 
+#include <cstddef>
+
 #include "engine/ui/touch.hpp"
 
 namespace farm {
@@ -49,6 +48,8 @@ using Pointer = touch::Pointer;
 // The alternative — a `bool has_save` beside the box — is a second fact about the same
 // thing, and two facts about one thing eventually disagree.
 struct Layout {
+    Box hud;                       // top status strip; a neighbour, not a control
+    Box hint;                      // keyboard help beside the hotbar
     Box up, down, left, right;   // the d-pad, bottom left
     Box use, seed;               // the thumb row, bottom right
     Box save;                    // above `use` — not a game verb, so not on that row
@@ -89,6 +90,7 @@ struct Action {
 };
 
 Action read(const Layout& l, const Pointer& p);
+Action read(const Layout& l, const Pointer* pointers, std::size_t count);
 
 // -----------------------------------------------------------------------------
 //  The dialogue panel

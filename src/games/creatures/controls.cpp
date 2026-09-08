@@ -138,4 +138,24 @@ Press read(const Layout& l, Mode mode, const Pointer& p) {
     return a;
 }
 
+Press read(const Layout& l, Mode mode, const Pointer* pointers, std::size_t count) {
+    Press out;
+    if (!pointers) return out;
+    int dx = 0, dy = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const Press one = read(l, mode, pointers[i]);
+        dx += one.dx; dy += one.dy;
+        out.act = out.act || one.act;
+        out.save = out.save || one.save;
+        out.online = out.online || one.online;
+        out.back = out.back || one.back;
+        out.ack = out.ack || one.ack;
+        out.consumed = out.consumed || one.consumed;
+        if (out.cell < 0 && one.cell >= 0) out.cell = one.cell;
+    }
+    out.dx = dx < 0 ? -1 : (dx > 0 ? 1 : 0);
+    out.dy = dy < 0 ? -1 : (dy > 0 ? 1 : 0);
+    return out;
+}
+
 } // namespace creature

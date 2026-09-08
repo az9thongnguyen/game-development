@@ -60,6 +60,20 @@ using Id = std::uint32_t;
 // never picks a colour and the palette can change in one place.
 enum class Tone { Neutral, Info, Success, Warning, Danger, Accent };
 
+// Visual meaning, not a caller-selected colour. This keeps hierarchy consistent:
+// one primary action, destructive actions that cannot masquerade as neutral ones,
+// and ghost actions that stay quiet on dense toolbars.
+enum class ButtonKind { Neutral, Primary, Danger, Ghost };
+enum class Icon { None, Play, Pause, Stop, Save, Refresh, Check, Close,
+                  Plus, ChevronRight, ArrowUp, ArrowDown, ArrowLeft, ArrowRight };
+
+struct ButtonOptions {
+    ButtonKind kind = ButtonKind::Neutral;
+    bool enabled = true;
+    Icon icon = Icon::None;
+    const char* shortcut = nullptr;
+};
+
 // One cell of a status strip. A strip is a LIST, not a sentence: four workspaces
 // each built theirs by concatenation and each spelled the separator differently,
 // and the shell then coloured the WHOLE line `warn` when the document was dirty —
@@ -107,7 +121,14 @@ public:
     // ---- explicit-rect widgets (the testable core) --------------------------
     // `primary` uses the accent fill (one hot-action per screen); `enabled=false`
     // draws a muted, non-interactive control (always returns false).
+    bool button(Rect r, const char* label, ButtonOptions options);
     bool button(Rect r, const char* label, bool primary = false, bool enabled = true);
+    // Non-interactive building blocks. Pair card() with hit() when the whole card is
+    // selectable; meter values are clamped to 0..1. Icons are vector strokes drawn by
+    // Renderer2D, so they work in native and web builds without another asset format.
+    void card(Rect r, bool selected = false);
+    void meter(Rect r, float value, Tone tone = Tone::Accent);
+    void draw_icon(Rect r, Icon icon, gfx::Color color);
     // An interactive region that draws NOTHING: the caller paints it (a colour
     // swatch, a tile, a canvas) and this supplies the hover/press/focus/click
     // machinery, so a custom-drawn control behaves like every other one instead of
@@ -151,6 +172,7 @@ public:
 
     // ---- layout helpers (advance a vertical cursor inside a panel) ----------
     void panel(Rect bg, const char* title = nullptr);
+    bool button(const char* label, ButtonOptions options);
     bool button(const char* label, bool primary = false, bool enabled = true);
     bool checkbox(const char* label, bool& value);
     bool slider(const char* label, float& value, float lo, float hi);

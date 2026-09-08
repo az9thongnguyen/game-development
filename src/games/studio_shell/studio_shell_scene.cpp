@@ -411,17 +411,29 @@ void StudioShellScene::draw_play_section(gfx::Renderer2D& g, ui::Rect area,
                          ui::LayoutOpts{th::space_sm, 0});
         const bool can = play_.has_factory() && inspection_.parsed &&
                          !inspection_.project.entry.empty();
-        if (ui_.button(ui_.slot(110), play_.running() ? "Restart" : "Play",
-                       /*primary*/ !play_.running(), can))
+        const ui::ButtonOptions play_opts{
+            play_.running() ? ui::ButtonKind::Neutral : ui::ButtonKind::Primary,
+            can,
+            play_.running() ? ui::Icon::Refresh : ui::Icon::Play,
+            "Space"};
+        if (ui_.button(ui_.slot(126), play_.running() ? "Restart" : "Play", play_opts))
             play_button_ = BtnPlay;
-        if (ui_.button(ui_.slot(100), play_.paused() ? "Resume" : "Pause", false, play_.running()))
+        if (ui_.button(ui_.slot(108), play_.paused() ? "Resume" : "Pause",
+                       ui::ButtonOptions{ui::ButtonKind::Neutral, play_.running(),
+                                         play_.paused() ? ui::Icon::Play : ui::Icon::Pause,
+                                         nullptr}))
             play_button_ = BtnPause;
         // Step is only meaningful while paused: it exists to advance one fixed step
         // and look at it, which is the whole reason to embed a player rather than
         // launch the game.
-        if (ui_.button(ui_.slot(90), "Step", false, play_.running() && play_.paused()))
+        if (ui_.button(ui_.slot(90), "Step",
+                       ui::ButtonOptions{ui::ButtonKind::Ghost,
+                                         play_.running() && play_.paused(),
+                                         ui::Icon::ChevronRight, nullptr}))
             play_button_ = BtnStep;
-        if (ui_.button(ui_.slot(90), "Stop", false, play_.running()))
+        if (ui_.button(ui_.slot(90), "Stop",
+                       ui::ButtonOptions{ui::ButtonKind::Danger, play_.running(),
+                                         ui::Icon::Stop, nullptr}))
             play_button_ = BtnStop;
         ui_.end_layout();
         ui_.pop_id();

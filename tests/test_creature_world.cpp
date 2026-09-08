@@ -525,6 +525,17 @@ void test_controls() {
     CHECK(read(ow, Mode::Overworld, at(ow.act, true)).act == true);
     CHECK(read(ow, Mode::Overworld, at(ow.save, false)).save == false);
     CHECK(read(ow, Mode::Overworld, at(ow.save, true)).save == true);
+    const Pointer fingers[] = {at(ow.right, false), at(ow.act, true)};
+    const Press together = read(ow, Mode::Overworld, fingers, 2);
+    CHECK(together.dx == 1 && together.act && together.consumed);
+    const Pointer reversed[] = {fingers[1], fingers[0]};
+    const Press together_reversed = read(ow, Mode::Overworld, reversed, 2);
+    CHECK(together_reversed.dx == 1 && together_reversed.act && together_reversed.consumed);
+    const Pointer opposite[] = {at(ow.left, false), at(ow.right, false)};
+    CHECK(read(ow, Mode::Overworld, opposite, 2).dx == 0);
+    const Pointer duplicate[] = {at(ow.right, false), at(ow.right, false)};
+    CHECK(read(ow, Mode::Overworld, duplicate, 2).dx == 1);
+    CHECK(read(ow, Mode::Overworld, nullptr, 2).dx == 0);
 
     const Layout menu = layout(640, 360, Mode::Menu);
     CHECK(!menu.cell[0].empty() && !menu.cell[3].empty());

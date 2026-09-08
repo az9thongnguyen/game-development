@@ -17,41 +17,44 @@
 namespace ui::theme {
 
 // ---- Colour: surfaces (dark, low-chroma; higher = more "raised") ------------
-inline constexpr gfx::Color bg        = 0xFF12141C;   // window background
-inline constexpr gfx::Color elevated  = 0xFF1B1E28;   // panels / cards
-inline constexpr gfx::Color titlebar  = 0xFF232733;   // panel title strip
-inline constexpr gfx::Color border    = 0xFF2A2E3A;   // hairline separators/outlines
+inline constexpr gfx::Color bg        = 0xFF0B1020;   // window background
+inline constexpr gfx::Color elevated  = 0xFF131B2D;   // panels / cards
+inline constexpr gfx::Color titlebar  = 0xFF19243A;   // panel title strip
+inline constexpr gfx::Color border    = 0xFF263550;   // hairline separators/outlines
+inline constexpr gfx::Color surface_selected = 0xFF1B2944; // selected card / row
 
 // ---- Colour: controls (neutral, by interaction state) -----------------------
-inline constexpr gfx::Color ctrl       = 0xFF2A2F3C;  // button idle
-inline constexpr gfx::Color ctrl_hover = 0xFF353B4A;  // hovered
-inline constexpr gfx::Color ctrl_press = 0xFF454C5E;  // pressed
-inline constexpr gfx::Color ctrl_disabled = 0xFF1E222C;
-inline constexpr gfx::Color track      = 0xFF20242E;  // slider groove
+inline constexpr gfx::Color ctrl       = 0xFF1E2A42;  // button idle
+inline constexpr gfx::Color ctrl_hover = 0xFF293957;  // hovered
+inline constexpr gfx::Color ctrl_press = 0xFF34476A;  // pressed
+inline constexpr gfx::Color ctrl_disabled = 0xFF151D2E;
+inline constexpr gfx::Color track      = 0xFF182238;  // slider groove
 
 // ---- Colour: text (by emphasis) ---------------------------------------------
-inline constexpr gfx::Color text       = 0xFFE6E9F0;  // primary
-inline constexpr gfx::Color text_dim   = 0xFFA8AEBE;  // secondary
-inline constexpr gfx::Color text_muted = 0xFF6B7180;  // hint / disabled
-inline constexpr gfx::Color on_accent  = 0xFF0B1017;  // text/icon on an accent fill
+inline constexpr gfx::Color text       = 0xFFF2F5FC;  // primary
+inline constexpr gfx::Color text_dim   = 0xFFADB8CE;  // secondary
+inline constexpr gfx::Color text_muted = 0xFF71809B;  // hint / disabled
+inline constexpr gfx::Color on_accent  = 0xFF091021;  // text/icon on an accent fill
 
 // ---- Colour: ONE hot-action accent + semantic -------------------------------
-inline constexpr gfx::Color accent       = 0xFF5AAAE6;
-inline constexpr gfx::Color accent_hover = 0xFF82C8FF;
-inline constexpr gfx::Color accent_press = 0xFF3E86BE;
-inline constexpr gfx::Color success = 0xFF4CC38A;
-inline constexpr gfx::Color warn    = 0xFFE5B454;
-inline constexpr gfx::Color danger  = 0xFFE5657A;
-inline constexpr gfx::Color info    = 0xFF67C7E5;
+inline constexpr gfx::Color accent       = 0xFF7C9CFF;
+inline constexpr gfx::Color accent_hover = 0xFFA2B8FF;
+inline constexpr gfx::Color accent_press = 0xFF5E7FE5;
+inline constexpr gfx::Color success = 0xFF45D39A;
+inline constexpr gfx::Color warn    = 0xFFF0B85A;
+inline constexpr gfx::Color danger  = 0xFFEF6B7B;
+inline constexpr gfx::Color danger_hover = 0xFFFF8996;
+inline constexpr gfx::Color danger_press = 0xFFD94F63;
+inline constexpr gfx::Color info    = 0xFF5CC8EC;
 
 // Added, not renamed: nine scenes already draw from the names above, so a rename
 // would be churn with no gain. These are the ones that were genuinely missing.
 inline constexpr gfx::Color scrim         = 0x8C000000;   // black @ 55% behind a modal
-inline constexpr gfx::Color border_strong = 0xFF3A4356;   // popup/input outline
+inline constexpr gfx::Color border_strong = 0xFF405477;   // popup/input outline
 
 // Channel identity. The release pipeline is the one place a colour means a NAME
 // rather than a state, so these live beside the semantic colours and not inside it.
-inline constexpr gfx::Color chan_dev     = 0xFF5AAAE6;
+inline constexpr gfx::Color chan_dev     = 0xFF7C9CFF;
 inline constexpr gfx::Color chan_preview = 0xFFC792EA;
 inline constexpr gfx::Color chan_prod    = 0xFF4CC38A;
 
@@ -77,6 +80,7 @@ inline constexpr int space_xl = 24;
 // ---- Corner radius ----------------------------------------------------------
 inline constexpr int radius_sm = 6;    // controls
 inline constexpr int radius_md = 10;   // panels
+inline constexpr int radius_lg = 14;   // product cards / modals
 
 // ---- Type scale (px, logical) -----------------------------------------------
 inline constexpr int sz_caption = 12;

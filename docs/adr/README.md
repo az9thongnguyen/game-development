@@ -114,3 +114,5 @@ index like this rots.
 | 117 | Saturation and value are two sliders; `ui::hit` reports a click and not a drag | [127](../book/127-a-colour-the-sheet-did-not-have.md) | Superseded by 118 |
 | 118 | A colour is a PLACE: one `xy_pad` on the shared `drag_in` loop, and a mixed colour goes into the same palette the image built | [147](../book/147-a-colour-is-a-place.md) | Accepted |
 | 119 | A tile animation is a vertically stacked square sheet: the runtime derives frame count from shape, while maps and themes keep naming semantic material and art | [148](../book/148-the-second-material.md) | Accepted |
+| 120 | Touch is a fixed, trivially-copyable set of independent contacts; once contacts exist, their synthesized mouse is not a second input | [149](../book/149-two-thumbs-one-hierarchy.md) | Accepted |
+| 121 | Control appearance names meaning (`Neutral`, `Primary`, `Danger`, `Ghost`); callers do not choose semantic colours directly | [149](../book/149-two-thumbs-one-hierarchy.md) | Accepted |

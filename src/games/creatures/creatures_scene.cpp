@@ -10,6 +10,7 @@
 #include "engine/image.hpp"
 #include "engine/text/font.hpp"
 #include "engine/ui/theme.hpp"
+#include "engine/ui/touch_input.hpp"
 
 namespace th = ui::theme;
 
@@ -341,6 +342,7 @@ void CreaturesScene::choose_cell(int cell) {
 // different branches below (a knockout, a catch, a run, a blackout) and a write
 // placed in three of them is a recording that is missing exactly one outcome.
 void CreaturesScene::update(double dt, const platform::InputState& input) {
+    in_ = input;
     if (!ready_) return;
     for (auto& [name, sheet] : tiles_) {
         (void)name;
@@ -363,13 +365,10 @@ void CreaturesScene::update_world(double dt, const platform::InputState& input) 
     if (message_t_ > 0) message_t_ -= dt;
     if (step_cool_ > 0) step_cool_ -= dt;
 
-    Pointer p;
-    p.x = input.mouse_x;
-    p.y = input.mouse_y;
-    p.down    = input.mouse_down[static_cast<int>(platform::MouseButton::Left)];
-    p.pressed = input.mouse_pressed[static_cast<int>(platform::MouseButton::Left)];
+    const touch::PointerSet pointers = touch::pointers(input);
     const Mode m = mode();
-    const Press press = read(layout(fb_w_, fb_h_, m), m, p);
+    const Press press = read(layout(fb_w_, fb_h_, m), m,
+                             pointers.data, pointers.count);
 
     const auto key = [&](platform::Key k) {
         return input.key_down[static_cast<int>(k)];
@@ -733,11 +732,19 @@ void CreaturesScene::render_controls(gfx::Renderer2D& g) const {
     }
 
     if (!l.pad_visible()) return;
+    const touch::PointerSet pointers = touch::pointers(in_);
     const auto btn = [&](const Box& b, const char* label) {
         if (b.empty()) return;
-        g.fill_rect(b.x, b.y, b.w, b.h, gfx::rgba(0x10, 0x14, 0x1a, 170));
-        g.draw_rect(b.x, b.y, b.w, b.h, gfx::rgba(0xff, 0xff, 0xff, 90));
-        g.draw_text(b.x + b.w / 2 - 8, b.y + b.h / 2 - 6, label, th::text);
+        const bool hot = pointers.down_in(b);
+        g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
+                          hot ? gfx::rgba(0x35, 0x58, 0x83, 205)
+                              : gfx::rgba(0x10, 0x18, 0x2a, 170));
+        g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
+                          hot ? th::accent : gfx::rgba(0xff, 0xff, 0xff, 90));
+        g.set_font_size(th::sz_body);
+        const int tw = g.text_width(label);
+        g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_body) / 2,
+                    label, hot ? th::text : th::text_dim);
     };
     btn(l.up, "^"); btn(l.down, "v"); btn(l.left, "<"); btn(l.right, ">");
     btn(l.act, "Z"); btn(l.save, "S"); btn(l.online, "O");

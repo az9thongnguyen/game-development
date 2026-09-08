@@ -2,11 +2,16 @@
 //  tests/test_ui.cpp  —  immediate-mode GUI logic (headless: null renderer)
 // =============================================================================
 #include "engine/ui/ui.hpp"
+#include "engine/ui/touch_input.hpp"
+#include "platform/input.hpp"
 
 #include <cmath>
 #include <cstdio>
+#include <type_traits>
 #include <vector>
 #include <string>
+
+static_assert(std::is_trivially_copyable_v<platform::InputState>);
 
 static int g_failures = 0;
 #define CHECK(cond)                                                       \
@@ -987,6 +992,95 @@ static void test_xy_pad() {
     CHECK(x == kx && y == ky);
 }
 
+static void test_multi_touch_snapshot() {
+    platform::InputState in;
+    CHECK(in.device == platform::InputDevice::KeyboardMouse);
+
+    in.begin_touch_frame();
+    CHECK(in.begin_touch(41, 12, 34));
+    CHECK(in.begin_touch(82, 210, 98));
+    CHECK(in.device == platform::InputDevice::Touch);
+    CHECK(in.touch_count() == 2);
+    CHECK(in.touch(41) != nullptr && in.touch(41)->pressed && in.touch(41)->down);
+    CHECK(in.touch(82) != nullptr && in.touch(82)->x == 210);
+
+    in.begin_touch_frame();
+    CHECK(!in.touch(41)->pressed && in.touch(41)->down);
+    CHECK(in.move_touch(41, 30, 45));
+    CHECK(in.touch(41)->x == 30 && in.touch(41)->y == 45);
+    CHECK(in.end_touch(41, 31, 46));
+    CHECK(!in.touch(41)->down && in.touch(41)->released);
+    CHECK(in.touch(82)->down); // lifting one finger must not lift the other
+    CHECK(in.touch_count() == 2); // a release edge is still part of this frame
+    CHECK(!in.move_touch(41, 40, 50));
+    CHECK(!in.end_touch(41, 40, 50));
+    CHECK(!in.move_touch(999, 0, 0));
+
+    in.begin_touch_frame();
+    CHECK(in.touch(41) == nullptr); // released contacts live for exactly one frame
+    CHECK(in.touch_count() == 1);
+    CHECK(!in.end_touch(999, 0, 0));
+
+    platform::InputState full;
+    for (std::size_t i = 0; i < platform::InputState::kTouchMax; ++i)
+        CHECK(full.begin_touch(static_cast<std::int64_t>(100 + i),
+                               static_cast<int>(i), static_cast<int>(i)));
+    CHECK(!full.begin_touch(999, 1, 1));
+    CHECK(full.touch_count() == platform::InputState::kTouchMax);
+}
+
+static void test_semantic_button_options() {
+    ui::Context ui;
+    const ui::Rect r{0, 0, 120, 32};
+    const ui::ButtonOptions danger{ui::ButtonKind::Danger, true,
+                                   ui::Icon::Close, "Del"};
+    ui.begin(nullptr, press(10, 10));
+    CHECK(!ui.button(r, "Delete", danger));
+    ui.end();
+    ui.begin(nullptr, release(10, 10));
+    CHECK(ui.button(r, "Delete", danger));
+    ui.end();
+
+    const ui::ButtonOptions disabled{ui::ButtonKind::Primary, false,
+                                     ui::Icon::Play, nullptr};
+    ui.begin(nullptr, press(10, 10));
+    CHECK(!ui.button(r, "Run", disabled));
+    ui.end();
+    ui.begin(nullptr, release(10, 10));
+    CHECK(!ui.button(r, "Run", disabled));
+    ui.end();
+}
+
+static void test_touch_pointer_adapter() {
+    platform::InputState in;
+    in.mouse_x = 14;
+    in.mouse_y = 29;
+    in.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+
+    const touch::PointerSet mouse = touch::pointers(in);
+    CHECK(mouse.count == 1);
+    CHECK(mouse.primary().x == 14 && mouse.primary().y == 29);
+    CHECK(mouse.primary().down && !mouse.primary().pressed);
+
+    CHECK(in.begin_touch(7, 101, 102));
+    CHECK(in.begin_touch(9, 201, 202));
+    const touch::PointerSet fingers = touch::pointers(in);
+    CHECK(fingers.count == 2);
+    CHECK(fingers.data[0].x == 101 && fingers.data[0].pressed);
+    CHECK(fingers.data[1].x == 201 && fingers.data[1].pressed);
+    CHECK(fingers.down_in(touch::Box{96, 96, 20, 20}));
+    CHECK(!fingers.down_in(touch::Box{300, 300, 20, 20}));
+    CHECK(fingers.over(touch::Box{196, 196, 20, 20}));
+    // Once real contacts exist, SDL's synthesized mouse must not become a third
+    // action or make a control fire twice.
+    CHECK(fingers.primary().x != in.mouse_x);
+
+    CHECK(in.end_touch(7, 101, 102));
+    const touch::PointerSet lifting = touch::pointers(in);
+    CHECK(lifting.over(touch::Box{96, 96, 20, 20}));
+    CHECK(!lifting.down_in(touch::Box{96, 96, 20, 20}));
+}
+
 int main() {
     test_button_click();
     test_checkbox();
@@ -1006,6 +1100,9 @@ int main() {
     test_splitter();
     test_status_cells_join_one_way();
     test_xy_pad();
+    test_multi_touch_snapshot();
+    test_touch_pointer_adapter();
+    test_semantic_button_options();
     if (g_failures == 0) std::printf("ui: all tests passed\n");
     else                 std::printf("ui: %d FAILURE(S)\n", g_failures);
     return g_failures;

@@ -32,6 +32,18 @@ constexpr int kGap  = th::space_sm;   // vertical gap between stacked widgets
 
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+gfx::Color tone_colour(Tone t) {
+    switch (t) {
+        case Tone::Info:    return th::info;
+        case Tone::Success: return th::success;
+        case Tone::Warning: return th::warn;
+        case Tone::Danger:  return th::danger;
+        case Tone::Accent:  return th::accent;
+        case Tone::Neutral: break;
+    }
+    return th::text_dim;
+}
+
 } // namespace
 
 Id Context::id_of(const char* s) const {
@@ -164,26 +176,108 @@ void Context::focus_ring(Rect r, int radius) const {
 }
 
 // ---- explicit-rect widgets --------------------------------------------------
-bool Context::button(Rect r, const char* label, bool primary, bool enabled) {
+bool Context::button(Rect r, const char* label, ButtonOptions options) {
     const Id   id      = id_of(label);
-    const bool clicked = interact(id, r, enabled);
+    const bool clicked = interact(id, r, options.enabled);
 
     if (r_) {
-        if (enabled && focused_ == id) focus_ring(r, th::radius_sm);
+        if (options.enabled && focused_ == id) focus_ring(r, th::radius_sm);
         gfx::Color bg;
-        if (!enabled)     bg = th::ctrl_disabled;
-        else if (primary) bg = (active_ == id) ? th::accent_press : (hot_ == id ? th::accent_hover : th::accent);
-        else              bg = (active_ == id) ? th::ctrl_press   : (hot_ == id ? th::ctrl_hover   : th::ctrl);
+        if (!options.enabled) bg = th::ctrl_disabled;
+        else if (options.kind == ButtonKind::Primary)
+            bg = (active_ == id) ? th::accent_press : (hot_ == id ? th::accent_hover : th::accent);
+        else if (options.kind == ButtonKind::Danger)
+            bg = (active_ == id) ? th::danger_press : (hot_ == id ? th::danger_hover : th::danger);
+        else if (options.kind == ButtonKind::Ghost)
+            bg = (active_ == id) ? th::ctrl_press : (hot_ == id ? th::ctrl_hover : th::elevated);
+        else
+            bg = (active_ == id) ? th::ctrl_press : (hot_ == id ? th::ctrl_hover : th::ctrl);
 
         r_->fill_round_rect(r.x, r.y, r.w, r.h, th::radius_sm, bg);
-        if (!primary || !enabled) r_->draw_round_rect(r.x, r.y, r.w, r.h, th::radius_sm, th::border);
+        if (options.kind == ButtonKind::Neutral || options.kind == ButtonKind::Ghost ||
+            !options.enabled)
+            r_->draw_round_rect(r.x, r.y, r.w, r.h, th::radius_sm, th::border);
 
-        const gfx::Color fg = !enabled ? th::text_muted : (primary ? th::on_accent : th::text);
+        const bool filled_semantic = options.kind == ButtonKind::Primary ||
+                                     options.kind == ButtonKind::Danger;
+        const gfx::Color fg = !options.enabled ? th::text_muted
+                            : (filled_semantic ? th::on_accent : th::text);
         r_->set_font_size(th::sz_label);
         const int tw = r_->text_width(label);
-        r_->draw_text(r.x + (r.w - tw) / 2, r.y + (r.h - th::sz_label) / 2, label, fg);
+        const int icon_w = options.icon == Icon::None ? 0 : std::min(16, r.h - 10);
+        const int icon_gap = icon_w > 0 ? 6 : 0;
+        int shortcut_w = 0;
+        if (options.shortcut && *options.shortcut) {
+            r_->set_font_size(th::sz_caption);
+            shortcut_w = r_->text_width(options.shortcut) + th::space_sm * 2;
+            r_->set_font_size(th::sz_label);
+        }
+        const int content_w = std::max(0, r.w - shortcut_w);
+        const int group_w = icon_w + icon_gap + tw;
+        const int start = r.x + std::max(th::space_sm, (content_w - group_w) / 2);
+        if (icon_w > 0)
+            draw_icon(Rect{start, r.y + (r.h - icon_w) / 2, icon_w, icon_w}, options.icon, fg);
+        r_->draw_text(start + icon_w + icon_gap,
+                      r.y + (r.h - th::sz_label) / 2, label, fg);
+        if (shortcut_w > 0) {
+            r_->set_font_size(th::sz_caption);
+            const int sw = r_->text_width(options.shortcut);
+            r_->draw_text(r.x + r.w - th::space_sm - sw,
+                          r.y + (r.h - th::sz_caption) / 2,
+                          options.shortcut, options.enabled ? fg : th::text_muted);
+        }
     }
     return clicked;
+}
+
+bool Context::button(Rect r, const char* label, bool primary, bool enabled) {
+    return button(r, label, ButtonOptions{primary ? ButtonKind::Primary : ButtonKind::Neutral,
+                                          enabled, Icon::None, nullptr});
+}
+
+void Context::card(Rect r, bool selected) {
+    if (!r_) return;
+    r_->drop_shadow(r.x, r.y, r.w, r.h, th::radius_lg,
+                    th::shadow_panel.dx, th::shadow_panel.dy, th::shadow_panel.spread,
+                    gfx::rgba(0, 0, 0, th::shadow_panel.a));
+    r_->fill_round_rect(r.x, r.y, r.w, r.h, th::radius_lg,
+                        selected ? th::surface_selected : th::elevated);
+    r_->draw_round_rect(r.x, r.y, r.w, r.h, th::radius_lg,
+                        selected ? th::accent : th::border);
+}
+
+void Context::meter(Rect r, float value, Tone tone) {
+    if (!r_) return;
+    const float t = clampf(value, 0.0f, 1.0f);
+    r_->fill_round_rect(r.x, r.y, r.w, r.h, r.h / 2, th::track);
+    const int fill = static_cast<int>(static_cast<float>(r.w) * t + 0.5f);
+    if (fill > 0) r_->fill_round_rect(r.x, r.y, fill, r.h, r.h / 2, tone_colour(tone));
+}
+
+void Context::draw_icon(Rect r, Icon icon, gfx::Color color) {
+    if (!r_ || icon == Icon::None || r.w <= 0 || r.h <= 0) return;
+    const int x0 = r.x + 2, x1 = r.x + r.w - 3;
+    const int y0 = r.y + 2, y1 = r.y + r.h - 3;
+    const int cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    const auto line = [&](int ax, int ay, int bx, int by) {
+        r_->draw_line_aa(ax, ay, bx, by, color);
+    };
+    switch (icon) {
+        case Icon::Play: line(x0 + 2, y0, x1, cy); line(x1, cy, x0 + 2, y1); line(x0 + 2, y1, x0 + 2, y0); break;
+        case Icon::Pause: line(cx - 3, y0, cx - 3, y1); line(cx + 3, y0, cx + 3, y1); break;
+        case Icon::Stop: r_->draw_round_rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1, 2, color); break;
+        case Icon::Save: r_->draw_round_rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1, 2, color); line(x0 + 3, y0, x0 + 3, cy); line(x0 + 3, cy, x1 - 3, cy); break;
+        case Icon::Refresh: r_->draw_circle(cx, cy, std::max(2, std::min(r.w, r.h) / 2 - 3), color); line(x1 - 3, y0, x1, y0 + 4); break;
+        case Icon::Check: line(x0, cy, cx - 1, y1); line(cx - 1, y1, x1, y0); break;
+        case Icon::Close: line(x0, y0, x1, y1); line(x1, y0, x0, y1); break;
+        case Icon::Plus: line(cx, y0, cx, y1); line(x0, cy, x1, cy); break;
+        case Icon::ChevronRight: line(cx - 3, y0, cx + 3, cy); line(cx + 3, cy, cx - 3, y1); break;
+        case Icon::ArrowUp: line(cx, y0, x0, cy); line(cx, y0, x1, cy); line(cx, y0, cx, y1); break;
+        case Icon::ArrowDown: line(cx, y1, x0, cy); line(cx, y1, x1, cy); line(cx, y0, cx, y1); break;
+        case Icon::ArrowLeft: line(x0, cy, cx, y0); line(x0, cy, cx, y1); line(x0, cy, x1, cy); break;
+        case Icon::ArrowRight: line(x1, cy, cx, y0); line(x1, cy, cx, y1); line(x0, cy, x1, cy); break;
+        case Icon::None: break;
+    }
 }
 
 bool Context::hit(const char* id_str, Rect r, bool* hovered) {
@@ -388,6 +482,12 @@ bool Context::button(const char* label, bool primary, bool enabled) {
     return button(r, label, primary, enabled);
 }
 
+bool Context::button(const char* label, ButtonOptions options) {
+    const Rect r{cx_, cy_, cw_, kBtnH};
+    cy_ += kBtnH + kGap;
+    return button(r, label, options);
+}
+
 bool Context::checkbox(const char* label, bool& value) {
     const Rect r{cx_, cy_, kChkH, kChkH};
     cy_ += kChkH + kGap;
@@ -407,20 +507,6 @@ void Context::label(const char* text) {
 }
 
 // ---- status and overlays ----------------------------------------------------
-namespace {
-gfx::Color tone_colour(Tone t) {
-    switch (t) {
-        case Tone::Info:    return th::info;
-        case Tone::Success: return th::success;
-        case Tone::Warning: return th::warn;
-        case Tone::Danger:  return th::danger;
-        case Tone::Accent:  return th::accent;
-        case Tone::Neutral: break;
-    }
-    return th::text_dim;
-}
-} // namespace
-
 int Context::badge(int x, int y, const char* text, Tone tone, gfx::Color on) {
     const gfx::Color fg = tone_colour(tone);
     if (!r_) return 0;

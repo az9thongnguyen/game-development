@@ -92,6 +92,61 @@ int main() {
         std::fclose(f);
     }
 
+    // Semantic components share one visual vocabulary: a selected card, destructive
+    // action, quiet action, progress meter and a small vector icon. These are exact
+    // token checks away from text/AA edges, so a palette refactor remains intentional.
+    {
+        constexpr int CW = 320, CH = 128;
+        std::vector<std::uint32_t> cb(static_cast<std::size_t>(CW * SS) * CH * SS, th::bg);
+        platform::Framebuffer cfb{cb.data(), CW * SS, CH * SS, CW * SS};
+        gfx::Renderer2D cr(cfb, SS);
+        if (font) cr.set_font(font.get(), th::sz_body);
+        ui::Context components;
+        components.begin(&cr, ui::Input{-1, -1, false, false, false}, CW, CH);
+        components.card(ui::Rect{4, 4, 312, 120}, true);
+        components.button(ui::Rect{16, 16, 132, 34}, "Delete",
+                          ui::ButtonOptions{ui::ButtonKind::Danger, true,
+                                            ui::Icon::Close, "Del"});
+        components.button(ui::Rect{156, 16, 132, 34}, "Preview",
+                          ui::ButtonOptions{ui::ButtonKind::Ghost, true,
+                                            ui::Icon::Play, nullptr});
+        components.meter(ui::Rect{16, 76, 272, 8}, 0.5f, ui::Tone::Success);
+        components.meter(ui::Rect{16, 92, 100, 8}, -0.2f, ui::Tone::Danger);
+        components.meter(ui::Rect{128, 92, 100, 8}, 1.2f, ui::Tone::Success);
+        components.draw_icon(ui::Rect{270, 94, 18, 18}, ui::Icon::Check, th::success);
+        components.end();
+
+        const auto cat = [&](int x, int y) {
+            return cb[static_cast<std::size_t>(y * SS) * CW * SS + x * SS];
+        };
+        CHECK(cat(70, 32) == th::danger);          // destructive button body
+        CHECK(cat(165, 32) == th::elevated);       // ghost keeps the card surface
+        CHECK(cat(20, 80) == th::success);         // filled half
+        CHECK(cat(220, 80) == th::track);          // unfilled half
+        CHECK(cat(60, 96) == th::track);            // below zero clamps empty
+        CHECK(cat(170, 96) == th::success);         // above one clamps full
+        CHECK(cat(240, 96) == th::surface_selected); // ...without spilling past its rect
+        CHECK(cat(300, 100) == th::surface_selected);
+
+        int icon_ink = 0;
+        for (int y = 94 * SS; y < 112 * SS; ++y)
+            for (int x = 270 * SS; x < 288 * SS; ++x)
+                if (cb[static_cast<std::size_t>(y) * CW * SS + x] == th::success) ++icon_ink;
+        CHECK(icon_ink > 0);
+
+        if (FILE* f = std::fopen("ui_components.ppm", "wb")) {
+            std::fprintf(f, "P6\n%d %d\n255\n", CW * SS, CH * SS);
+            for (auto p : cb) {
+                const unsigned char rgb[3] = {
+                    static_cast<unsigned char>((p >> 16) & 0xFF),
+                    static_cast<unsigned char>((p >> 8) & 0xFF),
+                    static_cast<unsigned char>(p & 0xFF)};
+                std::fwrite(rgb, 1, 3, f);
+            }
+            std::fclose(f);
+        }
+    }
+
     // ---- the status strip says two things at once (chapter 144) -----------------
     // Drawn into its OWN buffer so the count is of this widget and nothing else. What
     // is under test is a claim about COLOUR, and colour is invisible to every other
