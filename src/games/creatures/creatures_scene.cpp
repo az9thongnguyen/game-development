@@ -72,8 +72,9 @@ void CreaturesScene::load() {
     if (auto th = tilemap::parse_theme(read_text("creatures/theme.def"))) {
         theme_ = *th;
         for (const auto& [name, sh] : theme_.sheets) {
-            tilemap::Tileset& into = tiles_[name];
-            if (const auto img = gfx::load_image(sh.path)) into = tilemap::Tileset::cut(*img, sh.tile);
+            tilemap::AnimatedTileset& into = tiles_[name];
+            if (const auto img = gfx::load_image(sh.path))
+                into = tilemap::AnimatedTileset::cut(*img, sh.tile);
         }
     }
 
@@ -186,8 +187,8 @@ void CreaturesScene::cancel_online() {
     in_moves_ = in_party_ = false;
 }
 
-const tilemap::Tileset& CreaturesScene::sheet_of(const std::string& name) const {
-    static const tilemap::Tileset kNone;
+const tilemap::AnimatedTileset& CreaturesScene::sheet_of(const std::string& name) const {
+    static const tilemap::AnimatedTileset kNone;
     const auto it = tiles_.find(name);
     return it == tiles_.end() ? kNone : it->second;
 }
@@ -341,6 +342,10 @@ void CreaturesScene::choose_cell(int cell) {
 // placed in three of them is a recording that is missing exactly one outcome.
 void CreaturesScene::update(double dt, const platform::InputState& input) {
     if (!ready_) return;
+    for (auto& [name, sheet] : tiles_) {
+        (void)name;
+        sheet.update(static_cast<float>(dt));
+    }
     // The session is pumped BEFORE the input is read, so the mode the pointer is tested
     // against is the one the last frame drew. A tap resolved against a mode that
     // changed between the pump and the read is a tap on a button that is not there.

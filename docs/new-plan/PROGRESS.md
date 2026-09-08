@@ -12,32 +12,32 @@
 
 ---
 
-## ⏸ QUAY LẠI TỪ ĐÂY — chốt phiên 2026-09-07
+## ⏸ QUAY LẠI TỪ ĐÂY — S33 đã qua đủ gate, 2026-09-08
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** `main` @ `222a82c`, cây **sạch**, đồng bộ `origin/main`, không branch treo.
-**148 chương** (`docs/book/00`–`147`) · **95 test xanh** (60 khi build không có Drogon) ·
+**Trạng thái:** `feat/s33-autotile-water`, sẵn sàng merge `--no-ff` vào `main`.
+**149 chương** (`docs/book/00`–`148`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
 **63 dòng ADR**, 13 dòng `Superseded by`.
 
 **Lộ trình PLAN v2 (S19→S30c) đã ĐÓNG HẾT.** Sau đó làm thêm hai slice ngoài bảng:
 S31 (ch.146, PvP chơi được bằng tay) và S32 (ch.147, một màu là một chỗ).
 
-### Việc kế tiếp — S33, và vì sao là nó
+### Việc kế tiếp — S34, và vì sao là nó
 
-**S33 — vật liệu autotile thứ hai + nước động** (cỡ M).
+**S34 — input nhiều thiết bị + nền UI sản phẩm** (cỡ L).
 
-Chương 134 dựng luật *"road hay region là chuyện của MAP, không phải của file art một
-game"* và xoá `farm::line_piece`. Nhưng **mới có đúng MỘT vật liệu dùng luật đó** (con
-đường của farm). Một luật tổng quát với một ví dụ là một luật chưa ai kiểm — và sáu chương
-gần nhất đều tìm ra bug đúng ở loại chỗ đó. Nước động đi kèm vì cùng một mặt phẳng:
-`anim::frames_in_sheet` đã có, `studio::make_sheet` xuất được sheet nhiều frame, mà
-renderer tilemap của farm **chưa biết gì về frame**.
+S33 đã đóng cả hai nợ: `creature_grass.{pix,hrt}` là bộ blob 47 mảnh đầu tiên, và
+`farm_water.recipe` bake bốn frame được Farm lẫn Creatures chạy qua một
+`AnimatedTileset`. Review hình lại lộ đúng nút thắt kế tiếp: pad/actions của Farm chồng
+lên hotbar/help ở 640×360, cả Farm lẫn Creatures chỉ đọc một con trỏ chuột do SDL dựng
+từ touch, nên không thể giữ hướng và bấm hành động cùng lúc. Trước khi đổi năm màn hình,
+input và primitive UI phải nói được sự thật về bàn tay và hierarchy.
 
-Bước đầu tiên cụ thể: `grep -rn "rule_piece\|rule " src/engine/tilemap/` để đọc lại
-`tilemap::rule_piece` và cú pháp `rule <value> line|blob` trong `map2`, rồi xem
-`assets/farm/theme.def` đặt tên sheet thế nào.
+Bước đầu tiên cụ thể: đọc `platform::InputState`, `backend_sdl.cpp` và
+`engine/ui/{ui,theme,touch}.*`; viết test đỏ cho hai touch contact độc lập và cho layout
+không để control che vùng nội dung/hotbar ở viewport nhỏ.
 
 **Sau S33 (chưa xếp thứ tự):**
 - **Segments + experiments** trong BaaS — *vùng lớn nhất còn nguyên vẹn của Horizon 2*,
@@ -2602,6 +2602,7 @@ làm chín T6).
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
 | ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
+| S33 | **Vật liệu thứ hai + nước động** — long grass blob 47 mảnh, recipe 4 frame, một `AnimatedTileset` cho Farm/Creatures — **XONG**, chương 148 |
 | S32 | **Một màu là một chỗ** — `ui::xy_pad` trên `drag_in` dùng chung, và `Keep` cho màu đã pha một cái nhà — **XONG**, chương 147 |
 | S31 | **PvP chơi được bằng tay** — `Mode::Online`, `set_auto_play`, và test live lái chính `CreaturesScene` — **XONG**, chương 146 |
 | ~~S30c~~ | ~~`--bench-ui` chạy được cả farm/creatures; manifest cho `iso` và `colony`~~ — **XONG**, chương 145: và hai game không có asset nào **băm ra cùng một release id** | S |
@@ -2618,10 +2619,8 @@ Sau đó (chưa xếp thứ tự) — **soát lại 2026-09-07 sau S32**:
   `engine/ui/touch.hpp`, còn LAYOUT thì mỗi game giữ riêng.
 - ~~**Đo chi phí frame của farm**~~ — **XONG** ở S30c: `--bench-ui all` đo Studio và mọi
   game trong `entries()`. Release: farm 2.20 ms, creatures 3.27 ms (640×360 ss=2).
-- **Nước động**: `studio::make_sheet` làm được miễn phí; farm chưa biết gì về frame.
-  *(Còn mở.)*
-- **Vật liệu autotile thứ hai** — hiện chỉ con đường; chưa có gì dùng chung giữa hai bộ.
-  *(Còn mở.)*
+- ~~**Nước động**~~ — **XONG ch.148**: recipe 4 frame, một runtime cho Farm/Creatures.
+- ~~**Vật liệu autotile thứ hai**~~ — **XONG ch.148**: long grass dùng blob 47 mảnh.
 
 ### Đã hoãn có chủ ý (đừng coi là quên)
 
@@ -2636,7 +2635,8 @@ Sau đó (chưa xếp thứ tự) — **soát lại 2026-09-07 sau S32**:
   Ô S/V 2D và **màu đã pha có nhà**: **XONG** ch.147.)* **Inspector vẫn không cuộn**,
   chỉ báo khi bị cắt — nên mọi control mới phải vừa trong chiều cao đang có.
 - **`.pix` và `.hrt` có thể lệch nhau** — giống `.recipe`: test bắt được, không chặn được.
-- **`autotile_index` (47-blob) vẫn không có art** — Tiny Town chỉ có mảng 9 mảnh.
+- **Blob 47 mảnh mới có một identity hình ảnh** — long grass; chưa có bộ blob nước/đá
+  và chưa có một sheet vừa blob vừa animated.
 - **Điều khiển màn hình**: farm và creatures đều có; luôn hiện, không tự ẩn trên desktop; **một ngón**
   (SDL dựng chuột từ chạm, nên không giữ hướng + bấm hành động cùng lúc).
 - **Không có nút `F9`** (load) — load vứt bỏ ngày đang chơi và farm không có modal để hỏi

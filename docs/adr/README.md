@@ -113,3 +113,4 @@ index like this rots.
 | 116 | ONE `shown_battle()`/`my_side()` decides which battle is on screen and which half is yours — the server hands out sides, and a screen hard-coded to 0 shows you your opponent's party | [146](../book/146-a-match-nobody-could-play.md) | Accepted |
 | 117 | Saturation and value are two sliders; `ui::hit` reports a click and not a drag | [127](../book/127-a-colour-the-sheet-did-not-have.md) | Superseded by 118 |
 | 118 | A colour is a PLACE: one `xy_pad` on the shared `drag_in` loop, and a mixed colour goes into the same palette the image built | [147](../book/147-a-colour-is-a-place.md) | Accepted |
+| 119 | A tile animation is a vertically stacked square sheet: the runtime derives frame count from shape, while maps and themes keep naming semantic material and art | [148](../book/148-the-second-material.md) | Accepted |

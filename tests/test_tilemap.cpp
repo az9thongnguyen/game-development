@@ -18,6 +18,7 @@
 #include "engine/tilemap/camera2d.hpp"
 #include "engine/tilemap/tileset.hpp"
 #include "engine/tilemap/map2.hpp"
+#include "engine/tilemap/theme.hpp"
 
 #ifndef ASSET_ROOT
 #define ASSET_ROOT "."
@@ -636,12 +637,81 @@ static void test_tileset() {
     }
 }
 
+static void test_real_creature_grass_blob() {
+    assets::set_base_path(ASSET_ROOT "/assets");
+    const auto bytes = assets::load_file("maps/creature_route.map2");
+    CHECK(bytes.has_value());
+    if (!bytes) return;
+    const auto map = load(std::string(bytes->begin(), bytes->end()));
+    CHECK(map.has_value());
+    if (!map) return;
+    CHECK(map->rule_for("ground", 3) == RuleKind::Blob);
+
+    const auto theme_bytes = assets::load_file("creatures/theme.def");
+    CHECK(theme_bytes.has_value());
+    if (!theme_bytes) return;
+    const auto theme = parse_theme(std::string(theme_bytes->begin(), theme_bytes->end()));
+    CHECK(theme.has_value());
+    if (!theme) return;
+    const Theme::Art* long_grass = theme->find("ground", 3);
+    CHECK(long_grass != nullptr);
+    if (!long_grass) return;
+    CHECK(long_grass->sheet == "grass");
+    CHECK(long_grass->index == 0);
+    CHECK(theme->sheets.at("grass").path == "textures/creature_grass.hrt");
+
+    const auto art = gfx::load_image("textures/creature_grass.hrt");
+    CHECK(art.has_value());
+    if (!art) return;
+    const tilemap::Tileset grass = tilemap::Tileset::cut(*art, 16);
+    CHECK(grass.count() == static_cast<std::size_t>(autotile_count()));
+}
+
+static void test_animated_tileset() {
+    // Three 2x2 frames stacked vertically. Each frame has a distinct solid colour,
+    // so selecting the wrong row is observable without a renderer.
+    gfx::Image sheet;
+    sheet.w = 2;
+    sheet.h = 6;
+    sheet.pixels.resize(12);
+    for (int y = 0; y < 6; ++y)
+        for (int x = 0; x < 2; ++x)
+            sheet.pixels[static_cast<std::size_t>(y) * 2 + static_cast<std::size_t>(x)] =
+                static_cast<gfx::Color>(0xFF102030u + static_cast<unsigned>(y / 2));
+
+    tilemap::AnimatedTileset animated = tilemap::AnimatedTileset::cut(sheet, 2, 4.0f);
+    CHECK(animated.count() == 1);
+    CHECK(animated.frames() == 3);
+    CHECK(animated.sprite(0).pixels[0] == 0xFF102030u);
+    CHECK(animated.sprite(1).w == 0);
+    animated.update(0.25f);
+    CHECK(animated.sprite(0).pixels[0] == 0xFF102031u);
+    CHECK(animated.sprite(1).w == 0);
+    animated.update(0.50f);
+    CHECK(animated.sprite(0).pixels[0] == 0xFF102030u); // full 0.75s cycle wraps
+
+    // A normal square atlas remains a two-dimensional static tile grid even after
+    // time advances. Animation detection must not reinterpret existing art.
+    gfx::Image atlas;
+    atlas.w = 4;
+    atlas.h = 4;
+    atlas.pixels.assign(16, 0xFF556677u);
+    tilemap::AnimatedTileset still = tilemap::AnimatedTileset::cut(atlas, 2, 4.0f);
+    CHECK(still.frames() == 1);
+    CHECK(still.count() == 4);
+    still.update(100.0f);
+    CHECK(still.sprite(3).pixels[0] == 0xFF556677u);
+    CHECK(still.sprite(4).w == 0);
+}
+
 int main() {
     test_format();
     test_rules_roundtrip_and_version();
     test_rule_piece();
     test_rule_piece_sixteen_and_the_real_path();
     test_tileset();
+    test_real_creature_grass_blob();
+    test_animated_tileset();
     test_format_rejects();
     test_migration();
     test_migrate_real_level();

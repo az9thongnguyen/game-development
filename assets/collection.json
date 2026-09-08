@@ -29,7 +29,7 @@
       "entry": "creatures",
       "cover": "textures/creatures_cover.hrt",
       "readme": "",
-      "package": "7a8855283b410a9f",
+      "package": "41369a0bce39b6bb",
       "playable": true,
       "problems": []
     },
@@ -40,7 +40,7 @@
       "entry": "farm",
       "cover": "textures/town.hrt",
       "readme": "projects/farm.md",
-      "package": "9da64c5136c8729d",
+      "package": "6d29b06560f34ff5",
       "playable": true,
       "problems": []
     },

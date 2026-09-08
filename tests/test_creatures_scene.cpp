@@ -192,6 +192,9 @@ int main() {
     };
 
     const platform::InputState idle{};
+    CHECK(scene.tile_frame("water") == 0);
+    scene.update(0.25, idle);
+    CHECK(scene.tile_frame("water") == 1);
     scene.update(1.0 / 60.0, idle);
     render(idle);
 

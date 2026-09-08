@@ -12,6 +12,7 @@ asset data creatures/encounters.def
 asset data creatures/theme.def
 asset texture textures/town.hrt
 asset texture textures/farm_path.hrt
+asset texture textures/creature_grass.hrt
 asset texture textures/farm_player.hrt
 asset texture textures/farm_water.hrt
 asset texture textures/parts_creature.hrt
