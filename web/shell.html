@@ -71,12 +71,13 @@
     }
     #bar {
       flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
-      padding: 7px 8px; min-height: 58px;
+      padding: 7px 8px; min-height: 58px; box-sizing: border-box;
       border-bottom: 1px solid var(--line); background: rgba(19, 27, 45, .96);
       box-shadow: 0 10px 35px rgba(0,0,0,.24);
     }
     #backlink, button {
       flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0;
+      box-sizing: border-box;
       display: inline-grid; place-items: center; border: 1px solid var(--line-strong);
       border-radius: 10px; background: transparent; color: var(--text);
       font: inherit; font-size: 19px; text-decoration: none; cursor: pointer;

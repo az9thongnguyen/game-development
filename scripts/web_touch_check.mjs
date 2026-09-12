@@ -260,12 +260,21 @@ try {
         const s = getComputedStyle(c);
         const r = c.getBoundingClientRect();
         const st = document.getElementById('stage').getBoundingClientRect();
+        const chrome = ['backlink', 'logbtn', 'fsbtn'].map((id) => {
+            const el = document.getElementById(id);
+            const cs = getComputedStyle(el);
+            const er = el.getBoundingClientRect();
+            return { id, display: cs.display, visibility: cs.visibility, opacity: cs.opacity,
+                     x: er.x, y: er.y, w: er.width, h: er.height };
+        });
         return { touchAction: s.touchAction, userSelect: s.userSelect || s.webkitUserSelect,
                  logShown: getComputedStyle(document.getElementById('log')).display !== 'none',
                  rect: { x: r.x, y: r.y, w: r.width, h: r.height },
                  stage: { w: st.width, h: st.height },
                  backing: { w: c.width, h: c.height },
-                 docScrolls: document.documentElement.scrollHeight > window.innerHeight + 1 };
+                 chrome,
+                 docScrolls: document.documentElement.scrollHeight > window.innerHeight + 1,
+                 docScrollsX: document.documentElement.scrollWidth > window.innerWidth + 1 };
     })()`);
     // A DECLARATION check, not a behaviour one — and the difference is measured, not
     // assumed. Running this whole file with the guard flipped to `auto` still passes,
@@ -281,6 +290,16 @@ try {
     }
     if (page.logShown) fail('the runtime log is visible by default');
     if (page.docScrolls) fail('the page scrolls: the game does not fit the viewport');
+    if (page.docScrollsX) fail('the player chrome scrolls horizontally');
+    for (const control of page.chrome) {
+        if (control.display === 'none' || control.visibility !== 'visible' || control.opacity === '0')
+            fail(`${control.id} is not visible`);
+        if (control.w < 44 || control.h < 44)
+            fail(`${control.id} is only ${Math.round(control.w)}x${Math.round(control.h)} CSS px`);
+        if (control.x < -1 || control.y < -1 ||
+            control.x + control.w > VW + 1 || control.y + control.h > VH + 1)
+            fail(`${control.id} is outside the ${VW}x${VH} viewport`);
+    }
     // FITTED means it touches an edge of the stage. Asserting a width fraction was
     // wrong the moment the viewport turned landscape: a 16:9 canvas in an 844x357 stage
     // is HEIGHT-bound at 634px wide, which is correct and looked like a failure.
@@ -345,19 +364,32 @@ try {
         const fs = (typeof Module !== 'undefined' && Module.FS) || window.FS || window.__FS;
         if (!fs) return 'NOFS';
         return fs.readFile('${GAME.save}', { encoding: 'utf8' });
-    } catch (e) { return 'ERR ' + e; } })()`;
+    } catch (e) {
+        return 'ERR ' + (e?.name || 'Error') + ' ' + (e?.message || '') +
+               ' errno=' + (e?.errno ?? 'unknown');
+    } })()`;
 
     const s0 = css(save);
-    await touch(cdp, s0.x, s0.y, 150);           // tap Save
-    await sleep(400);
-    const before = await cdp.eval(readSave);
+    let before = '';
+    let saveAttempts = 0;
+    // A just-started WASM page occasionally presents one frame after the first short
+    // tap. Retry the actual touch, not only the file read: IDBFS writes are synchronous
+    // here, so an absent file means the input did not reach a polled frame. Keep the
+    // bound small and report it so a worsening regression remains visible.
+    for (; saveAttempts < 3; ++saveAttempts) {
+        await touch(cdp, s0.x, s0.y, 150);       // tap Save
+        await sleep(400);
+        before = await cdp.eval(readSave);
+        if (typeof before === 'string' && !before.startsWith('ERR')) break;
+    }
     if (before === 'NOFS') fail('the page does not expose the emscripten filesystem');
     if (typeof before !== 'string' || before.startsWith('ERR'))
-        fail(`the save button did not write a save: ${before}`);
+        fail(`the save button did not write a save after ${saveAttempts} touches: ${before}`);
     const pxOf = GAME.pos;
     const px0 = pxOf(before);
     if (px0 === null) fail('the save has no player position');
-    ok(`a touch on Save wrote a save (px=${px0}) — touch reaches the game`);
+    ok(`Save wrote a save (px=${px0}) — touch reaches the game` +
+       (saveAttempts ? ` (${saveAttempts + 1} touches)` : ''));
 
     // ---- 5. hold the d-pad, and check the player MOVED --------------------
     // Up to three holds, not one. The claim is "holding the button moves the player",
