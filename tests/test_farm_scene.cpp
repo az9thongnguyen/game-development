@@ -275,6 +275,19 @@ int main() {
     const std::uint64_t first = fingerprint(buf);
     dump_ppm(buf, "farm_day.ppm");
 
+    // S36: the top strip is a set of readable status surfaces, not one debug string.
+    // Read the same rectangles render() uses; copied coordinates would only prove the
+    // test agrees with itself after a resize.
+    {
+        const farm::Layout l = scene.controls();
+        CHECK(!l.calendar.empty() && !l.energy.empty() && !l.gold.empty() && !l.cloud.empty());
+        CHECK(count_colour(buf, l.calendar, ui::theme::surface_selected) > 100);
+        CHECK(count_colour(buf, l.energy, ui::theme::track) > 100);
+        CHECK(count_colour(buf, l.energy, ui::theme::success) > 100);
+        CHECK(count_colour(buf, l.gold, ui::theme::elevated) > 100);
+        CHECK(count_colour(buf, l.cloud, ui::theme::elevated) > 100);
+    }
+
     // The world is on screen: the play area is not one flat colour, and the HUD strip
     // at the top is a different thing from the field below it.
     {
@@ -399,6 +412,14 @@ int main() {
             in.mouse_pressed[static_cast<int>(platform::MouseButton::Left)] = pressed;
             return in;
         };
+
+        CHECK(count_colour(buf, pad.use, ui::theme::ctrl) > 100);
+        scene.update(0.0, press(pad.right, true, false));
+        render(idle);
+        CHECK(count_colour(buf, pad.right, ui::theme::ctrl_press) > 100);
+        scene.update(0.0, idle);
+        render(idle);
+        CHECK(count_colour(buf, pad.right, ui::theme::ctrl) > 100);
 
         const int px0 = scene.world().px;
         // Hold `right` long enough to clear the step cooldown. Holding is the gesture:

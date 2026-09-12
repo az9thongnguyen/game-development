@@ -12,49 +12,48 @@
 
 ---
 
-## ⏸ QUAY LẠI TỪ ĐÂY — S35 đã merge, bắt đầu S36, 2026-09-12
+## ⏸ QUAY LẠI TỪ ĐÂY — S36 đã qua gate, chờ merge, 2026-09-12
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** `main` chứa merge S35 `37e15bd`; implementation/review `ef5bcf5`,
-tài liệu chương 150 `48bbd47`. S35 đã qua đủ gate và đóng.
-**151 chương** (`docs/book/00`–`150`) · **95 test xanh** (60 khi build không có Drogon) ·
+**Trạng thái:** branch `feat/s36-farm-creatures-polish`; implementation `5dd707f`, fix
+player shell `8f67171`, tài liệu chương 151 đang ở commit kế tiếp. S36 đã qua đủ gate;
+việc còn lại là commit docs → push branch → merge `--no-ff` vào `main` → ghi checkpoint S37.
+**152 chương** (`docs/book/00`–`151`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
-**67 dòng ADR**, 13 dòng `Superseded by`.
+**68 dòng ADR**, 13 dòng `Superseded by`.
 
 **Lộ trình PLAN v2 (S19→S30c) đã ĐÓNG HẾT.** Sau đó làm thêm năm slice ngoài bảng,
-S31–S35 (ch.146–150): PvP chơi được bằng tay, một màu là một chỗ, khép kín tài liệu
-kiến trúc, nâng chất lượng native UI, rồi product front door cho web.
+S31–S36 (ch.146–151): PvP chơi được bằng tay, một màu là một chỗ, khép kín tài liệu
+kiến trúc, nâng chất lượng native UI, product front door cho web, rồi polish Farm/Creatures.
 
-### S35 — product front door, đã đóng
+### S36 — Farm/Creatures product UI, đã qua gate
 
-Collection đã đổi từ directory listing thành product front door: hero, hierarchy card,
-CTA 50 px, responsive một cột trên điện thoại, năm cover riêng và Details có trạng thái
-accessible. Creator/Farm có cover `.pix` riêng qua `asset.pixels`. Player shell lấy tên
-game từ `collection.json` được bake từ manifest — không giữ bảng tên thứ hai — và có
-status loading/running, nút quay lại, focus ring, control 44 px, Log bật/tắt đọc được.
+Farm đã thay câu debug bằng bốn status card layout-owned (calendar, energy, gold, cloud);
+Creatures có HUD lead/HP/progress, message toast an toàn và hai battle status card. Nút
+touch nói động từ `USE/SEED/SAVE/PVP/ACT`, dùng theme token ở cả idle/pressed. Hơn 800
+viewport combination giữ HUD, control, sprite và battle panel không chồng nhau.
 
 **Đã chạy và thấy trên final source:**
-- ✅ native build; full `ctest` **95/95 hai lần**: 36.08 s và 62.98 s.
-- ✅ Emscripten 3.1.61 build; browser 390×844: 5 cover decode, no horizontal scroll,
-  CTA 50 px, README render, Colony `running`, tên lấy đúng manifest, Log cả hai chiều.
-- ✅ nhìn hai frame Collection/player; không overlap, crop hay cover resampling.
-- ✅ 21 mutation: **20 killed**, một equivalent survivor (`min-height` 48→28 nhưng
-  line-height + padding vẫn làm target ~47 px); đã triage, post-restore baseline xanh.
-- ✅ Release bench 200 frame, median: Studio ss1 0.94 / ss2 6.99 ms · FPS 1.14 ·
-  Farm 2.00 · Creatures 3.17 · Iso 3.09 · Colony 6.48; tất cả dưới budget 8 ms.
-- ✅ Farm `150f60129cb57b22`: inspect → publish development → parity verify → promote
-  preview → Hub shippable; zero `.tmp`.
-- ✅ full suite đầu tiên đã bắt khai báo cover dư làm Pixels mất Save ở 720p; xoá hai
-  dòng `asset texture ..._cover`, cover vẫn ở resource closure, `shell_golden` xanh.
+- ✅ native build; full `ctest` **95/95 hai lần**: 37.07 s và 23.65 s.
+- ✅ **27/27 effective mutation** ở game + **2/2** ở player-shell CSS; post-restore xanh.
+- ✅ đã soi bảy frame native: Farm day/small/dialogue; Creatures route/battle/moves/ack.
+- ✅ Emscripten 3.1.61 link; Chrome 390×844 lái touch trọn Farm và Creatures; Collection
+  vẫn thấy 5 game và vào player đang chạy. Back/Log/Fullscreen đo được ≥44 CSS px, trong
+  viewport; không scroll hai chiều.
+- ✅ web gate bắt regression có từ S35: `min-height` content-box làm stage còn 771 px;
+  thêm `border-box`, stage về 785 px. Hai negative control đều đỏ đúng số đo.
+- ✅ Release bench 200 frame: Farm median 0.78 ms, Creatures 1.35 ms; cả 7 cấu hình dưới
+  budget 8 ms.
+- ✅ Farm `150f60129cb57b22` và Creatures `41369a0bce39b6bb`: inspect → publish → parity;
+  Creatures promote preview → Hub shippable; zero `.tmp`.
 
-**Làm tiếp đúng từ đây — S36 polish Farm/Creatures:** tạo branch
-`feat/s36-farm-creatures-polish`; đọc chương 113, 117, 124–126, 148–149 và xem frame
-hiện tại của cả hai game ở 1280×720 lẫn viewport hẹp. Chốt contract UI quan sát được
-(hierarchy, HUD/status, control overlap, focus/touch target), viết acceptance test đỏ,
-rồi mới đổi renderer/layout. Không kéo nợ save/runtime asset của S37 vào slice này.
+**Làm tiếp đúng từ đây:** commit chapter/ledger này, chạy test docs liên quan, push branch,
+merge `--no-ff`, cập nhật block này sang S37 rồi push `main`. Sau đó tạo
+`feat/s37-fps-iso-colony-polish`; đọc chapter của cả ba game, render baseline và giải
+quyết đúng hai nợ đã định cho S37: Iso save path và Colony runtime-generated `.hrt`.
 
-**Sau S35 theo kế hoạch đã duyệt:** S36 polish Farm/Creatures · S37 polish FPS/Iso/Colony
+**Sau S36 theo kế hoạch đã duyệt:** S37 polish FPS/Iso/Colony
 và đóng hai nợ runtime asset/save path · S38a/b redesign Studio rồi thêm pan/zoom,
 multi-select, copy/paste và inspector Spawner/OnOverlap.
 
@@ -2626,6 +2625,7 @@ làm chín T6).
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
 | ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
 | S35 | **Product front door** — Collection có hierarchy/cover riêng, player giữ identity và đường quay lại — **XONG**, chương 150 |
+| S36 | **Farm/Creatures product UI** — status là layout, touch control nói động từ, player chrome đúng box model — **XONG**, chương 151 |
 | S34 | **Hai ngón + một hierarchy UI** — contact độc lập, semantic button/card/meter/icon, palette product — **XONG**, chương 149 |
 | S33 | **Vật liệu thứ hai + nước động** — long grass blob 47 mảnh, recipe 4 frame, một `AnimatedTileset` cho Farm/Creatures — **XONG**, chương 148 |
 | S32 | **Một màu là một chỗ** — `ui::xy_pad` trên `drag_in` dùng chung, và `Keep` cho màu đã pha một cái nhà — **XONG**, chương 147 |

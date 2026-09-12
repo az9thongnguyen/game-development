@@ -117,3 +117,4 @@ index like this rots.
 | 120 | Touch is a fixed, trivially-copyable set of independent contacts; once contacts exist, their synthesized mouse is not a second input | [149](../book/149-two-thumbs-one-hierarchy.md) | Accepted |
 | 121 | Control appearance names meaning (`Neutral`, `Primary`, `Danger`, `Ghost`); callers do not choose semantic colours directly | [149](../book/149-two-thumbs-one-hierarchy.md) | Accepted |
 | 122 | Product identity flows manifest → baked collection index → player; the shell keeps no second game-name table | [150](../book/150-a-front-door-not-a-directory.md) | Accepted |
+| 123 | Status cards and messages live in the game layout beside controls, so rendering and overlap checks read one geometry | [151](../book/151-four-cards-not-one-sentence.md) | Accepted |

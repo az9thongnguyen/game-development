@@ -47,9 +47,34 @@ int hud_height(int w, int h) { return pad_fits(w, h) ? kBtn : kSlotH; }
 
 } // namespace
 
+const char* label(Control control) {
+    switch (control) {
+        case Control::Up:    return "^";
+        case Control::Down:  return "v";
+        case Control::Left:  return "<";
+        case Control::Right: return ">";
+        case Control::Use:   return "USE";
+        case Control::Seed:  return "SEED";
+        case Control::Save:  return "SAVE";
+        case Control::Keep:  return "KEEP";
+        case Control::Take:  return "TAKE";
+    }
+    return "";
+}
+
 Layout layout(int w, int h, bool conflict) {
     Layout l;
     if (w > 0 && h >= kHudTopH) l.hud = Box{0, 0, w, kHudTopH};
+    // Four status surfaces replace the old debug sentence at widths where all four
+    // fit. Their rectangles live here for the same reason the hotbar's do: rendering
+    // and the geometry sweep must read one answer. Narrower legacy framebuffers keep
+    // the compact text fallback rather than clipping a card.
+    if (w >= 480 && h >= kHudTopH) {
+        l.calendar = Box{16, 4, 136, 26};
+        l.energy   = Box{156, 4, 112, 26};
+        l.gold     = Box{272, 4, 52, 26};
+        l.cloud    = Box{w - 128, 4, 120, 26};
+    }
 
     // ---- the hotbar, on every screen -------------------------------------------
     const bool big    = pad_fits(w, h);

@@ -47,6 +47,12 @@ gfx::Color type_colour(int t) {
     return kByType[t < 0 || t > 5 ? 0 : t];
 }
 
+std::string display_name(std::string name) {
+    if (!name.empty() && name[0] >= 'a' && name[0] <= 'z')
+        name[0] = static_cast<char>(name[0] - 'a' + 'A');
+    return name;
+}
+
 } // namespace
 
 CreaturesScene::CreaturesScene() { load(); }
@@ -505,17 +511,50 @@ void CreaturesScene::render_overworld(const engine::Context& ctx) {
     }
 
     // ---- HUD ----
+    const Layout l = layout(fb_w_, fb_h_, Mode::Overworld);
     const Creature& lead = world_.party.now();
     const SpeciesDef* s = dex_.species_by_id(lead.species);
-    char line[128];
-    std::snprintf(line, sizeof line, "%s  Lv%d  %d/%d   balls %d   won %d   caught %d",
-                  s ? s->name.c_str() : "-", lead.level, lead.hp, lead.max_hp,
-                  world_.balls, world_.wins, world_.caught);
-    g.fill_rect(0, 0, fb_w_, 22, gfx::rgba(0, 0, 0, 150));
-    g.draw_text(8, 6, line, th::text);
-    if (message_t_ > 0) {
-        g.fill_rect(0, fb_h_ - 24, fb_w_, 24, gfx::rgba(0, 0, 0, 170));
-        g.draw_text(8, fb_h_ - 19, message_.c_str(), th::text);
+    if (!l.hud.empty()) {
+        g.fill_round_rect(l.hud.x, l.hud.y, l.hud.w, l.hud.h, th::radius_md, th::elevated);
+        g.draw_round_rect(l.hud.x, l.hud.y, l.hud.w, l.hud.h, th::radius_md, th::border);
+
+        g.set_font_size(th::sz_caption);
+        const std::string identity = display_name(s ? s->name : "-") + std::string("  Lv") +
+                                     std::to_string(lead.level);
+        g.draw_text(l.hud.x + 8, l.hud.y + 6, identity.c_str(), th::text);
+        const std::string hp = std::to_string(std::max(0, lead.hp)) + "/" +
+                               std::to_string(std::max(0, lead.max_hp));
+        const int hpw = g.text_width(hp.c_str());
+        g.draw_text(l.health.x + l.health.w - hpw, l.hud.y + 6, hp.c_str(), th::text_dim);
+        g.fill_round_rect(l.health.x, l.health.y, l.health.w, l.health.h,
+                          l.health.h / 2, th::track);
+        const int health_fill = lead.max_hp > 0
+            ? (l.health.w - 2) * std::clamp(lead.hp, 0, lead.max_hp) / lead.max_hp : 0;
+        if (health_fill > 0)
+            g.fill_round_rect(l.health.x + 1, l.health.y + 1, health_fill,
+                              l.health.h - 2, (l.health.h - 2) / 2,
+                              lead.hp * 4 <= lead.max_hp ? th::danger : th::success);
+
+        char stats[96];
+        std::snprintf(stats, sizeof stats, "BALLS %d     WINS %d     CAUGHT %d",
+                      world_.balls, world_.wins, world_.caught);
+        g.draw_text(l.stats.x, l.stats.y + 7, stats, th::text_dim);
+    } else {
+        char line[128];
+        std::snprintf(line, sizeof line, "%s  Lv%d  %d/%d  balls %d  won %d  caught %d",
+                      s ? s->name.c_str() : "-", lead.level, lead.hp, lead.max_hp,
+                      world_.balls, world_.wins, world_.caught);
+        g.fill_rect(0, 0, fb_w_, 22, th::bg);
+        g.set_font_size(th::sz_caption);
+        g.draw_text(8, 6, line, th::text);
+    }
+    if (message_t_ > 0 && !l.message.empty()) {
+        g.fill_round_rect(l.message.x, l.message.y, l.message.w, l.message.h,
+                          th::radius_sm, th::elevated);
+        g.draw_round_rect(l.message.x, l.message.y, l.message.w, l.message.h,
+                          th::radius_sm, th::border_strong);
+        g.set_font_size(th::sz_caption);
+        g.draw_text(l.message.x + 10, l.message.y + 10, message_.c_str(), th::text);
     }
     render_controls(g);
 }
@@ -528,20 +567,31 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
     g.fill_rect(0, 0, fb_w_, fb_h_ / 2, gfx::rgb(0x2e, 0x3d, 0x4e));
     g.fill_rect(0, fb_h_ / 2, fb_w_, fb_h_ / 2, gfx::rgb(0x24, 0x33, 0x26));
 
-    const auto bar = [&](int x, int y, int w, const Creature& c, const char* who) {
+    const auto bar = [&](const Box& card, const Creature& c, const char* who) {
+        if (card.empty()) return;
         const SpeciesDef* s = dex_.species_by_id(c.species);
         char t[96];
-        std::snprintf(t, sizeof t, "%s %s  Lv%d", who, s ? s->name.c_str() : "-", c.level);
-        g.draw_text(x, y, t, th::text);
-        const int bw = w, bh = 8;
-        g.fill_rect(x, y + 18, bw, bh, gfx::rgb(0x14, 0x18, 0x1e));
-        const int fill = c.max_hp > 0 ? bw * c.hp / c.max_hp : 0;
+        const std::string name = display_name(s ? s->name : "-");
+        std::snprintf(t, sizeof t, "%s  %s  Lv%d", who, name.c_str(), c.level);
+        g.fill_round_rect(card.x, card.y, card.w, card.h, th::radius_sm, th::elevated);
+        g.draw_round_rect(card.x, card.y, card.w, card.h, th::radius_sm, th::border);
+        g.set_font_size(th::sz_caption);
+        g.draw_text(card.x + 8, card.y + 7, t, th::text);
+        const int bw = card.w - 16, bh = 7;
+        const int bx = card.x + 8, by = card.y + 32;
+        g.fill_round_rect(bx, by, bw, bh, bh / 2, th::track);
+        const int fill = c.max_hp > 0 ? (bw - 2) * std::clamp(c.hp, 0, c.max_hp) / c.max_hp : 0;
         const gfx::Color hue = c.hp * 4 <= c.max_hp ? th::danger
                              : c.hp * 2 <= c.max_hp ? th::warn : th::success;
-        g.fill_rect(x, y + 18, std::max(0, fill), bh, hue);
+        if (fill > 0) g.fill_round_rect(bx + 1, by + 1, fill, bh - 2, (bh - 2) / 2, hue);
+        const std::string hp = std::to_string(std::max(0, c.hp)) + "/" +
+                               std::to_string(std::max(0, c.max_hp));
+        const int hpw = g.text_width(hp.c_str());
+        g.draw_text(card.x + card.w - hpw - 8, card.y + 7, hp.c_str(), th::text_dim);
         if (c.status != Status::None) {
             static const char* kTag[4] = {"", "BRN", "PAR", "SLP"};
-            g.draw_text(x + bw + 6, y + 14, kTag[static_cast<int>(c.status)], th::warn);
+            g.draw_text(card.x + card.w - 32, card.y + 20,
+                        kTag[static_cast<int>(c.status)], th::warn);
         }
     };
 
@@ -553,7 +603,7 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
                          : st == PvpClient::State::Queued     ? "Looking for an opponent..."
                          : st == PvpClient::State::Reporting  ? "Reporting the result..."
                                                               : "Starting...";
-        g.fill_rect(l.panel.x, l.panel.y, l.panel.w, l.panel.h, gfx::rgba(0x10, 0x14, 0x1a, 235));
+        g.fill_rect(l.panel.x, l.panel.y, l.panel.w, l.panel.h, th::bg);
         g.draw_line(l.panel.x, l.panel.y, l.panel.x + l.panel.w, l.panel.y, th::border);
         g.set_font_size(th::sz_title);
         g.draw_text(fb_w_ / 2 - 90, fb_h_ / 2 - 30, "Rated match", th::text);
@@ -562,8 +612,10 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
         if (!online_note_.empty())
             g.draw_text(l.log.x, l.log.y + 26, online_note_.c_str(), th::warn);
         if (!l.back.empty()) {
-            g.fill_rect(l.back.x, l.back.y, l.back.w, l.back.h, gfx::rgba(0x10, 0x14, 0x1a, 220));
-            g.draw_rect(l.back.x, l.back.y, l.back.w, l.back.h, th::border);
+            g.fill_round_rect(l.back.x, l.back.y, l.back.w, l.back.h,
+                              th::radius_sm, th::ctrl);
+            g.draw_round_rect(l.back.x, l.back.y, l.back.w, l.back.h,
+                              th::radius_sm, th::border_strong);
             g.draw_text(l.back.x + 12, l.back.y + l.back.h / 2 - 6, "Cancel", th::text);
         }
         render_controls(g);
@@ -594,8 +646,8 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
     if (have_creatures) {
         creature(l.theirs, them);
         creature(l.mine, mine);
-        bar(24, 26, 150, them, net ? "Rival" : "Wild");
-        bar(fb_w_ / 2 + 24, l.panel.y - 54, 150, mine, "Your");
+        bar(l.theirs_info, them, net ? "RIVAL" : "WILD");
+        bar(l.mine_info, mine, "YOUR TEAM");
     } else {
         g.set_font_size(th::sz_title);
         g.draw_text(fb_w_ / 2 - 110, fb_h_ / 2 - 40, "No match", th::text_dim);
@@ -603,8 +655,9 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
     }
 
     // ---- the panel ----
-    g.fill_rect(l.panel.x, l.panel.y, l.panel.w, l.panel.h, gfx::rgba(0x10, 0x14, 0x1a, 235));
+    g.fill_rect(l.panel.x, l.panel.y, l.panel.w, l.panel.h, th::bg);
     g.draw_line(l.panel.x, l.panel.y, l.panel.x + l.panel.w, l.panel.y, th::border);
+    g.set_font_size(th::sz_body);
     if (!message_.empty()) g.draw_text(l.log.x, l.log.y + 4, message_.c_str(), th::text);
 
     char sub[96];
@@ -639,7 +692,10 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
                                                     : "You got away.");
             }
             g.draw_text(l.log.x, l.log.y + 26, sub, th::text_dim);
-            g.fill_rect(l.ack.x, l.ack.y, l.ack.w, l.ack.h, th::accent);
+            g.fill_round_rect(l.ack.x, l.ack.y, l.ack.w, l.ack.h,
+                              th::radius_sm, th::accent);
+            g.draw_round_rect(l.ack.x, l.ack.y, l.ack.w, l.ack.h,
+                              th::radius_sm, th::accent_hover);
             g.draw_text(l.ack.x + 28, l.ack.y + 14, "Continue", ink_on(th::accent));
             render_controls(g);
             return;
@@ -650,9 +706,13 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
         const Box& b = l.cell[i];
         if (b.empty()) continue;
         std::string label = "-";
+        std::string detail;
         gfx::Color tint = th::ctrl;
         if (mode() == Mode::Menu && i < 4) {
             label = kMenu[i];
+            static const char* kDetail[4] = {"Choose a move", "Try to catch",
+                                              "Switch lead", "Leave battle"};
+            detail = kDetail[i];
             if (net) {
                 // Drawn DIM rather than hidden: a menu whose shape changes between a
                 // wild fight and a rated one teaches two layouts, and a control that
@@ -664,24 +724,38 @@ void CreaturesScene::render_battle(const engine::Context& ctx) {
         } else if (mode() == Mode::Moves && i < kMoveSlots) {
             const MoveSlot& ms = mine.moves[i];
             if (const MoveDef* mv = dex_.move(ms.move)) {
-                label = mv->name + "  " + std::to_string(ms.pp);
+                label = mv->name;
+                detail = "PP " + std::to_string(ms.pp);
                 tint  = type_colour(mv->type);
             }
         } else if (mode() == Mode::Party && i < kPartySize) {
             const Creature& c = shown.side[my_side()].member[i];
             if (c.species != 0) {
                 const SpeciesDef* s = dex_.species_by_id(c.species);
-                label = (s ? s->name : "?") + "  " + std::to_string(c.hp);
+                label = (s ? s->name : "?") + "  " + std::to_string(c.hp) + "/" +
+                        std::to_string(c.max_hp);
                 tint  = c.alive() ? type_colour(s ? s->type : 0) : th::ctrl;
             }
         }
-        g.fill_rect(b.x, b.y, b.w, b.h, tint);
-        g.draw_rect(b.x, b.y, b.w, b.h, th::border);
-        g.draw_text(b.x + 8, b.y + b.h / 2 - 6, label.c_str(), ink_on(tint));
+        g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_sm, tint);
+        g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_sm, th::border_strong);
+        const gfx::Color ink = ink_on(tint);
+        if (!detail.empty() && b.h >= 36) {
+            g.set_font_size(th::sz_body);
+            g.draw_text(b.x + 8, b.y + 6, label.c_str(), ink);
+            g.set_font_size(th::sz_caption);
+            g.draw_text(b.x + 8, b.y + b.h - 16, detail.c_str(),
+                        tint == th::ctrl_disabled ? th::text_muted : ink);
+        } else {
+            g.set_font_size(th::sz_body);
+            g.draw_text(b.x + 8, b.y + b.h / 2 - 6, label.c_str(), ink);
+        }
     }
     if (!l.back.empty()) {
-        g.fill_rect(l.back.x, l.back.y, l.back.w, l.back.h, gfx::rgba(0x10, 0x14, 0x1a, 220));
-        g.draw_rect(l.back.x, l.back.y, l.back.w, l.back.h, th::border);
+        g.fill_round_rect(l.back.x, l.back.y, l.back.w, l.back.h,
+                          th::radius_sm, th::ctrl);
+        g.draw_round_rect(l.back.x, l.back.y, l.back.w, l.back.h,
+                          th::radius_sm, th::border_strong);
         g.draw_text(l.back.x + 20, l.back.y + l.back.h / 2 - 6, "Back", th::text);
     }
     render_controls(g);
@@ -737,17 +811,18 @@ void CreaturesScene::render_controls(gfx::Renderer2D& g) const {
         if (b.empty()) return;
         const bool hot = pointers.down_in(b);
         g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
-                          hot ? gfx::rgba(0x35, 0x58, 0x83, 205)
-                              : gfx::rgba(0x10, 0x18, 0x2a, 170));
+                          hot ? th::ctrl_press : th::ctrl);
         g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
-                          hot ? th::accent : gfx::rgba(0xff, 0xff, 0xff, 90));
-        g.set_font_size(th::sz_body);
+                          hot ? th::accent : th::border_strong);
+        g.set_font_size(th::sz_caption);
         const int tw = g.text_width(label);
-        g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_body) / 2,
+        g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_caption) / 2,
                     label, hot ? th::text : th::text_dim);
     };
-    btn(l.up, "^"); btn(l.down, "v"); btn(l.left, "<"); btn(l.right, ">");
-    btn(l.act, "Z"); btn(l.save, "S"); btn(l.online, "O");
+    btn(l.up, label(Control::Up)); btn(l.down, label(Control::Down));
+    btn(l.left, label(Control::Left)); btn(l.right, label(Control::Right));
+    btn(l.act, label(Control::Act)); btn(l.save, label(Control::Save));
+    btn(l.online, label(Control::Online));
 }
 
 } // namespace creature

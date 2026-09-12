@@ -135,6 +135,15 @@ int palette_count(const std::vector<std::uint32_t>& b, creature::Box r) {
     return n;
 }
 
+int count_colour(const std::vector<std::uint32_t>& b, creature::Box r,
+                 std::uint32_t colour) {
+    int n = 0;
+    for (int py = r.y * SS; py < (r.y + r.h) * SS && py < PH; ++py)
+        for (int px = r.x * SS; px < (r.x + r.w) * SS && px < PW; ++px)
+            if (b[static_cast<std::size_t>(py) * PW + px] == colour) ++n;
+    return n;
+}
+
 void clear_file(const char* rel) {
     std::error_code ec;
     std::filesystem::remove(std::filesystem::path(ASSET_ROOT "/assets") / rel, ec);
@@ -161,6 +170,9 @@ int main() {
     creature::CreaturesScene scene;
     CHECK(scene.ready());
     if (!scene.ready()) { std::printf("  problem: %s\n", scene.problem().c_str()); return 1; }
+    CHECK(std::string(creature::label(creature::Control::Act)) == "ACT");
+    CHECK(std::string(creature::label(creature::Control::Save)) == "SAVE");
+    CHECK(std::string(creature::label(creature::Control::Online)) == "PVP");
 
     std::vector<std::uint32_t> buf(static_cast<std::size_t>(PW) * PH, 0);
     platform::Framebuffer fb{buf.data(), PW, PH, PW};
@@ -205,6 +217,22 @@ int main() {
     CHECK(scene.world().phase == creature::Phase::Overworld);
     CHECK(scene.world().party.count == 1);
 
+    // S36: the overworld exposes identity, health and progress as hierarchy, rather
+    // than one opaque debug sentence. Layout owns these neighbours so controls and
+    // rendering cannot disagree about the space they occupy.
+    {
+        const creature::Layout l = scene.controls();
+        CHECK(!l.hud.empty() && !l.health.empty() && !l.stats.empty());
+        CHECK(!l.message.empty());
+        CHECK(count_colour(buf, l.hud, ui::theme::elevated) > 100);
+        CHECK(count_colour(buf, l.health, ui::theme::track) > 100);
+        CHECK(count_colour(buf, l.health, ui::theme::success) > 100);
+        CHECK(!l.hud.overlaps(l.up));
+        CHECK(!l.message.overlaps(l.left));
+        CHECK(!l.message.overlaps(l.right));
+        CHECK(!l.message.overlaps(l.act));
+    }
+
     // ---- 2. the d-pad is DRAWN and it WORKS ------------------------------------
     // Not "walk() moves the player" — that is test_creature_world's job. This is:
     // a finger on the pixel the renderer drew a button at makes the player move.
@@ -214,6 +242,18 @@ int main() {
         CHECK(ink(buf, l.right) > 0);              // ...and something is drawn there
         CHECK(ink(buf, l.act) > 0);
         CHECK(ink(buf, l.save) > 0);
+        CHECK(count_colour(buf, l.act, ui::theme::ctrl) > 100);
+
+        platform::InputState held{};
+        held.mouse_x = l.right.x + l.right.w / 2;
+        held.mouse_y = l.right.y + l.right.h / 2;
+        held.mouse_down[static_cast<int>(platform::MouseButton::Left)] = true;
+        scene.update(0.0, held);
+        render(held);
+        CHECK(count_colour(buf, l.right, ui::theme::ctrl_press) > 100);
+        scene.update(0.0, idle);
+        render(idle);
+        CHECK(count_colour(buf, l.right, ui::theme::ctrl) > 100);
 
         const int before_x = scene.world().px;
         const auto [rx, ry] = centre(l.right);
@@ -254,6 +294,13 @@ int main() {
     CHECK(scene.mode() == creature::Mode::Menu);
     {
         const creature::Layout l = scene.controls();
+        CHECK(!l.theirs_info.empty() && !l.mine_info.empty());
+        CHECK(count_colour(buf, l.theirs_info, ui::theme::elevated) > 100);
+        CHECK(count_colour(buf, l.mine_info, ui::theme::elevated) > 100);
+        CHECK(count_colour(buf, l.theirs_info, ui::theme::track) > 100);
+        CHECK(count_colour(buf, l.mine_info, ui::theme::track) > 100);
+        CHECK(!l.theirs_info.overlaps(l.theirs));
+        CHECK(!l.mine_info.overlaps(l.mine));
         for (int i = 0; i < 4; ++i) {
             CHECK(!l.cell[i].empty());
             CHECK(ink(buf, l.cell[i]) > 0);        // every menu button has a label...
@@ -567,6 +614,52 @@ int main() {
             CHECK(on.theirs.empty());
             CHECK(on.cell[0].empty());
             CHECK(!on.back.empty());
+
+            const creature::Layout no_hud = creature::layout(359, 180, creature::Mode::Overworld);
+            const creature::Layout has_hud = creature::layout(360, 180, creature::Mode::Overworld);
+            CHECK(no_hud.hud.empty() && no_hud.health.empty() && no_hud.stats.empty());
+            CHECK(!has_hud.hud.empty() && !has_hud.health.empty() && !has_hud.stats.empty());
+            CHECK(creature::layout(399, 240, creature::Mode::Overworld).message.empty());
+            CHECK(!creature::layout(400, 240, creature::Mode::Overworld).message.empty());
+            CHECK(creature::layout(480, 279, creature::Mode::Menu).mine_info.empty());
+            CHECK(!creature::layout(480, 280, creature::Mode::Menu).mine_info.empty());
+
+            // S36 status surfaces are neighbours of the controls, so their geometry
+            // is swept with the controls rather than checked at one friendly size.
+            // Odd steps exercise rounding and both pad-present/pad-absent regimes.
+            int layouts = 0;
+            for (int w = 400; w <= 960; w += 17) {
+                for (int h = 240; h <= 720; h += 19) {
+                    const creature::Layout ow = creature::layout(w, h, creature::Mode::Overworld);
+                    const auto inside = [&](const Box& b) {
+                        return b.empty() || (b.x >= 0 && b.y >= 0 &&
+                                             b.x + b.w <= w && b.y + b.h <= h);
+                    };
+                    const Box regions[] = {ow.hud, ow.health, ow.stats, ow.message,
+                                           ow.up, ow.down, ow.left, ow.right,
+                                           ow.act, ow.save, ow.online};
+                    for (const Box& b : regions) CHECK(inside(b));
+                    CHECK(!ow.health.overlaps(ow.stats));
+                    const Box controls[] = {ow.up, ow.down, ow.left, ow.right,
+                                            ow.act, ow.save, ow.online};
+                    for (const Box& b : controls) {
+                        CHECK(!b.overlaps(ow.hud));
+                        CHECK(!b.overlaps(ow.message));
+                    }
+
+                    const creature::Layout battle = creature::layout(w, h, creature::Mode::Menu);
+                    CHECK(inside(battle.theirs_info));
+                    CHECK(inside(battle.mine_info));
+                    CHECK(!battle.theirs_info.overlaps(battle.theirs));
+                    CHECK(!battle.theirs_info.overlaps(battle.mine));
+                    CHECK(!battle.mine_info.overlaps(battle.theirs));
+                    CHECK(!battle.mine_info.overlaps(battle.mine));
+                    CHECK(!battle.theirs_info.overlaps(battle.panel));
+                    CHECK(!battle.mine_info.overlaps(battle.panel));
+                    ++layouts;
+                }
+            }
+            CHECK(layouts > 800);
         }
 
         // A rated match cannot be started from inside a wild one — one fight at a time.

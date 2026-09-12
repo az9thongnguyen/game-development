@@ -19,7 +19,7 @@ A **hand-written C++20 game engine** built from scratch to learn deeply, plus a
 collection of games/tools on top of it and a hand-written Game Backend-as-a-Service.
 `requirements.md` (Vietnamese) owns the original *learning* vision; `docs/strategy/`
 owns the *product* direction (how this grows into a self-hostable game-creation
-platform) — read it before touching the platform spine. `docs/book/` is a 151-chapter
+platform) — read it before touching the platform spine. `docs/book/` is a 152-chapter
 guidebook where each chapter maps to the code that implements it; **the guidebook
 chapter is the best explanation of any given subsystem** (e.g. `93` = release store,
 `95`–`97` = Hub/Studio shell). `docs/guides/author-to-url.md` walks the operator
