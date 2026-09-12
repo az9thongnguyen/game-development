@@ -33,6 +33,9 @@ namespace creature {
 using Box     = touch::Box;
 using Pointer = touch::Pointer;
 
+enum class Control { Up, Down, Left, Right, Act, Save, Online };
+[[nodiscard]] const char* label(Control control);
+
 // What the screen is asking for right now.
 enum class Mode : unsigned char {
     Overworld = 0,   // walking: the pad and three buttons
@@ -53,6 +56,9 @@ enum class Mode : unsigned char {
 // leaves the last two EMPTY rather than having its own array. One array means the hit
 // test is one loop, and a loop cannot forget the mode it is in.
 struct Layout {
+    Box hud;                       // overworld status card
+    Box health, stats;             // regions inside the HUD
+    Box message;                   // transient message between the two thumb zones
     Box up, down, left, right;   // the d-pad — Overworld only
     Box act, save, online;       // the thumb row — Overworld only
     Box cell[6];                 // Menu / Moves / Party
@@ -68,6 +74,7 @@ struct Layout {
     // first. It also lets a test assert the sprite is ON SCREEN by reading the same
     // numbers the renderer used, instead of re-deriving them and testing itself.
     Box mine, theirs;
+    Box mine_info, theirs_info;    // battle status cards; renderer and tests share them
 
     [[nodiscard]] bool pad_visible() const { return !act.empty(); }
 };

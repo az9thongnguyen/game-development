@@ -1028,6 +1028,19 @@ farm::Pointer at(const farm::Box& b, bool down, bool pressed) {
 } // namespace
 
 static void test_controls_geometry() {
+    CHECK(std::string(farm::label(farm::Control::Use)) == "USE");
+    CHECK(std::string(farm::label(farm::Control::Seed)) == "SEED");
+    CHECK(std::string(farm::label(farm::Control::Save)) == "SAVE");
+    CHECK(std::string(farm::label(farm::Control::Keep)) == "KEEP");
+    CHECK(std::string(farm::label(farm::Control::Take)) == "TAKE");
+
+    const farm::Layout compact = farm::layout(479, 360, false);
+    const farm::Layout cards   = farm::layout(480, 360, false);
+    CHECK(compact.calendar.empty() && compact.energy.empty() &&
+          compact.gold.empty() && compact.cloud.empty());
+    CHECK(!cards.calendar.empty() && !cards.energy.empty() &&
+          !cards.gold.empty() && !cards.cloud.empty());
+
     // A sweep, not a handful of landmarks: the sizes in between are exactly where an
     // off-by-one in a margin lives. Odd steps, so the samples do not all land on
     // multiples of the button size and miss the rounding.
@@ -1056,6 +1069,15 @@ static void test_controls_geometry() {
                 // the test would merely prove a second set of arithmetic agrees with
                 // itself while the screen still overlaps at a small viewport.
                 CHECK(l.hud.x == 0 && l.hud.y == 0 && l.hud.w == w && l.hud.h == 34);
+                const farm::Box status[] = {l.calendar, l.energy, l.gold, l.cloud};
+                for (std::size_t i = 0; i < 4; ++i) {
+                    CHECK(!status[i].empty());
+                    CHECK(l.hud.contains(status[i].x, status[i].y));
+                    CHECK(l.hud.contains(status[i].x + status[i].w - 1,
+                                         status[i].y + status[i].h - 1));
+                    for (std::size_t k = i + 1; k < 4; ++k)
+                        CHECK(!overlaps(status[i], status[k]));
+                }
                 const farm::Box controls[] = {l.up, l.down, l.left, l.right,
                                               l.use, l.seed, l.save, l.keep, l.take,
                                               l.tool[0], l.tool[1], l.tool[2], l.tool[3]};

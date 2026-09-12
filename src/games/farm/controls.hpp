@@ -39,6 +39,9 @@ namespace farm {
 using Box     = touch::Box;
 using Pointer = touch::Pointer;
 
+enum class Control { Up, Down, Left, Right, Use, Seed, Save, Keep, Take };
+[[nodiscard]] const char* label(Control control);
+
 // Where every on-screen control sits, in FRAMEBUFFER coordinates — the same space
 // the pointer arrives in, so no transform stands between drawing and hitting.
 //
@@ -49,6 +52,7 @@ using Pointer = touch::Pointer;
 // thing, and two facts about one thing eventually disagree.
 struct Layout {
     Box hud;                       // top status strip; a neighbour, not a control
+    Box calendar, energy, gold, cloud; // semantic status surfaces inside the strip
     Box hint;                      // keyboard help beside the hotbar
     Box up, down, left, right;   // the d-pad, bottom left
     Box use, seed;               // the thumb row, bottom right

@@ -791,46 +791,74 @@ void FarmScene::render(const engine::Context& ctx) {
     // ---- HUD ----
     const Layout pad = layout(W, H, conflict_);
     const Box& hud = pad.hud;
-    g.fill_rect_blend(hud.x, hud.y, hud.w, hud.h, 0xE0121420);
-    g.set_font_size(th::sz_body);
+    g.fill_rect(hud.x, hud.y, hud.w, hud.h, th::bg);
     // The season is on the HUD because it is a RULE with teeth (chapter 143): a crop
     // planted too late dies, so "which day of which season is it" has to be readable
     // without counting. `spring 3/7` is the whole calendar in six characters.
     const Season szn = season_of(world_.day);
-    const std::string clock = "Day " + std::to_string(world_.day) + "  " +
-                              season_name(szn) + " " +
+    std::string season = season_name(szn);
+    for (char& c : season)
+        if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+    const std::string clock = "DAY " + std::to_string(world_.day) + "  " +
+                              season.substr(0, std::min<std::size_t>(3, season.size())) + " " +
                               std::to_string(day_of_season(world_.day)) + "/" +
-                              std::to_string(kDaysPerSeason) + "   " + world_.time_text();
-    g.draw_text(th::space_sm, 8, clock.c_str(), th::text);
-
-    const int bar_x = 150, bar_w = 120;
-    g.fill_rect(bar_x, 12, bar_w, 10, th::track);
-    const int fill = bar_w * std::max(0, world_.energy) / kMaxEnergy;
-    g.fill_rect(bar_x, 12, fill, 10, world_.energy > 25 ? th::success : th::danger);
-    g.set_font_size(th::sz_caption);
-    g.draw_text(bar_x, 1, "ENERGY", th::text_muted);
-
-    g.set_font_size(th::sz_body);
+                              std::to_string(kDaysPerSeason) + "  " + world_.time_text();
     const std::string money = std::to_string(world_.gold) + "g";
-    g.draw_text(bar_x + bar_w + th::space_lg, 8, money.c_str(), th::warn);
 
-    // ---- cloud chip, top right --------------------------------------------------
-    // One line, always present. "offline" is a state, not an error, and it is written
-    // in the muted colour to say so: the farm is a whole game without a backend.
-    {
+    // At normal game widths, four compact surfaces turn the old debug sentence into
+    // scan-friendly hierarchy. On genuinely small legacy framebuffers layout() leaves
+    // them empty and this falls back to the compact line rather than clipping cards.
+    if (!pad.calendar.empty()) {
+        const auto card = [&](const Box& b, gfx::Color fill) {
+            g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_sm, fill);
+            g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_sm, th::border);
+        };
+        card(pad.calendar, th::surface_selected);
+        card(pad.energy, th::elevated);
+        card(pad.gold, th::elevated);
+        card(pad.cloud, th::elevated);
+
+        g.set_font_size(th::sz_caption);
+        g.draw_text(pad.calendar.x + 6, pad.calendar.y + 7, clock.c_str(), th::text);
+
+        const std::string energy = std::to_string(std::max(0, world_.energy)) + "/" +
+                                   std::to_string(kMaxEnergy);
+        g.draw_text(pad.energy.x + 6, pad.energy.y + 3, "ENERGY", th::text_muted);
+        const int ew = g.text_width(energy.c_str());
+        g.draw_text(pad.energy.x + pad.energy.w - ew - 6, pad.energy.y + 3,
+                    energy.c_str(), th::text_dim);
+        const Box meter{pad.energy.x + 6, pad.energy.y + 18, pad.energy.w - 12, 5};
+        g.fill_round_rect(meter.x, meter.y, meter.w, meter.h, 2, th::track);
+        const int energy_fill = (meter.w - 2) * std::clamp(world_.energy, 0, kMaxEnergy) /
+                                kMaxEnergy;
+        if (energy_fill > 0)
+            g.fill_round_rect(meter.x + 1, meter.y + 1, energy_fill, meter.h - 2, 1,
+                              world_.energy > 25 ? th::success : th::danger);
+
+        g.set_font_size(th::sz_body);
+        const int mw = g.text_width(money.c_str());
+        g.draw_text(pad.gold.x + (pad.gold.w - mw) / 2, pad.gold.y + 6,
+                    money.c_str(), th::warn);
+
         const gfx::Color tone = link_ == Link::Online   ? th::success
                               : link_ == Link::Connecting ? th::text_muted
                               : conflict_               ? th::warn
                                                         : th::text_dim;
         const std::string line = cloud_chip();
-        const int cw = g.text_width(line.c_str());
-        g.draw_text(W - cw - th::space_sm, 8, line.c_str(), conflict_ ? th::warn : tone);
+        const int text_y = event_name_.empty() ? pad.cloud.y + 7 : pad.cloud.y + 12;
+        g.fill_circle(pad.cloud.x + 10, text_y + 5, 3, tone);
         g.set_font_size(th::sz_caption);
+        g.draw_text(pad.cloud.x + 18, text_y, line.c_str(), conflict_ ? th::warn : th::text_dim);
         if (!event_name_.empty()) {
-            const int ew = g.text_width(event_name_.c_str());
-            g.draw_text(W - ew - th::space_sm, 1, event_name_.c_str(), th::accent);
+            g.draw_text(pad.cloud.x + 6, pad.cloud.y + 1, event_name_.c_str(), th::accent);
         }
-        g.set_font_size(th::sz_body);
+    } else {
+        const std::string fallback = "Day " + std::to_string(world_.day) + "  " +
+                                     season_name(szn) + " " + world_.time_text() +
+                                     "  E " + std::to_string(world_.energy) +
+                                     "  " + money + "  " + cloud_chip();
+        g.set_font_size(th::sz_caption);
+        g.draw_text(th::space_sm, 8, fallback.c_str(), th::text);
     }
 
     // ---- hotbar -----------------------------------------------------------------
@@ -889,8 +917,10 @@ void FarmScene::render(const engine::Context& ctx) {
             const bool on  = i == static_cast<int>(tool_);
             const bool hot = render_pointers.down_in(b);
             g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_sm,
-                              on ? 0xF02A3040 : (hot ? 0xD0242C3C : 0xC0161A24));
-            if (on) g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_sm, th::accent);
+                              on ? th::surface_selected
+                                 : (hot ? th::ctrl_hover : th::elevated));
+            g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_sm,
+                              on ? th::accent : th::border);
             g.set_font_size(th::sz_caption);
             // Two caption rows, centred in whatever height the slot got: 24 on the
             // retro framebuffer, a thumb-sized 44 where it is tappable. Text pinned to
@@ -959,27 +989,26 @@ void FarmScene::render(const engine::Context& ctx) {
             if (b.empty()) return;
             const bool hot = render_pointers.down_in(b);
             g.fill_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
-                              hot ? 0xB03A4560 : 0x60202838);
+                              hot ? th::ctrl_press : th::ctrl);
             g.draw_round_rect(b.x, b.y, b.w, b.h, th::radius_md,
-                              hot ? th::accent : 0x50FFFFFF);
-            g.set_font_size(th::sz_body);
+                              hot ? th::accent : th::border_strong);
+            g.set_font_size(th::sz_caption);
             const int tw = g.text_width(glyph);
-            g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_body) / 2 + 1, glyph,
+            g.draw_text(b.x + (b.w - tw) / 2, b.y + (b.h - th::sz_caption) / 2, glyph,
                         hot ? th::text : 0xC0FFFFFF);
         };
-        button(pad.up, "^");
-        button(pad.down, "v");
-        button(pad.left, "<");
-        button(pad.right, ">");
-        button(pad.use, "Z");
-        button(pad.seed, "Q");
-        // Each button is labelled with the KEY it duplicates, like Z and Q above. That
-        // is not decoration: it is what makes the two input paths teach each other —
-        // and the cloud chip that has always read "F6 keep yours / F7 take cloud" is,
-        // with no change at all, the legend for the two buttons that appear under it.
-        button(pad.save, "F5");
-        button(pad.keep, "F6");
-        button(pad.take, "F7");
+        button(pad.up, label(Control::Up));
+        button(pad.down, label(Control::Down));
+        button(pad.left, label(Control::Left));
+        button(pad.right, label(Control::Right));
+        button(pad.use, label(Control::Use));
+        button(pad.seed, label(Control::Seed));
+        // The touch surface names the VERB; the keyboard hint and conflict copy teach
+        // its shortcut. A square labelled only F5/Q/Z makes a phone player decode a
+        // keyboard they may not have before they can act.
+        button(pad.save, label(Control::Save));
+        button(pad.keep, label(Control::Keep));
+        button(pad.take, label(Control::Take));
     }
 
     if (message_t_ > 0 && !message_.empty()) {

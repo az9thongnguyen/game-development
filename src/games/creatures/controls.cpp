@@ -23,11 +23,34 @@ bool in_battle(Mode m) { return m != Mode::Overworld; }
 
 } // namespace
 
+const char* label(Control control) {
+    switch (control) {
+        case Control::Up:     return "^";
+        case Control::Down:   return "v";
+        case Control::Left:   return "<";
+        case Control::Right:  return ">";
+        case Control::Act:    return "ACT";
+        case Control::Save:   return "SAVE";
+        case Control::Online: return "PVP";
+    }
+    return "";
+}
+
 Layout layout(int w, int h, Mode mode) {
     Layout l;
     if (w <= 0 || h <= 0) return l;
 
     if (!in_battle(mode)) {
+        // A product HUD, not a debug sentence. The health and progress regions are
+        // children of this card; the message uses the safe lane between both thumbs.
+        if (w >= 360 && h >= 120) {
+            l.hud     = Box{kPad, kPad, w - kPad * 2, 44};
+            l.health  = Box{kPad * 2, 36, 140, 8};
+            l.stats   = Box{176, 16, w - 192, 28};
+        }
+        if (w >= 400 && h >= 180)
+            l.message = Box{168, h - 40, w - 236, 32};
+
         // ---- walking ------------------------------------------------------------
         const touch::DPad pad = touch::dpad(w, h, kMargin);
         l.up = pad.up; l.left = pad.left; l.right = pad.right; l.down = pad.down;
@@ -67,6 +90,11 @@ Layout layout(int w, int h, Mode mode) {
     const int sz = 64;
     l.theirs = Box{w - sz - 48, 40, sz, sz};
     l.mine   = Box{48, l.panel.y - sz - 12, sz, sz};
+    const int info_w = std::min(220, w / 2 - 48);
+    if (h >= 280) {
+        l.theirs_info = Box{24, 16, info_w, 52};
+        l.mine_info   = Box{w / 2 + 24, l.panel.y - 68, info_w, 52};
+    }
 
     if (mode == Mode::Online) {
         // One control, and it is Cancel — in the same place `back` sits in the other
@@ -76,6 +104,7 @@ Layout layout(int w, int h, Mode mode) {
         // No sprites: there is nothing to draw yet. Empty boxes rather than a flag, so
         // a renderer that forgets to check draws nothing instead of drawing at 0,0.
         l.mine = l.theirs = Box{};
+        l.mine_info = l.theirs_info = Box{};
         return l;
     }
 
