@@ -92,11 +92,14 @@
              overflow: hidden; text-overflow: ellipsis; }
     #status.status-pill {
       flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-      color: var(--success); background: rgba(69,211,154,.08);
-      border: 1px solid rgba(69,211,154,.24); border-radius: 999px;
+      color: var(--accent); background: rgba(124,156,255,.08);
+      border: 1px solid rgba(124,156,255,.24); border-radius: 999px;
       padding: 5px 8px; font-size: 10px; font-weight: 750;
       letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
     }
+    #status[data-state="running"] { color: var(--success); background: rgba(69,211,154,.08);
+                                      border-color: rgba(69,211,154,.24); }
+    button[aria-pressed="true"] { color: var(--accent); background: rgba(124,156,255,.12); }
     #hint { color: #e6be5b; font-size: 11px; white-space: nowrap; }
     .spacer { flex: 1 1 auto; }
     #stage {
@@ -142,8 +145,8 @@
     <span id="status" class="status-pill" role="status">loading</span>
     <span id="hint"></span>
     <span class="spacer"></span>
-    <button id="logbtn" type="button" title="Show runtime log" aria-label="Show runtime log">≡</button>
-    <button id="fsbtn" type="button" title="Enter fullscreen" aria-label="Enter fullscreen">⛶</button>
+    <button id="logbtn" type="button" title="Show runtime log" aria-label="Show runtime log" aria-pressed="false">≡</button>
+    <button id="fsbtn" type="button" title="Enter fullscreen" aria-label="Enter fullscreen" aria-pressed="false">⛶</button>
   </nav>
   <div id="stage">
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
@@ -156,6 +159,18 @@
     var stageEl  = document.getElementById('stage');
     var canvasEl = document.getElementById('canvas');
     var hintEl   = document.getElementById('hint');
+    var logBtn   = document.getElementById('logbtn');
+    var fsBtn    = document.getElementById('fsbtn');
+
+    function showStatus(text, state) {
+      statusEl.textContent = text;
+      statusEl.dataset.state = state || 'loading';
+    }
+
+    function showTitle(text) {
+      titleEl.textContent = text;
+      document.title = text + ' — Hand Engine';
+    }
 
     // Pick the scene from ?mode=… so one WASM build can run any demo without a
     // recompile (default: chess, the M5 acceptance scene).
@@ -192,17 +207,29 @@
     // computed, so "deterministic across machines" stopped at the two that run CI.
     var cmdId = params.get('cmd');
     if (cmdId) argsByMode[mode = '_cmd'] = ['--cmd', cmdId].concat((params.get('args') || '').split(' ').filter(Boolean));
-    var projectNames = {
-      creator: 'Creator', colony: 'Colony', creatures: 'Creatures', farm: 'Farm', iso: 'Iso Farm'
-    };
     function projectStem(path) {
       var match = /(?:^|\/)([^/]+)\.gameproject$/.exec(path || '');
       return match ? match[1] : '';
     }
+    function humanize(stem) {
+      return (stem || 'engine lab').replace(/[-_]+/g, ' ').replace(/(^|\s)\S/g, function (c) {
+        return c.toUpperCase();
+      });
+    }
     var stem = projectStem(project || shellOf);
-    titleEl.textContent = projectNames[stem] || (cmdId ? 'Command' : mode === 'gui' ? 'Chess' : 'Engine Lab');
+    showTitle(stem ? humanize(stem) : (cmdId ? 'Command' : mode === 'gui' ? 'Chess' : 'Engine Lab'));
     document.body.dataset.game = stem || mode;
-    document.title = titleEl.textContent + ' — Hand Engine';
+    // The collection index is baked from the manifests, so it is the one product-name
+    // table the front door and this player share. A direct link not in the collection
+    // still gets a readable stem while a stale/missing index never blocks the game.
+    if (stem) fetch('collection.json').then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function (data) {
+      var path = project || shellOf;
+      var game = (data.games || []).find(function (g) { return g.manifest === path; });
+      if (game && game.name) showTitle(game.name);
+    }).catch(function () { /* the readable stem above is the offline fallback */ });
 
     // Clicking or touching the game must also return focus to it: touching the page
     // chrome moves focus away, and SDL2's Emscripten backend delivers keys to the
@@ -239,15 +266,25 @@
     canvasEl.addEventListener('mousedown', refocus);
     canvasEl.addEventListener('touchstart', refocus, { passive: true });
 
-    document.getElementById('logbtn').addEventListener('click', function () {
+    logBtn.addEventListener('click', function () {
       document.body.classList.toggle('logging');
+      var open = document.body.classList.contains('logging');
+      logBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+      logBtn.setAttribute('aria-label', open ? 'Hide runtime log' : 'Show runtime log');
+      logBtn.title = open ? 'Hide runtime log' : 'Show runtime log';
       refocus();
     });
-    document.getElementById('fsbtn').addEventListener('click', function () {
+    fsBtn.addEventListener('click', function () {
       if (document.fullscreenElement) document.exitFullscreen();
       else if (stageEl.requestFullscreen) stageEl.requestFullscreen({ navigationUI: 'hide' });
       // Fullscreen moves focus to the fullscreen element; the game needs it back.
       setTimeout(refocus, 50);
+    });
+    addEventListener('fullscreenchange', function () {
+      var open = !!document.fullscreenElement;
+      fsBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+      fsBtn.setAttribute('aria-label', open ? 'Exit fullscreen' : 'Enter fullscreen');
+      fsBtn.title = open ? 'Exit fullscreen' : 'Enter fullscreen';
     });
 
     var Module = {
@@ -273,15 +310,15 @@
           // No IDBFS (private mode, storage blocked) is not a reason not to play. The
           // game runs; it just forgets. Saying so beats a save that silently vanishes.
           console.error('persistent storage unavailable: ' + e);
-          statusEl.textContent = 'running (saves will not persist)';
+          showStatus('running (saves will not persist)', 'running');
         }
       }],
       canvas: canvasEl,
-      setStatus: function (t) { if (t) statusEl.textContent = t; },
+      setStatus: function (t) { if (t) showStatus(t, 'loading'); },
       print:    function (t) { logEl.textContent += t + "\n"; logEl.scrollTop = logEl.scrollHeight; },
       printErr: function (t) { logEl.textContent += t + "\n"; },
       onRuntimeInitialized: function () {
-        statusEl.textContent = 'running';
+        showStatus('running', 'running');
         fit();                       // SDL has set the drawing buffer by now
         // FOCUS THE CANVAS. SDL2's Emscripten backend listens for key events on the
         // canvas element, so with focus anywhere else (the body, by default) the build

@@ -8,5 +8,4 @@ asset map maps/level_00.map2
 asset texture textures/wall_1.hrt
 asset texture textures/wall_2.hrt
 asset texture textures/wall_3.hrt
-asset texture textures/creator_cover.hrt
 asset scene scenes/demo.scene

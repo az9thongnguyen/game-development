@@ -294,7 +294,8 @@ try {
         const r = a.getBoundingClientRect();
         a.scrollIntoView({ block: 'center' });
         const r2 = a.getBoundingClientRect();
-        return { x: r2.x + r2.width / 2, y: r2.y + r2.height / 2, href: a.getAttribute('href') };
+        return { x: r2.x + r2.width / 2, y: r2.y + r2.height / 2,
+                 href: a.getAttribute('href'), name: (a.getAttribute('aria-label') || '').replace(/^Play /, '') };
     })()`);
     if (!/^demo\.html\?project=/.test(target.href))
         fail('the Play button does not point at the player: ' + target.href);
@@ -323,23 +324,39 @@ try {
             manifestLike: (document.querySelector('#title')?.textContent || '').includes('projects/') ||
                           (document.querySelector('#title')?.textContent || '').includes('.gameproject'),
             statusPill: document.querySelector('#status')?.classList.contains('status-pill') || false,
+            statusState: document.querySelector('#status')?.dataset.state || '',
             minControl: controls.length ? Math.min(...controls.map(b => b.getBoundingClientRect().height)) : 0,
             namedControls: controls.filter(b => b.getAttribute('aria-label')).length,
+            pressedControls: controls.filter(b => b.getAttribute('aria-pressed') === 'false').length,
             hScroll: document.documentElement.scrollWidth > window.innerWidth + 1,
         };
     })()`);
     if (player.back !== 'collection.html') fail('the player has no route back to the collection');
     if (!player.backNamed) fail('the player back control has no accessible name');
     if (!player.title || player.manifestLike) fail('the player title exposes a manifest path instead of a game name');
-    const playerNames = { creator: 'Creator', colony: 'Colony', creatures: 'Creatures', farm: 'Farm', iso: 'Iso Farm' };
-    if (!playerNames[player.game]) fail(`the player exposes no product identity for “${player.game}”`);
-    if (playerNames[player.game] && player.title !== playerNames[player.game])
-        fail(`the ${player.game} player is named “${player.title}” instead of “${playerNames[player.game]}”`);
+    if (!player.game) fail('the player exposes no project identity');
+    if (player.title !== target.name)
+        fail(`the ${player.game} player is named “${player.title}” instead of manifest name “${target.name}”`);
     if (!player.statusPill) fail('runtime state is not presented as a status pill');
+    if (player.statusState !== 'running') fail(`the running game status uses state “${player.statusState}”`);
     if (player.minControl < 44) fail(`player chrome target is ${player.minControl}px high; expected >= 44`);
     if (player.namedControls !== 2) fail('a player chrome button has no accessible name');
+    if (player.pressedControls !== 2) fail('a stateful player control has no initial aria-pressed state');
     if (player.hScroll) fail('the player chrome scrolls sideways on a phone');
     ok(`player chrome names “${player.title}”, preserves 44px controls and links back`);
+
+    const logStates = await cdp.eval(`(() => {
+        const b = document.querySelector('#logbtn');
+        b.click();
+        const on = { pressed: b.getAttribute('aria-pressed'), visible: getComputedStyle(document.querySelector('#log')).display };
+        b.click();
+        return { on, off: { pressed: b.getAttribute('aria-pressed'), visible: getComputedStyle(document.querySelector('#log')).display } };
+    })()`);
+    if (logStates.on.pressed !== 'true' || logStates.on.visible === 'none')
+        fail('the Log control does not expose and show its active state');
+    if (logStates.off.pressed !== 'false' || logStates.off.visible !== 'none')
+        fail('the Log control does not clear and hide its active state');
+    ok('the Log control exposes both active and inactive states');
 
     if (PLAYER_SHOT) {
         const png = await cdp.send('Page.captureScreenshot', { format: 'png' });

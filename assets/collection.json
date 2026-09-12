@@ -18,7 +18,7 @@
       "entry": "fps",
       "cover": "textures/creator_cover.hrt",
       "readme": "",
-      "package": "a1cbe62406743d66",
+      "package": "0b17eef95d922c7e",
       "playable": true,
       "problems": []
     },
@@ -40,7 +40,7 @@
       "entry": "farm",
       "cover": "textures/farm_cover.hrt",
       "readme": "projects/farm.md",
-      "package": "1cb403dce4d4b57a",
+      "package": "150f60129cb57b22",
       "playable": true,
       "problems": []
     },
