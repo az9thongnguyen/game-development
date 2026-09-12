@@ -12,32 +12,45 @@
 
 ---
 
-## ⏸ QUAY LẠI TỪ ĐÂY — S34 đã qua đủ gate, 2026-09-08
+## ⏸ QUAY LẠI TỪ ĐÂY — S35 đã qua đủ gate trên feature branch, 2026-09-12
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** `main` chứa merge S34 `2a25cc0`; cây sạch sau checkpoint.
-**150 chương** (`docs/book/00`–`149`) · **95 test xanh** (60 khi build không có Drogon) ·
+**Trạng thái:** branch `feat/s35-product-front-door`; implementation/review đến
+`ef5bcf5`, docs chương 150 đang được chốt trước merge. Chưa merge `main`.
+**151 chương** (`docs/book/00`–`150`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
-**66 dòng ADR**, 13 dòng `Superseded by`.
+**67 dòng ADR**, 13 dòng `Superseded by`.
 
-**Lộ trình PLAN v2 (S19→S30c) đã ĐÓNG HẾT.** Sau đó làm thêm hai slice ngoài bảng:
-S31 (ch.146, PvP chơi được bằng tay) và S32 (ch.147, một màu là một chỗ).
+**Lộ trình PLAN v2 (S19→S30c) đã ĐÓNG HẾT.** Sau đó làm thêm năm slice ngoài bảng,
+S31–S35 (ch.146–150): PvP chơi được bằng tay, một màu là một chỗ, khép kín tài liệu
+kiến trúc, nâng chất lượng native UI, rồi product front door cho web.
 
-### Việc kế tiếp — S35, và vì sao là nó
+### S35 — product front door, đã đóng
 
-**S35 — Collection + Play shell như một mặt tiền sản phẩm** (cỡ L).
+Collection đã đổi từ directory listing thành product front door: hero, hierarchy card,
+CTA 50 px, responsive một cột trên điện thoại, năm cover riêng và Details có trạng thái
+accessible. Creator/Farm có cover `.pix` riêng qua `asset.pixels`. Player shell lấy tên
+game từ `collection.json` được bake từ manifest — không giữ bảng tên thứ hai — và có
+status loading/running, nút quay lại, focus ring, control 44 px, Log bật/tắt đọc được.
 
-S34 đã đóng nền: mười contact độc lập đi từ SDL vào cùng `InputState`, Farm/Creatures
-đọc được hai ngón mà không đếm thêm synthesized mouse; layout biết cả HUD/hint bên cạnh;
-UI core có button semantic, card, meter và vector icon. Review frame xác nhận vocabulary
-mới rõ hơn, nhưng trang đầu tiên người chơi gặp vẫn là Collection cũ: năm card dùng asset
-sẵn có làm cover, hierarchy yếu, và Play page chưa mang identity của game được chọn.
+**Đã chạy và thấy trên final source:**
+- ✅ native build; full `ctest` **95/95 hai lần**: 36.08 s và 62.98 s.
+- ✅ Emscripten 3.1.61 build; browser 390×844: 5 cover decode, no horizontal scroll,
+  CTA 50 px, README render, Colony `running`, tên lấy đúng manifest, Log cả hai chiều.
+- ✅ nhìn hai frame Collection/player; không overlap, crop hay cover resampling.
+- ✅ 21 mutation: **20 killed**, một equivalent survivor (`min-height` 48→28 nhưng
+  line-height + padding vẫn làm target ~47 px); đã triage, post-restore baseline xanh.
+- ✅ Release bench 200 frame, median: Studio ss1 0.94 / ss2 6.99 ms · FPS 1.14 ·
+  Farm 2.00 · Creatures 3.17 · Iso 3.09 · Colony 6.48; tất cả dưới budget 8 ms.
+- ✅ Farm `150f60129cb57b22`: inspect → publish development → parity verify → promote
+  preview → Hub shippable; zero `.tmp`.
+- ✅ full suite đầu tiên đã bắt khai báo cover dư làm Pixels mất Save ở 720p; xoá hai
+  dòng `asset texture ..._cover`, cover vẫn ở resource closure, `shell_golden` xanh.
 
-Bước đầu tiên cụ thể: đọc `web/collection.html`, `web/shell.html`,
-`engine/project/collection.*` và `scripts/web_collection_check.mjs`; viết test đỏ cho
-hero/metadata/CTA responsive, rồi tạo năm cover có identity riêng qua một trong bốn cửa
-`.hrt` hiện có — không mở cửa bake thứ năm.
+**Làm tiếp đúng từ đây:** commit docs → chạy `adr_index`/`collection` → merge `--no-ff`
+vào `main` → push. Sau merge, bắt đầu **S36 polish Farm/Creatures** bằng review frame và
+viết acceptance test đỏ trước khi đổi renderer/layout.
 
 **Sau S35 theo kế hoạch đã duyệt:** S36 polish Farm/Creatures · S37 polish FPS/Iso/Colony
 và đóng hai nợ runtime asset/save path · S38a/b redesign Studio rồi thêm pan/zoom,
@@ -70,6 +83,10 @@ multi-select, copy/paste và inspector Spawner/OnOverlap.
   gấp 5 lần**) · `build-web/` (Emscripten). Cả ba gitignore, giữ nguyên để khỏi build lại.
 - **Cổng :8080 đang bị chiếm** → test chạm BaaS phải tiêm transport. Muốn thấy đúng cái CI
   thấy: `cmake -B <dir> -DCMAKE_DISABLE_FIND_PACKAGE_Drogon=ON`.
+- **Không có dependency KVM/QEMU/microVM hiện tại** (`VM` duy nhất là scripting VM đã
+  hoãn). Nếu một slice sau cần VM: vòng dev dùng pure transport seam + deterministic
+  mock/in-process; integration dùng Docker/Compose; KVM thật là gate riêng, không được
+  chặn unit test hay vòng UI. Không dựng mock trước khi có consumer/contract cụ thể.
 - Harness mutation ở `…/scratchpad/mut2/c1NN.py` — copy cái gần nhất rồi đổi `MUTS`.
   **Bốn luật của nó nằm trong file memory `mutation-harness-needs-its-own-check`; luật thứ
   tư là: KHÔNG sửa source khi harness đang chạy.**
@@ -2606,6 +2623,7 @@ làm chín T6).
 | ~~S29c~~ | ~~OpenAPI `/v1/*` + job Docker chọc `/healthz`~~ — **XONG**, chương 142: 51 route, 51 tài liệu, và cái image **chưa bao giờ phục vụ** cho tới hôm nay | M |
 | ~~S30a~~ | ~~farm `season` (field chết) + `docs/adr/` chỉ mục~~ — **XONG**, chương 143 | M |
 | ~~S30b~~ | ~~Nợ Studio còn lại: `splitter()` + lưu `studio.layout`, status bar dạng segment, Scene grid/snap~~ — **XONG**, chương 144 | M |
+| S35 | **Product front door** — Collection có hierarchy/cover riêng, player giữ identity và đường quay lại — **XONG**, chương 150 |
 | S34 | **Hai ngón + một hierarchy UI** — contact độc lập, semantic button/card/meter/icon, palette product — **XONG**, chương 149 |
 | S33 | **Vật liệu thứ hai + nước động** — long grass blob 47 mảnh, recipe 4 frame, một `AnimatedTileset` cho Farm/Creatures — **XONG**, chương 148 |
 | S32 | **Một màu là một chỗ** — `ui::xy_pad` trên `drag_in` dùng chung, và `Keep` cho màu đã pha một cái nhà — **XONG**, chương 147 |

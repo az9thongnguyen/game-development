@@ -28,57 +28,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f1116">
-  <title>hand-engine — games</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%234e7a3c'/></svg>">
+  <meta name="theme-color" content="#0b1020">
+  <title>Hand Engine — playable worlds</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%237c9cff'/><path d='M4 5h8v2H9v5H7V7H4z' fill='%230b1020'/></svg>">
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020; --surface: #131b2d; --raised: #19243a;
+      --line: #263550; --line-strong: #405477;
+      --text: #f2f5fc; --dim: #adb8ce; --muted: #71809b;
+      --accent: #7c9cff; --accent-strong: #a2b8ff; --on-accent: #091021;
+      --success: #45d39a; --danger: #ef6b7b;
+    }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; min-height: 100%;
-      background: #0f1116; color: #c8d0dc;
-      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--dim);
+      font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
     }
+    html { background: #070b16; }
     body {
-      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
-               max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-      max-width: 980px; margin: 0 auto;
+      padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+               max(32px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+      max-width: 1180px; margin: 0 auto;
+      background:
+        radial-gradient(900px 520px at 14% -8%, rgba(124,156,255,.18), transparent 66%),
+        radial-gradient(700px 440px at 96% 12%, rgba(212,107,232,.10), transparent 64%),
+        var(--bg);
     }
-    header { padding: 8px 0 18px; border-bottom: 1px solid #1e2330; margin-bottom: 18px; }
-    h1 { margin: 0 0 4px; font-size: 20px; color: #e2e8f2; letter-spacing: .2px; }
-    .sub { color: #6b7590; font-size: 13px; }
-    #grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+    .brand { color: var(--text); font-size: 13px; font-weight: 800; letter-spacing: .16em; }
+    .build-chip { color: var(--success); background: rgba(69,211,154,.08); border: 1px solid rgba(69,211,154,.24);
+                  border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    #hero { padding: clamp(52px, 9vw, 104px) 0 clamp(46px, 7vw, 76px); max-width: 820px; }
+    .kicker, .eyebrow { color: var(--accent-strong); font-size: 11px; font-weight: 800;
+                        letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 12px 0 18px; max-width: 760px; color: var(--text); font-size: clamp(42px, 7vw, 78px);
+         line-height: .98; letter-spacing: -.055em; font-weight: 760; }
+    #hero p { max-width: 650px; margin: 0; color: var(--dim); font-size: clamp(17px, 2vw, 21px); line-height: 1.55; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 28px; color: var(--muted); font-size: 12px; }
+    .hero-meta strong { color: var(--text); font-weight: 700; }
+    .section-head { display: flex; gap: 16px; align-items: end; justify-content: space-between; margin-bottom: 18px; }
+    .section-head h2 { margin: 0; color: var(--text); font-size: 24px; letter-spacing: -.025em; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 13px; }
+    #grid { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .card {
-      background: #151a24; border: 1px solid #232a38; border-radius: 10px;
-      overflow: hidden; display: flex; flex-direction: column;
+      min-width: 0; background: linear-gradient(155deg, rgba(25,36,58,.96), rgba(19,27,45,.96));
+      border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
+      display: flex; flex-direction: column; box-shadow: 0 18px 55px rgba(0,0,0,.22);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
     }
+    .card:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: 0 24px 70px rgba(0,0,0,.32); }
     .shot {
-      background: #0b0d12; border-bottom: 1px solid #232a38;
+      position: relative; background: linear-gradient(135deg, #0d1426, #111a30); border-bottom: 1px solid var(--line);
       display: grid; place-items: center; aspect-ratio: 16 / 9;
     }
+    .shot::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                   background: linear-gradient(to top, rgba(11,16,32,.32), transparent 44%); }
     /* The canvas FILLS the shot box and its drawing buffer is sized to match (see
        sizeAndPaint). `max-width: 100%` on a fixed buffer would have CSS resample what
        paint() had just placed on integer boundaries — chapter 128's bug, one page over. */
     .shot canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-    .shot .none { color: #465064; font-size: 12px; }
-    .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
-    .name { font-weight: 600; color: #e2e8f2; }
-    .summary { color: #93a0b8; font-size: 13px; min-height: 1.5em; }
-    .meta { color: #5c6680; font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
-    .row { display: flex; gap: 8px; align-items: center; margin-top: auto; padding-top: 4px; }
+    .shot .none { color: var(--muted); font-size: 12px; }
+    .body { padding: 20px; display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; }
+    .name { margin: 1px 0 0; font-size: 23px; line-height: 1.15; letter-spacing: -.025em; font-weight: 720; color: var(--text); }
+    .summary { color: var(--dim); font-size: 14px; min-height: 3.1em; }
+    .meta { color: var(--muted); font-size: 10px; font-family: ui-monospace, Menlo, monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row { display: flex; gap: 10px; align-items: center; margin-top: auto; padding-top: 8px; }
     a.play, button {
-      font: inherit; font-size: 13px; color: #c8d0dc; text-decoration: none;
-      background: #1a1f2b; border: 1px solid #2a3140; border-radius: 6px;
-      padding: 6px 14px; cursor: pointer; display: inline-block;
+      min-height: 48px; font: inherit; font-size: 13px; font-weight: 700; color: var(--text); text-decoration: none;
+      background: transparent; border: 1px solid var(--line-strong); border-radius: 10px;
+      padding: 11px 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
     }
-    a.play { background: #2c4a2a; border-color: #3d6639; color: #dcecd8; font-weight: 600; }
-    a.play:hover { background: #365a33; }
-    button:hover { background: #222836; }
-    .broken { color: #d98b6a; font-size: 12px; }
+    a.play { flex: 1 1 auto; gap: 12px; background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    a.play::after { content: "→"; font-size: 17px; transition: transform .18s ease; }
+    a.play:hover { background: var(--accent-strong); }
+    a.play:hover::after { transform: translateX(3px); }
+    button:hover { background: var(--raised); }
+    a.play:focus-visible, button:focus-visible { outline: 3px solid rgba(162,184,255,.55); outline-offset: 2px; }
+    .broken { color: var(--danger); font-size: 12px; }
     .broken ul { margin: 4px 0 0; padding-left: 18px; }
     .readme {
       display: none; margin-top: 10px; padding-top: 10px;
-      border-top: 1px solid #232a38; font-size: 13px; color: #a9b4c8;
+      border-top: 1px solid var(--line); font-size: 13px; color: var(--dim);
     }
     .card.open .readme { display: block; }
     .readme h1 { font-size: 16px; margin: 12px 0 6px; }
@@ -94,15 +127,38 @@
     .readme table { border-collapse: collapse; font-size: 12px; display: block; overflow-x: auto; }
     .readme th, .readme td { border: 1px solid #232a38; padding: 4px 8px; text-align: left; }
     .readme th { color: #8fa2c4; background: #0e131b; }
-    #err { color: #d98b6a; }
-    footer { margin-top: 26px; color: #4d566c; font-size: 12px; }
+    #err { color: var(--danger); }
+    footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 700px) {
+      #grid { grid-template-columns: minmax(0, 1fr); }
+      #hero { padding-top: 48px; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 5px; }
+      .body { padding: 18px; }
+      .card:hover { transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { .card, a.play::after { transition: none; } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>hand-engine</h1>
-    <div class="sub">Games built on a from-scratch C++ engine. Every pixel drawn by its own code.</div>
+  <nav class="topbar" aria-label="Product">
+    <div class="brand">HAND / ENGINE</div>
+    <div class="build-chip">Built from pixels up</div>
+  </nav>
+  <header id="hero" data-hero>
+    <div class="kicker">Five worlds · one handmade engine</div>
+    <h1>Small games, built all the way down.</h1>
+    <p>Step into playable experiments in rendering, simulation and tools. Every frame is
+       drawn by the same from-scratch C++ engine—on desktop and in your browser.</p>
+    <div class="hero-meta">
+      <span data-game-count><strong>Loading</strong> playable experiences</span>
+      <span>No install</span><span>Keyboard + pointer</span><span>Native + WebAssembly</span>
+    </div>
   </header>
+  <div class="section-head">
+    <div><div class="kicker">Collection</div><h2>Choose a world</h2></div>
+    <p>Each card is a real project manifest, inspected before it appears here.</p>
+  </div>
   <div id="err"></div>
   <div id="grid"></div>
   <footer id="foot"></footer>
@@ -221,8 +277,16 @@
     }
 
     // ---- cards -------------------------------------------------------------
+    function eyebrowFor(entry) {
+      return ({
+        colony: 'Systems sandbox', fps: 'First-person adventure',
+        creatures: 'Creature adventure', farm: 'Cozy simulation',
+        iso: 'Isometric builder'
+      })[entry] || 'Playable experiment';
+    }
+
     function card(g) {
-      var el = document.createElement('div');
+      var el = document.createElement('article');
       el.className = 'card';
       el.dataset.manifest = g.manifest;
 
@@ -254,14 +318,17 @@
 
       var body = document.createElement('div');
       body.className = 'body';
-      var name = document.createElement('div');
+      var eyebrow = document.createElement('div');
+      eyebrow.className = 'eyebrow'; eyebrow.textContent = eyebrowFor(g.entry);
+      var name = document.createElement('h3');
       name.className = 'name'; name.textContent = g.name;
       var sum = document.createElement('div');
       sum.className = 'summary'; sum.textContent = g.summary || '';
       var meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = g.entry + (g.package ? '  ·  ' + g.package : '');
-      body.appendChild(name); body.appendChild(sum); body.appendChild(meta);
+      meta.textContent = 'ENTRY / ' + g.entry.toUpperCase() +
+                         (g.package ? '  ·  BUILD / ' + g.package.slice(0, 8) : '');
+      body.appendChild(eyebrow); body.appendChild(name); body.appendChild(sum); body.appendChild(meta);
 
       if (!g.playable) {
         var bad = document.createElement('div');
@@ -284,7 +351,8 @@
         // The SAME query string chapter 128's page already answers to. This page adds a
         // way to arrive at it, not a second way to launch.
         a.href = 'demo.html?project=' + encodeURIComponent(g.manifest);
-        a.textContent = 'Play';
+        a.textContent = 'Play now';
+        a.setAttribute('aria-label', 'Play ' + g.name);
         row.appendChild(a);
       }
       if (g.readme) {
@@ -292,9 +360,11 @@
         rd.className = 'readme';
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = 'read me';
+        btn.textContent = 'Details';
+        btn.setAttribute('aria-expanded', 'false');
         btn.addEventListener('click', function () {
           el.classList.toggle('open');
+          btn.setAttribute('aria-expanded', el.classList.contains('open') ? 'true' : 'false');
           if (rd.dataset.loaded) return;
           rd.dataset.loaded = '1';
           rd.textContent = 'loading…';
@@ -320,6 +390,9 @@
         var games = data.games || [];
         games.forEach(function (g) { grid.appendChild(card(g)); });
         var broken = games.filter(function (g) { return !g.playable; }).length;
+        var playable = games.length - broken;
+        document.querySelector('[data-game-count]').innerHTML =
+          '<strong>' + playable + '</strong> playable experience' + (playable === 1 ? '' : 's');
         foot.textContent = games.length + ' project' + (games.length === 1 ? '' : 's') +
                            (broken ? ', ' + broken + ' not playable' : '') +
                            ' · baked by --cmd collection.index';

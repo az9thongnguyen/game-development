@@ -1,0 +1,45 @@
+# Creator cover — a neon ray corridor, drawn for the product card.
+# Re-bake: ./build/demo --cmd asset.pixels textures/creator_cover.pix textures/creator_cover.hrt
+size 32
+grid 1 1
+
+palette . 0b1020ff
+palette n 111a30ff
+palette c 7c9cffff
+palette p d46be8ff
+palette o ffad5cff
+palette w 263550ff
+
+tile 0
+................................
+................................
+................................
+..............oooo..............
+............oooooooo............
+............oooooooo............
+.............oooooo.............
+cccccccccccccccccccccccccccccccc
+wwww........................wwww
+wwww........................wwww
+wwww....pppppppppppppppp....wwww
+wwww....pp............pp....wwww
+wwww....pp....cccc....pp....wwww
+wwww....pp....cccc....pp....wwww
+wwww....pp............pp....wwww
+wwww....pppppppppppppppp....wwww
+wwww........................wwww
+wwwww......................wwwww
+wwwwww....................wwwwww
+wwwwwww..................wwwwwww
+wwwwwwww................wwwwwwww
+wwwwwwwww..............wwwwwwwww
+wwwwwwwwww............wwwwwwwwww
+wwwwwwwwwww..........wwwwwwwwwww
+wwwwwwwwwwww........wwwwwwwwwwww
+wwwwwwwwwwwww......wwwwwwwwwwwww
+wwwwwwwwwwwwww....wwwwwwwwwwwwww
+wwwwwwwwwwwwwww..wwwwwwwwwwwwwww
+nnnnnnnnnnnnnnnccnnnnnnnnnnnnnnn
+nnnnnnnnnnnnnnccccnnnnnnnnnnnnnn
+nnnnnnnnnnnnnccccccnnnnnnnnnnnnn
+nnnnnnnnnnnnccccccccnnnnnnnnnnnn

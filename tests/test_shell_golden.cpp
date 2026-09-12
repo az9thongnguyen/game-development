@@ -861,9 +861,10 @@ int main() {
         CHECK(farm.inspection().project.entry == "farm");
         // Every asset the manifest declares — the count moves when the game gains
         // content (a theme and a tileset in chapter 121, a second tileset in 122, two
-        // MIXED character sprites in 135), and it should: the point of the check is
-        // that the Studio sees the same list the CLI does.
-        CHECK(farm.inspection().assets.size() == 11);
+        // MIXED character sprites in 135, and a cover in 150), and it should: the point
+        // of the check is that the Studio sees the same list the CLI does. A cover joins
+        // the closure without a duplicate `asset texture` line in the manifest.
+        CHECK(farm.inspection().assets.size() == 12);
         // ...and the negative control: the list is what makes the difference, so an
         // ignorant list must still reject it. Otherwise the check above would pass
         // just as happily if known_entries were ignored entirely.

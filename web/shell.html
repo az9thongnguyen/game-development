@@ -38,16 +38,22 @@
        may use the full screen, and the padding keeps the d-pad off the home bar. -->
   <meta name="viewport"
         content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0f1116">
-  <title>hand-engine</title>
+  <meta name="theme-color" content="#0b1020">
+  <title>Hand Engine — player</title>
   <!-- Inline, so the page does not 404 on /favicon.ico. A 404 in the console of a
        page whose whole job is to prove the build works is noise that hides signal. -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%234e7a3c'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%237c9cff'/><path d='M5 4l7 4-7 4z' fill='%230b1020'/></svg>">
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020; --surface: #131b2d; --raised: #19243a;
+      --line: #263550; --line-strong: #405477;
+      --text: #f2f5fc; --dim: #adb8ce; --muted: #71809b;
+      --accent: #7c9cff; --success: #45d39a;
+    }
     html, body {
       margin: 0; height: 100%;
-      background: #0f1116; color: #c8d0dc;
+      background: var(--bg); color: var(--dim);
       font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
       /* No pull-to-refresh, no rubber-banding: both of them end a drag that the
          game was in the middle of reading. */
@@ -64,27 +70,44 @@
       box-sizing: border-box;
     }
     #bar {
-      flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
-      padding: 6px 10px; min-height: 28px;
-      border-bottom: 1px solid #1e2330;
+      flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+      padding: 7px 8px; min-height: 58px;
+      border-bottom: 1px solid var(--line); background: rgba(19, 27, 45, .96);
+      box-shadow: 0 10px 35px rgba(0,0,0,.24);
     }
-    #title { color: #8fa2c4; font-weight: 600; white-space: nowrap;
+    #backlink, button {
+      flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0;
+      display: inline-grid; place-items: center; border: 1px solid var(--line-strong);
+      border-radius: 10px; background: transparent; color: var(--text);
+      font: inherit; font-size: 19px; text-decoration: none; cursor: pointer;
+    }
+    #backlink:hover, button:hover { background: var(--raised); }
+    #backlink:focus-visible, button:focus-visible {
+      outline: 3px solid rgba(162,184,255,.55); outline-offset: 1px;
+    }
+    .game-id { min-width: 0; display: flex; flex-direction: column; line-height: 1.1; }
+    .product { color: var(--muted); font-size: 9px; font-weight: 800;
+               letter-spacing: .14em; text-transform: uppercase; }
+    #title { color: var(--text); font-size: 14px; font-weight: 750; white-space: nowrap;
              overflow: hidden; text-overflow: ellipsis; }
-    #status { color: #6b7590; font-size: 12px; white-space: nowrap; }
-    #hint   { color: #c9a227; font-size: 12px; white-space: nowrap; }
-    .spacer { flex: 1 1 auto; }
-    button {
-      font: inherit; font-size: 12px; color: #c8d0dc;
-      background: #1a1f2b; border: 1px solid #2a3140; border-radius: 6px;
-      padding: 4px 10px; cursor: pointer;
+    #status.status-pill {
+      flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+      color: var(--accent); background: rgba(124,156,255,.08);
+      border: 1px solid rgba(124,156,255,.24); border-radius: 999px;
+      padding: 5px 8px; font-size: 10px; font-weight: 750;
+      letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
     }
-    button:hover { background: #222836; }
+    #status[data-state="running"] { color: var(--success); background: rgba(69,211,154,.08);
+                                      border-color: rgba(69,211,154,.24); }
+    button[aria-pressed="true"] { color: var(--accent); background: rgba(124,156,255,.12); }
+    #hint { color: #e6be5b; font-size: 11px; white-space: nowrap; }
+    .spacer { flex: 1 1 auto; }
     #stage {
       flex: 1 1 auto; min-height: 0;
       display: grid; place-items: center;
       /* The stage, not the canvas, is what goes fullscreen: fullscreening the canvas
          makes the browser stretch it to the screen's aspect ratio. */
-      background: #0b0d12;
+      background: radial-gradient(circle at 50% 35%, #151f35 0, #080c17 70%);
     }
     canvas {
       display: block; background: #000;
@@ -100,7 +123,7 @@
     #log {
       flex: 0 0 auto; display: none;
       white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace;
-      font-size: 11px; color: #66708a; background: #0b0d12;
+      font-size: 11px; color: var(--muted); background: #080c17;
       max-height: 28vh; overflow: auto; padding: 6px 10px;
       border-top: 1px solid #1e2330;
     }
@@ -108,17 +131,23 @@
     /* In fullscreen the page chrome is not chrome, it is a strip of wasted screen. */
     #stage:fullscreen { background: #000; }
     body:fullscreen #bar, body:fullscreen #log { display: none; }
+    @media (max-width: 560px) {
+      #bar { gap: 6px; }
+      #hint, .product { display: none; }
+      #status.status-pill { max-width: 72px; }
+    }
   </style>
 </head>
 <body>
-  <div id="bar">
-    <span id="title">hand-engine</span>
-    <span id="status">loading…</span>
+  <nav id="bar" aria-label="Player controls">
+    <a id="backlink" href="collection.html" aria-label="Back to collection" title="Back to collection">←</a>
+    <span class="game-id"><span class="product">Hand Engine</span><span id="title">Player</span></span>
+    <span id="status" class="status-pill" role="status">loading</span>
     <span id="hint"></span>
     <span class="spacer"></span>
-    <button id="logbtn" type="button" title="show the runtime log">log</button>
-    <button id="fsbtn" type="button" title="fill the screen">fullscreen</button>
-  </div>
+    <button id="logbtn" type="button" title="Show runtime log" aria-label="Show runtime log" aria-pressed="false">≡</button>
+    <button id="fsbtn" type="button" title="Enter fullscreen" aria-label="Enter fullscreen" aria-pressed="false">⛶</button>
+  </nav>
   <div id="stage">
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
   </div>
@@ -130,6 +159,18 @@
     var stageEl  = document.getElementById('stage');
     var canvasEl = document.getElementById('canvas');
     var hintEl   = document.getElementById('hint');
+    var logBtn   = document.getElementById('logbtn');
+    var fsBtn    = document.getElementById('fsbtn');
+
+    function showStatus(text, state) {
+      statusEl.textContent = text;
+      statusEl.dataset.state = state || 'loading';
+    }
+
+    function showTitle(text) {
+      titleEl.textContent = text;
+      document.title = text + ' — Hand Engine';
+    }
 
     // Pick the scene from ?mode=… so one WASM build can run any demo without a
     // recompile (default: chess, the M5 acceptance scene).
@@ -166,7 +207,29 @@
     // computed, so "deterministic across machines" stopped at the two that run CI.
     var cmdId = params.get('cmd');
     if (cmdId) argsByMode[mode = '_cmd'] = ['--cmd', cmdId].concat((params.get('args') || '').split(' ').filter(Boolean));
-    titleEl.textContent = project || shellOf || cmdId || mode;
+    function projectStem(path) {
+      var match = /(?:^|\/)([^/]+)\.gameproject$/.exec(path || '');
+      return match ? match[1] : '';
+    }
+    function humanize(stem) {
+      return (stem || 'engine lab').replace(/[-_]+/g, ' ').replace(/(^|\s)\S/g, function (c) {
+        return c.toUpperCase();
+      });
+    }
+    var stem = projectStem(project || shellOf);
+    showTitle(stem ? humanize(stem) : (cmdId ? 'Command' : mode === 'gui' ? 'Chess' : 'Engine Lab'));
+    document.body.dataset.game = stem || mode;
+    // The collection index is baked from the manifests, so it is the one product-name
+    // table the front door and this player share. A direct link not in the collection
+    // still gets a readable stem while a stale/missing index never blocks the game.
+    if (stem) fetch('collection.json').then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function (data) {
+      var path = project || shellOf;
+      var game = (data.games || []).find(function (g) { return g.manifest === path; });
+      if (game && game.name) showTitle(game.name);
+    }).catch(function () { /* the readable stem above is the offline fallback */ });
 
     // Clicking or touching the game must also return focus to it: touching the page
     // chrome moves focus away, and SDL2's Emscripten backend delivers keys to the
@@ -203,15 +266,25 @@
     canvasEl.addEventListener('mousedown', refocus);
     canvasEl.addEventListener('touchstart', refocus, { passive: true });
 
-    document.getElementById('logbtn').addEventListener('click', function () {
+    logBtn.addEventListener('click', function () {
       document.body.classList.toggle('logging');
+      var open = document.body.classList.contains('logging');
+      logBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+      logBtn.setAttribute('aria-label', open ? 'Hide runtime log' : 'Show runtime log');
+      logBtn.title = open ? 'Hide runtime log' : 'Show runtime log';
       refocus();
     });
-    document.getElementById('fsbtn').addEventListener('click', function () {
+    fsBtn.addEventListener('click', function () {
       if (document.fullscreenElement) document.exitFullscreen();
       else if (stageEl.requestFullscreen) stageEl.requestFullscreen({ navigationUI: 'hide' });
       // Fullscreen moves focus to the fullscreen element; the game needs it back.
       setTimeout(refocus, 50);
+    });
+    addEventListener('fullscreenchange', function () {
+      var open = !!document.fullscreenElement;
+      fsBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+      fsBtn.setAttribute('aria-label', open ? 'Exit fullscreen' : 'Enter fullscreen');
+      fsBtn.title = open ? 'Exit fullscreen' : 'Enter fullscreen';
     });
 
     var Module = {
@@ -237,15 +310,15 @@
           // No IDBFS (private mode, storage blocked) is not a reason not to play. The
           // game runs; it just forgets. Saying so beats a save that silently vanishes.
           console.error('persistent storage unavailable: ' + e);
-          statusEl.textContent = 'running (saves will not persist)';
+          showStatus('running (saves will not persist)', 'running');
         }
       }],
       canvas: canvasEl,
-      setStatus: function (t) { if (t) statusEl.textContent = t; },
+      setStatus: function (t) { if (t) showStatus(t, 'loading'); },
       print:    function (t) { logEl.textContent += t + "\n"; logEl.scrollTop = logEl.scrollHeight; },
       printErr: function (t) { logEl.textContent += t + "\n"; },
       onRuntimeInitialized: function () {
-        statusEl.textContent = 'running';
+        showStatus('running', 'running');
         fit();                       // SDL has set the drawing buffer by now
         // FOCUS THE CANVAS. SDL2's Emscripten backend listens for key events on the
         // canvas element, so with focus anywhere else (the body, by default) the build

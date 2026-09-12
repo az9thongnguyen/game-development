@@ -1,6 +1,6 @@
 # AGENTS.md — read this first, then stop reading
 
-This repository is large (148 guidebook chapters, 95 test suites, four subsystems that
+This repository is large (151 guidebook chapters, 95 test suites, four subsystems that
 are separate processes). Reading it front to back is the wrong move. This file is the
 **read order** and the **rules that are not negotiable**. Everything else is a pointer.
 

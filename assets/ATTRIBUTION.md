@@ -108,13 +108,13 @@ Reproduce it with:
 ./build/demo --cmd asset.pixels textures/farm_path.pix textures/farm_path.hrt
 ```
 
-## Ours — the two covers, because a blank card reads as broken
+## Ours — the four drawn covers, because a repeated card reads as unfinished
 
-`textures/iso_cover.hrt` and `textures/colony_cover.hrt` exist for one reason: chapter
-145 gave the iso sim and the colony manifests, which put them on the collection page,
-and that page refuses to show a card with no picture. The refusal is right — the page's
-own comment says why: *"a silently blank panel is indistinguishable from a game that has
-no art."*
+`textures/iso_cover.hrt`, `textures/colony_cover.hrt`, `textures/creator_cover.hrt` and
+`textures/farm_cover.hrt` give four different projects their own front-door identity.
+The collection refuses to show a blank card, and chapter 150 extends that rule: a cover
+borrowed from gameplay may technically load while still making the collection look like
+an asset browser instead of a product.
 
 Neither borrows a palette. They are the games' own colours: the iso cover uses the
 grass/tilled-earth pair `iso_render` draws with, laid out by the game's OWN projection
@@ -122,7 +122,9 @@ grass/tilled-earth pair `iso_render` draws with, laid out by the game's OWN proj
 diamond the renderer walks), so the cover is the game's geometry rather than a drawing
 of it. The colony cover is what that scene looks like from a distance — agents over a
 dark field with the design-system panel down the right — with two agents in the
-highlight colour because they are carrying something.
+highlight colour because they are carrying something. Creator uses its raycaster's neon
+corridor language; Farm uses its sunrise, barn, field rows and pond. Both were drawn for
+the card rather than lifted from a runtime texture.
 
 **Deliberately not screenshots.** Baking a frame of a running game into a `.hrt` would
 be a FIFTH door, and a fifth door is a decision with its own chapter (see the four the
@@ -132,6 +134,8 @@ needing two thumbnails.
 ```sh
 ./build/demo --cmd asset.pixels textures/iso_cover.pix    textures/iso_cover.hrt
 ./build/demo --cmd asset.pixels textures/colony_cover.pix textures/colony_cover.hrt
+./build/demo --cmd asset.pixels textures/creator_cover.pix textures/creator_cover.hrt
+./build/demo --cmd asset.pixels textures/farm_cover.pix    textures/farm_cover.hrt
 ```
 
 ## The ledger — generated, not remembered
@@ -177,6 +181,7 @@ Re-bake it with:
 | `pieces/wR.hrt` | declared | `ours.pack` | this repository |
 | `sprites/spin_8.hrt` | declared | `ours.pack` | this repository |
 | `textures/colony_cover.hrt` | drawn | `textures/colony_cover.pix` | this repository |
+| `textures/creator_cover.hrt` | drawn | `textures/creator_cover.pix` | this repository |
 | `textures/creature_01.hrt` | mixed | `textures/creature_01.mix` | this repository |
 | `textures/creature_02.hrt` | mixed | `textures/creature_02.mix` | this repository |
 | `textures/creature_03.hrt` | mixed | `textures/creature_03.mix` | this repository |
@@ -198,6 +203,7 @@ Re-bake it with:
 | `textures/creature_grass.hrt` | drawn | `textures/creature_grass.pix` | this repository |
 | `textures/creatures_cover.hrt` | mixed | `textures/creatures_cover.mix` | this repository |
 | `textures/farm_anna.hrt` | mixed | `textures/farm_anna.mix` | this repository |
+| `textures/farm_cover.hrt` | drawn | `textures/farm_cover.pix` | this repository |
 | `textures/farm_path.hrt` | drawn | `textures/farm_path.pix` | this repository |
 | `textures/farm_player.hrt` | mixed | `textures/farm_player.mix` | this repository |
 | `textures/farm_water.hrt` | generated | `textures/farm_water.recipe` | this repository |
@@ -212,7 +218,7 @@ Re-bake it with:
 | `textures/wall_2.hrt` | declared | `ours.pack` | this repository |
 | `textures/wall_3.hrt` | declared | `ours.pack` | this repository |
 
-49 raster assets, 0 unrecorded.
+51 raster assets, 0 unrecorded.
 
 <!-- END LEDGER (generated) -->
 

@@ -21,6 +21,7 @@
 //
 //  usage:  node scripts/web_collection_check.mjs [--dir build-web] [--chrome PATH]
 //          [--head] [--width 390] [--height 844] [--shot page.png]
+//          [--player-shot player.png]
 //  exit:   0 = the collection works · 1 = it does not (the message says which step)
 // =============================================================================
 import { spawn } from 'node:child_process';
@@ -39,6 +40,7 @@ const DIR      = resolve(arg('--dir', 'build-web'));
 const VW       = +arg('--width', 390);
 const VH       = +arg('--height', 844);
 const SHOT     = arg('--shot', '');
+const PLAYER_SHOT = arg('--player-shot', '');
 const HEADLESS = !argv.includes('--head');
 const CHROME   = arg('--chrome', process.env.CHROME_PATH || defaultChrome());
 
@@ -213,6 +215,44 @@ try {
     if (shape.widest > VW) fail(`a card is ${shape.widest}px wide on a ${VW}px screen`);
     ok(`${shape.cards} cards fit the viewport, ${shape.plays} of them playable`);
 
+    // ---- 3b. it reads as a product, not a directory listing ----------------
+    const product = await cdp.eval(`(() => {
+        const hero = document.querySelector('[data-hero]');
+        const cards = [...document.querySelectorAll('.card')];
+        const plays = [...document.querySelectorAll('a.play')];
+        const covers = cards.map(c => c.querySelector('canvas')?.dataset.cover || '');
+        return {
+            hero: !!hero,
+            title: hero?.querySelector('h1')?.textContent.trim() || '',
+            promise: hero?.querySelector('p')?.textContent.trim() || '',
+            stat: document.querySelector('[data-game-count]')?.textContent.trim() || '',
+            semanticCards: cards.filter(c => c.tagName === 'ARTICLE').length,
+            labelledCards: cards.filter(c => c.querySelector('.eyebrow') && c.querySelector('.name')).length,
+            uniqueCovers: new Set(covers.filter(Boolean)).size,
+            dedicatedCovers: covers.filter(p => /_cover\.hrt$/.test(p)).length,
+            minPlayHeight: plays.length ? Math.min(...plays.map(a => a.getBoundingClientRect().height)) : 0,
+            namedPlays: plays.filter(a => /play/i.test(a.getAttribute('aria-label') || '')).length,
+        };
+    })()`);
+    if (!product.hero || product.title.length < 12 || product.promise.length < 30)
+        fail('the collection has no clear product hero/value proposition');
+    if (!product.stat.includes(String(shape.plays)))
+        fail('the hero does not report the number of playable experiences');
+    if (product.semanticCards !== shape.cards)
+        fail(`${shape.cards - product.semanticCards} card(s) are not semantic articles`);
+    if (product.labelledCards !== shape.cards)
+        fail(`${shape.cards - product.labelledCards} card(s) have no hierarchy label`);
+    if (product.uniqueCovers !== shape.cards)
+        fail(`${shape.cards} cards use only ${product.uniqueCovers} distinct cover(s)`);
+    if (product.dedicatedCovers !== shape.cards)
+        fail(`${shape.cards - product.dedicatedCovers} card(s) reuse a gameplay texture as cover art`);
+    if (product.minPlayHeight < 44)
+        fail(`the smallest Play target is ${product.minPlayHeight}px high; expected >= 44`);
+    if (product.namedPlays !== shape.plays)
+        fail('a Play CTA has no game-specific accessible name');
+    ok(`product hierarchy is present; ${product.uniqueCovers} distinct covers, ` +
+       `${Math.round(product.minPlayHeight)}px Play targets`);
+
     // ---- 4. the README renders as a document, not as its source -------------
     await cdp.eval(`[...document.querySelectorAll('.card')]
         .find(c => c.querySelector('button'))?.querySelector('button').click()`);
@@ -227,6 +267,7 @@ try {
                  heads:  r.querySelectorAll('h2').length,
                  lists:  r.querySelectorAll('li').length,
                  code:   r.querySelectorAll('pre').length,
+                 expanded: r.closest('.card').querySelector('button')?.getAttribute('aria-expanded'),
                  rawHash: /(^|\\n)##\\s/.test(r.textContent) };
     })()`);
     if (!readme)          fail('the "read me" button opened nothing');
@@ -234,6 +275,7 @@ try {
     if (readme.heads < 3) fail(`the README rendered ${readme.heads} headings`);
     if (!readme.lists)    fail('the README rendered no list items');
     if (!readme.code)     fail('the README rendered no code block');
+    if (readme.expanded !== 'true') fail('the Details control does not expose its expanded state');
     if (readme.rawHash)   fail('the README is showing its own markdown source');
     ok(`the README rendered (${readme.heads} headings, ${readme.tables} table, ` +
        `${readme.lists} list items, ${readme.code} code block)`);
@@ -252,7 +294,8 @@ try {
         const r = a.getBoundingClientRect();
         a.scrollIntoView({ block: 'center' });
         const r2 = a.getBoundingClientRect();
-        return { x: r2.x + r2.width / 2, y: r2.y + r2.height / 2, href: a.getAttribute('href') };
+        return { x: r2.x + r2.width / 2, y: r2.y + r2.height / 2,
+                 href: a.getAttribute('href'), name: (a.getAttribute('aria-label') || '').replace(/^Play /, '') };
     })()`);
     if (!/^demo\.html\?project=/.test(target.href))
         fail('the Play button does not point at the player: ' + target.href);
@@ -269,6 +312,57 @@ try {
     if (!url.includes('demo.html')) fail('tapping Play did not navigate (still at ' + url + ')');
     if (!running) fail('Play arrived at ' + url + ' but the game never reached "running"');
     ok('tapping Play landed in a running game (' + url + ')');
+
+    const player = await cdp.eval(`(() => {
+        const back = document.querySelector('#backlink');
+        const controls = [...document.querySelectorAll('#bar button')];
+        return {
+            back: back?.getAttribute('href') || '',
+            backNamed: /collection/i.test(back?.getAttribute('aria-label') || ''),
+            game: document.body.dataset.game || '',
+            title: document.querySelector('#title')?.textContent.trim() || '',
+            manifestLike: (document.querySelector('#title')?.textContent || '').includes('projects/') ||
+                          (document.querySelector('#title')?.textContent || '').includes('.gameproject'),
+            statusPill: document.querySelector('#status')?.classList.contains('status-pill') || false,
+            statusState: document.querySelector('#status')?.dataset.state || '',
+            minControl: controls.length ? Math.min(...controls.map(b => b.getBoundingClientRect().height)) : 0,
+            namedControls: controls.filter(b => b.getAttribute('aria-label')).length,
+            pressedControls: controls.filter(b => b.getAttribute('aria-pressed') === 'false').length,
+            hScroll: document.documentElement.scrollWidth > window.innerWidth + 1,
+        };
+    })()`);
+    if (player.back !== 'collection.html') fail('the player has no route back to the collection');
+    if (!player.backNamed) fail('the player back control has no accessible name');
+    if (!player.title || player.manifestLike) fail('the player title exposes a manifest path instead of a game name');
+    if (!player.game) fail('the player exposes no project identity');
+    if (player.title !== target.name)
+        fail(`the ${player.game} player is named “${player.title}” instead of manifest name “${target.name}”`);
+    if (!player.statusPill) fail('runtime state is not presented as a status pill');
+    if (player.statusState !== 'running') fail(`the running game status uses state “${player.statusState}”`);
+    if (player.minControl < 44) fail(`player chrome target is ${player.minControl}px high; expected >= 44`);
+    if (player.namedControls !== 2) fail('a player chrome button has no accessible name');
+    if (player.pressedControls !== 2) fail('a stateful player control has no initial aria-pressed state');
+    if (player.hScroll) fail('the player chrome scrolls sideways on a phone');
+    ok(`player chrome names “${player.title}”, preserves 44px controls and links back`);
+
+    const logStates = await cdp.eval(`(() => {
+        const b = document.querySelector('#logbtn');
+        b.click();
+        const on = { pressed: b.getAttribute('aria-pressed'), visible: getComputedStyle(document.querySelector('#log')).display };
+        b.click();
+        return { on, off: { pressed: b.getAttribute('aria-pressed'), visible: getComputedStyle(document.querySelector('#log')).display } };
+    })()`);
+    if (logStates.on.pressed !== 'true' || logStates.on.visible === 'none')
+        fail('the Log control does not expose and show its active state');
+    if (logStates.off.pressed !== 'false' || logStates.off.visible !== 'none')
+        fail('the Log control does not clear and hide its active state');
+    ok('the Log control exposes both active and inactive states');
+
+    if (PLAYER_SHOT) {
+        const png = await cdp.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(PLAYER_SHOT, Buffer.from(png.data, 'base64'));
+        ok('wrote ' + PLAYER_SHOT);
+    }
 
     console.log('\nPASS  a stranger can open the page, see the games, and play one.');
 } finally {
