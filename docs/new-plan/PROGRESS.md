@@ -12,12 +12,12 @@
 
 ---
 
-## ⏸ QUAY LẠI TỪ ĐÂY — S35 đã qua đủ gate trên feature branch, 2026-09-12
+## ⏸ QUAY LẠI TỪ ĐÂY — S35 đã merge, bắt đầu S36, 2026-09-12
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** branch `feat/s35-product-front-door`; implementation/review đến
-`ef5bcf5`, docs chương 150 đang được chốt trước merge. Chưa merge `main`.
+**Trạng thái:** `main` chứa merge S35 `37e15bd`; implementation/review `ef5bcf5`,
+tài liệu chương 150 `48bbd47`. S35 đã qua đủ gate và đóng.
 **151 chương** (`docs/book/00`–`150`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
 **67 dòng ADR**, 13 dòng `Superseded by`.
@@ -48,9 +48,11 @@ status loading/running, nút quay lại, focus ring, control 44 px, Log bật/t�
 - ✅ full suite đầu tiên đã bắt khai báo cover dư làm Pixels mất Save ở 720p; xoá hai
   dòng `asset texture ..._cover`, cover vẫn ở resource closure, `shell_golden` xanh.
 
-**Làm tiếp đúng từ đây:** commit docs → chạy `adr_index`/`collection` → merge `--no-ff`
-vào `main` → push. Sau merge, bắt đầu **S36 polish Farm/Creatures** bằng review frame và
-viết acceptance test đỏ trước khi đổi renderer/layout.
+**Làm tiếp đúng từ đây — S36 polish Farm/Creatures:** tạo branch
+`feat/s36-farm-creatures-polish`; đọc chương 113, 117, 124–126, 148–149 và xem frame
+hiện tại của cả hai game ở 1280×720 lẫn viewport hẹp. Chốt contract UI quan sát được
+(hierarchy, HUD/status, control overlap, focus/touch target), viết acceptance test đỏ,
+rồi mới đổi renderer/layout. Không kéo nợ save/runtime asset của S37 vào slice này.
 
 **Sau S35 theo kế hoạch đã duyệt:** S36 polish Farm/Creatures · S37 polish FPS/Iso/Colony
 và đóng hai nợ runtime asset/save path · S38a/b redesign Studio rồi thêm pan/zoom,
