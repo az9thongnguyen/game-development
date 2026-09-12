@@ -12,13 +12,12 @@
 
 ---
 
-## ⏸ QUAY LẠI TỪ ĐÂY — S36 đã qua gate, chờ merge, 2026-09-12
+## ⏸ QUAY LẠI TỪ ĐÂY — S36 đã merge, bắt đầu S37, 2026-09-12
 
 > Đọc đúng khối này là đủ để làm tiếp. Chi tiết từng slice ở phần *Nhật ký* bên dưới.
 
-**Trạng thái:** branch `feat/s36-farm-creatures-polish`; implementation `5dd707f`, fix
-player shell `8f67171`, tài liệu chương 151 đang ở commit kế tiếp. S36 đã qua đủ gate;
-việc còn lại là commit docs → push branch → merge `--no-ff` vào `main` → ghi checkpoint S37.
+**Trạng thái:** `main` chứa merge S36 `41eb423`; implementation `5dd707f`, fix player
+shell `8f67171`, tài liệu chương 151 `adba316`. S36 đã qua đủ gate và đóng.
 **152 chương** (`docs/book/00`–`151`) · **95 test xanh** (60 khi build không có Drogon) ·
 **40 lib `*_core`** · **5 game có manifest** (creator/fps · farm · creatures · iso · colony) ·
 **68 dòng ADR**, 13 dòng `Superseded by`.
@@ -48,10 +47,11 @@ viewport combination giữ HUD, control, sprite và battle panel không chồng 
 - ✅ Farm `150f60129cb57b22` và Creatures `41369a0bce39b6bb`: inspect → publish → parity;
   Creatures promote preview → Hub shippable; zero `.tmp`.
 
-**Làm tiếp đúng từ đây:** commit chapter/ledger này, chạy test docs liên quan, push branch,
-merge `--no-ff`, cập nhật block này sang S37 rồi push `main`. Sau đó tạo
-`feat/s37-fps-iso-colony-polish`; đọc chapter của cả ba game, render baseline và giải
-quyết đúng hai nợ đã định cho S37: Iso save path và Colony runtime-generated `.hrt`.
+**Làm tiếp đúng từ đây — S37:** tạo branch `feat/s37-fps-iso-colony-polish`; đọc chapter
+của FPS, Iso và Colony, render baseline desktop + viewport hẹp, rồi viết acceptance test
+đỏ cho hierarchy/layout trước khi sửa renderer. Trong cùng slice, đóng đúng hai nợ đã định:
+Iso save path phải qua `assets::` dưới namespace của project, và Colony không được sinh
+runtime `.hrt` ngoài bốn cửa. Không mở thêm cửa asset hay kéo redesign Studio của S38 vào.
 
 **Sau S36 theo kế hoạch đã duyệt:** S37 polish FPS/Iso/Colony
 và đóng hai nợ runtime asset/save path · S38a/b redesign Studio rồi thêm pan/zoom,
